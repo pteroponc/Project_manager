@@ -12,6 +12,11 @@ const state = {
   editingProjectId: null,
   currentBoard: null,
   activeBoardModel: "kanban",
+  boardFilters: {
+    query: "",
+    priority: "all",
+    blocked: false
+  },
   boardDrilledIn: false,
   selectedBoardCardId: null,
   draggingBoardCardId: null
@@ -37,6 +42,15 @@ const elements = {
   createTaskTitle: document.getElementById("create-task-title"),
   createTaskOwner: document.getElementById("create-task-owner"),
   createTaskDueDate: document.getElementById("create-task-due-date"),
+  boardInsights: document.getElementById("board-insights"),
+  boardFilters: document.getElementById("board-filters"),
+  boardSearch: document.getElementById("board-search"),
+  boardPriorityFilter: document.getElementById("board-priority-filter"),
+  boardBlockedFilter: document.getElementById("board-blocked-filter"),
+  boardTaskCount: document.getElementById("board-task-count"),
+  boardPointCount: document.getElementById("board-point-count"),
+  boardOverdueCount: document.getElementById("board-overdue-count"),
+  boardBlockedCount: document.getElementById("board-blocked-count"),
   cancelTaskCreate: document.getElementById("cancel-task-create"),
   summary: document.getElementById("portfolio-summary"),
   sliceBudgetTotal: document.getElementById("slice-budget-total"),
@@ -59,6 +73,10 @@ const elements = {
   taskModalDescription: document.getElementById("task-modal-description"),
   taskModalOwner: document.getElementById("task-modal-owner"),
   taskModalDueDate: document.getElementById("task-modal-due-date"),
+  taskModalPriority: document.getElementById("task-modal-priority"),
+  taskModalEstimate: document.getElementById("task-modal-estimate"),
+  taskModalLabels: document.getElementById("task-modal-labels"),
+  taskModalBlocked: document.getElementById("task-modal-blocked"),
   taskModalClose: document.getElementById("task-modal-close"),
   taskModalEdit: document.getElementById("task-modal-edit"),
   taskModalDelete: document.getElementById("task-modal-delete"),
@@ -162,6 +180,12 @@ document.getElementById("filters-form").addEventListener("change", async (event)
 });
 
 elements.refreshButton.addEventListener("click", loadDashboard);
+elements.boardFilters?.addEventListener("input", () => {
+  state.boardFilters.query = elements.boardSearch.value.trim().toLowerCase();
+  state.boardFilters.priority = elements.boardPriorityFilter.value;
+  state.boardFilters.blocked = elements.boardBlockedFilter.checked;
+  renderBoardColumns();
+});
 elements.createTaskButton?.addEventListener("click", () => {
   const firstColumn = state.currentBoard?.columns?.[0];
   if (firstColumn) {
@@ -387,13 +411,26 @@ async function loadBoard(projectId, boardModel = state.activeBoardModel) {
     return;
   }
 
+  elements.boardInsights?.classList.remove("hidden");
+  elements.boardFilters?.classList.remove("hidden");
+  renderBoardInsights();
+  renderBoardColumns();
+}
+
+function renderBoardColumns() {
+  const board = state.currentBoard;
+  if (!board?.columns?.length) {
+    return;
+  }
   elements.boardColumns.innerHTML = "";
 
   board.columns.forEach((column) => {
     const columnElement = document.createElement("section");
-    columnElement.className = "board-column";
+    const wipExceeded = column.wipLimit && (column.cards?.length ?? 0) > column.wipLimit;
+    columnElement.className = `board-column ${wipExceeded ? "wip-exceeded" : ""}`;
     columnElement.dataset.columnKey = column.key;
-    const cards = (column.cards ?? [])
+    const visibleCards = (column.cards ?? []).filter(matchesBoardFilters);
+    const cards = visibleCards
       .map((card) => renderBoardCard(card, column.key))
       .join("");
 
@@ -401,7 +438,7 @@ async function loadBoard(projectId, boardModel = state.activeBoardModel) {
       <header>
         <h3>${escapeHtml(column.title)}</h3>
         <div class="board-column-actions">
-          <span class="pill">${column.cards?.length ?? 0}${column.wipLimit ? ` / ${column.wipLimit}` : ""}</span>
+          <span class="pill ${wipExceeded ? "danger" : ""}">${visibleCards.length}${visibleCards.length !== (column.cards?.length ?? 0) ? ` из ${column.cards?.length ?? 0}` : ""}${column.wipLimit ? ` / ${column.wipLimit}` : ""}</span>
           <button class="btn btn-ghost btn-small" type="button" data-action="new-card" data-column-key="${escapeAttr(column.key)}">Новая задача</button>
         </div>
       </header>
@@ -495,6 +532,22 @@ async function loadBoard(projectId, boardModel = state.activeBoardModel) {
   });
 }
 
+function matchesBoardFilters(card) {
+  const haystack = `${card.title} ${card.description} ${card.owner} ${card.labels ?? ""}`.toLowerCase();
+  return (!state.boardFilters.query || haystack.includes(state.boardFilters.query))
+    && (state.boardFilters.priority === "all" || card.priority === state.boardFilters.priority)
+    && (!state.boardFilters.blocked || card.blocked);
+}
+
+function renderBoardInsights() {
+  const cards = (state.currentBoard?.columns ?? []).flatMap((column) => column.cards ?? []);
+  const today = new Date().toISOString().slice(0, 10);
+  elements.boardTaskCount.textContent = cards.length;
+  elements.boardPointCount.textContent = cards.reduce((sum, card) => sum + Number(card.estimate || 0), 0);
+  elements.boardOverdueCount.textContent = cards.filter((card) => card.dueDate && card.dueDate < today).length;
+  elements.boardBlockedCount.textContent = cards.filter((card) => card.blocked).length;
+}
+
 function renderEmptyBoard() {
   state.currentBoard = null;
   elements.boardTitle.textContent = "Выберите проект";
@@ -502,6 +555,8 @@ function renderEmptyBoard() {
   if (elements.createTaskButton) {
     elements.createTaskButton.disabled = true;
   }
+  elements.boardInsights?.classList.add("hidden");
+  elements.boardFilters?.classList.add("hidden");
   closeCreateTaskPanel();
   elements.boardColumns.innerHTML = '<div class="empty-state compact">Доска появится после выбора инициативы.</div>';
 }
@@ -515,6 +570,8 @@ function renderBoardLanding() {
   if (elements.createTaskButton) {
     elements.createTaskButton.disabled = true;
   }
+  elements.boardInsights?.classList.add("hidden");
+  elements.boardFilters?.classList.add("hidden");
   closeCreateTaskPanel();
   renderCreatedBoards();
   elements.boardColumns.innerHTML = project
@@ -600,13 +657,22 @@ function renderCreatedBoards() {
 function renderBoardCard(card, columnKey) {
   const hasPreviousColumn = Boolean(adjacentColumnKey(columnKey, -1));
   const hasNextColumn = Boolean(adjacentColumnKey(columnKey, 1));
+  const overdue = card.dueDate && card.dueDate < new Date().toISOString().slice(0, 10);
+  const labels = String(card.labels ?? "").split(",").map((label) => label.trim()).filter(Boolean);
   return `
-    <article class="board-card" data-card-id="${escapeAttr(card.id)}" draggable="true">
+    <article class="board-card ${card.blocked ? "is-blocked" : ""}" data-card-id="${escapeAttr(card.id)}" draggable="true">
+      <div class="board-card-badges">
+        <span class="priority-badge" data-priority="${escapeAttr(card.priority)}">${escapeHtml(card.priority)}</span>
+        ${card.blocked ? '<span class="status-badge blocked">Блокер</span>' : ""}
+        ${overdue ? '<span class="status-badge overdue">Просрочено</span>' : ""}
+        <span class="status-badge estimate">${Number(card.estimate || 0)} SP</span>
+      </div>
       <div class="board-card-head">
         <strong>${escapeHtml(card.title)}</strong>
         <button class="btn btn-secondary btn-small" type="button" data-action="open-card" data-card-id="${escapeAttr(card.id)}">Открыть</button>
       </div>
       <p>${escapeHtml(card.description)}</p>
+      ${labels.length ? `<div class="board-card-labels">${labels.map((label) => `<span>${escapeHtml(label)}</span>`).join("")}</div>` : ""}
       <p>${escapeHtml(card.owner)} - ${formatDate(card.dueDate)}</p>
       <div class="board-card-actions">
         <select class="board-card-status" data-action="move-card" data-card-id="${escapeAttr(card.id)}" aria-label="Перенести задачу"></select>
@@ -637,7 +703,11 @@ async function moveBoardCard(cardId, columnKey) {
     description: found.card.description,
     owner: found.card.owner,
     dueDate: found.card.dueDate,
-    columnKey
+    columnKey,
+    priority: found.card.priority,
+    labels: found.card.labels,
+    estimate: Number(found.card.estimate || 0),
+    blocked: Boolean(found.card.blocked)
   };
   setFormState("Переносим задачу...", false);
 
@@ -674,6 +744,10 @@ function openTaskModal(card, columnTitle) {
   elements.taskModalDescription.textContent = card.description;
   elements.taskModalOwner.textContent = card.owner;
   elements.taskModalDueDate.textContent = formatDate(card.dueDate);
+  elements.taskModalPriority.textContent = card.priority;
+  elements.taskModalEstimate.textContent = `${card.estimate ?? 0} SP`;
+  elements.taskModalLabels.textContent = card.labels || "Без тегов";
+  elements.taskModalBlocked.textContent = card.blocked ? "Заблокирована" : "В работе";
   elements.taskModal.classList.remove("hidden");
 }
 
@@ -734,6 +808,24 @@ function startEditBoardCard(card, columnKey) {
         <span>Due date</span>
         <input name="dueDate" type="date" value="${escapeAttr(card.dueDate)}" required />
       </label>
+      <label>
+        <span>Приоритет</span>
+        <select name="priority" required>
+          ${["critical", "high", "medium", "low"].map((priority) => `<option value="${priority}" ${card.priority === priority ? "selected" : ""}>${priority}</option>`).join("")}
+        </select>
+      </label>
+      <label>
+        <span>Story points</span>
+        <input name="estimate" type="number" min="0" max="100" value="${Number(card.estimate || 0)}" required />
+      </label>
+      <label>
+        <span>Теги</span>
+        <input name="labels" value="${escapeAttr(card.labels ?? "")}" placeholder="frontend, discovery, api" />
+      </label>
+      <label class="check-field">
+        <input name="blocked" type="checkbox" ${card.blocked ? "checked" : ""} />
+        <span>Задача заблокирована</span>
+      </label>
       <div class="board-card-actions">
         <button class="btn btn-primary btn-small" type="submit">Сохранить</button>
         <button class="btn btn-ghost btn-small" type="button" data-action="cancel-card-edit">Отмена</button>
@@ -752,10 +844,7 @@ function startEditBoardCard(card, columnKey) {
 }
 
 async function createBoardCard(columnKey, formData) {
-  const payload = {
-    ...Object.fromEntries(formData.entries()),
-    columnKey
-  };
+  const payload = boardCardPayload(formData, columnKey);
   setFormState("Создаем задачу...", false);
 
   try {
@@ -796,7 +885,7 @@ async function deleteBoardCard(card) {
 }
 
 async function saveBoardCard(cardId, formData) {
-  const payload = Object.fromEntries(formData.entries());
+  const payload = boardCardPayload(formData);
   setFormState("Сохраняем задачу...", false);
 
   try {
@@ -813,6 +902,15 @@ async function saveBoardCard(cardId, formData) {
     console.error(error);
     setFormState(error.message || "Не удалось сохранить задачу", true);
   }
+}
+
+function boardCardPayload(formData, columnKey) {
+  const payload = Object.fromEntries(formData.entries());
+  payload.columnKey = columnKey ?? payload.columnKey;
+  payload.estimate = Number(payload.estimate || 0);
+  payload.blocked = formData.has("blocked");
+  payload.labels = payload.labels ?? "";
+  return payload;
 }
 
 async function handleProjectSubmit(event) {

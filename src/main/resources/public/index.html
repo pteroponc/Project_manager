@@ -67,6 +67,26 @@
               <span class="pill" id="board-model">board</span>
             </div>
           </div>
+          <div class="board-insights hidden" id="board-insights">
+            <span class="pill"><strong id="board-task-count">0</strong> задач</span>
+            <span class="pill"><strong id="board-point-count">0</strong> SP</span>
+            <span class="pill warning"><strong id="board-overdue-count">0</strong> просрочено</span>
+            <span class="pill danger"><strong id="board-blocked-count">0</strong> блокеров</span>
+          </div>
+          <form class="board-filters hidden" id="board-filters">
+            <input name="query" id="board-search" type="search" placeholder="Поиск по задачам, владельцам и тегам" />
+            <select name="priority" id="board-priority-filter">
+              <option value="all">Все приоритеты</option>
+              <option value="critical">Critical</option>
+              <option value="high">High</option>
+              <option value="medium">Medium</option>
+              <option value="low">Low</option>
+            </select>
+            <label class="check-field">
+              <input name="blocked" id="board-blocked-filter" type="checkbox" />
+              <span>Только блокеры</span>
+            </label>
+          </form>
           <div class="board-deck" id="board-deck">
             <button class="board-type-card" type="button" data-board-model="kanban">
               <span>Kanban</span>
@@ -116,6 +136,27 @@
               <label>
                 <span>Due date</span>
                 <input name="dueDate" id="create-task-due-date" type="date" required />
+              </label>
+              <label>
+                <span>Приоритет</span>
+                <select name="priority" required>
+                  <option value="medium">Medium</option>
+                  <option value="high">High</option>
+                  <option value="critical">Critical</option>
+                  <option value="low">Low</option>
+                </select>
+              </label>
+              <label>
+                <span>Story points</span>
+                <input name="estimate" type="number" min="0" max="100" value="3" required />
+              </label>
+              <label>
+                <span>Теги</span>
+                <input name="labels" placeholder="frontend, discovery, api" />
+              </label>
+              <label class="check-field">
+                <input name="blocked" type="checkbox" />
+                <span>Задача заблокирована</span>
               </label>
               <div class="board-card-actions">
                 <button class="btn btn-primary btn-small" type="submit">Создать</button>
@@ -281,6 +322,10 @@
         <dl class="task-modal-details">
           <div><dt>Владелец</dt><dd id="task-modal-owner"></dd></div>
           <div><dt>Срок</dt><dd id="task-modal-due-date"></dd></div>
+          <div><dt>Приоритет</dt><dd id="task-modal-priority"></dd></div>
+          <div><dt>Story points</dt><dd id="task-modal-estimate"></dd></div>
+          <div><dt>Теги</dt><dd id="task-modal-labels"></dd></div>
+          <div><dt>Статус</dt><dd id="task-modal-blocked"></dd></div>
         </dl>
         <div class="task-modal-actions">
           <button class="btn btn-primary" type="button" id="task-modal-edit">Редактировать</button>
@@ -317,6 +362,6 @@
       </article>
     </template>
 
-    <script src="/app.js?v=2026-05-09-4" defer></script>
+    <script src="/app.js?v=2026-06-09-1" defer></script>
   </body>
 </html>

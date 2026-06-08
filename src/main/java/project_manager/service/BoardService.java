@@ -74,6 +74,10 @@ public class BoardService {
         card.setDescription(request.description());
         card.setOwner(request.owner());
         card.setDueDate(request.dueDate());
+        card.setPriority(normalizePriority(request.priority()));
+        card.setLabels(normalizeLabels(request.labels()));
+        card.setEstimate(request.estimate());
+        card.setBlocked(request.blocked());
         return toCard(boardCardRepository.save(card));
     }
 
@@ -103,6 +107,10 @@ public class BoardService {
         card.setDescription(request.description());
         card.setOwner(request.owner());
         card.setDueDate(request.dueDate());
+        card.setPriority(normalizePriority(request.priority()));
+        card.setLabels(normalizeLabels(request.labels()));
+        card.setEstimate(request.estimate());
+        card.setBlocked(request.blocked());
         return toCard(boardCardRepository.save(card));
     }
 
@@ -207,7 +215,11 @@ public class BoardService {
             title,
             description,
             project.getOwner(),
-            project.getDeadline()
+            project.getDeadline(),
+            "medium",
+            "project",
+            3,
+            false
         );
     }
 
@@ -217,7 +229,11 @@ public class BoardService {
             title,
             description,
             project.getOwner(),
-            project.getDeadline()
+            project.getDeadline(),
+            "medium",
+            boardModel,
+            3,
+            false
         );
     }
 
@@ -268,6 +284,10 @@ public class BoardService {
         entity.setDescription(card.description());
         entity.setOwner(card.owner());
         entity.setDueDate(card.dueDate());
+        entity.setPriority(card.priority());
+        entity.setLabels(card.labels());
+        entity.setEstimate(card.estimate());
+        entity.setBlocked(card.blocked());
         return entity;
     }
 
@@ -291,6 +311,22 @@ public class BoardService {
         }
         if (!entity.getDueDate().equals(card.dueDate())) {
             entity.setDueDate(card.dueDate());
+            changed = true;
+        }
+        if (!normalizePriority(entity.getPriority()).equals(card.priority())) {
+            entity.setPriority(card.priority());
+            changed = true;
+        }
+        if (!normalizeLabels(entity.getLabels()).equals(card.labels())) {
+            entity.setLabels(card.labels());
+            changed = true;
+        }
+        if (entity.getEstimate() == null) {
+            entity.setEstimate(card.estimate());
+            changed = true;
+        }
+        if (entity.getBlocked() == null) {
+            entity.setBlocked(card.blocked());
             changed = true;
         }
         return changed;
@@ -335,8 +371,26 @@ public class BoardService {
             entity.getTitle(),
             entity.getDescription(),
             entity.getOwner(),
-            entity.getDueDate()
+            entity.getDueDate(),
+            normalizePriority(entity.getPriority()),
+            normalizeLabels(entity.getLabels()),
+            entity.getEstimate() == null ? 0 : entity.getEstimate(),
+            Boolean.TRUE.equals(entity.getBlocked())
         );
+    }
+
+    private String normalizePriority(String priority) {
+        if (priority == null || priority.isBlank()) {
+            return "medium";
+        }
+        return switch (priority.trim().toLowerCase()) {
+            case "low", "medium", "high", "critical" -> priority.trim().toLowerCase();
+            default -> throw new IllegalArgumentException("Unsupported priority: " + priority);
+        };
+    }
+
+    private String normalizeLabels(String labels) {
+        return labels == null ? "" : labels.trim();
     }
 
     private String boardTitle(String deliveryModel) {

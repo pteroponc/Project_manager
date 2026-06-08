@@ -5,6 +5,10 @@ public record BoardCard(
     String title,
     String description,
     String owner,
-    String dueDate
+    String dueDate,
+    String priority,
+    String labels,
+    int estimate,
+    boolean blocked
 ) {
 }

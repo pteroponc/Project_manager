@@ -32,6 +32,14 @@ public class BoardCardEntity {
     @Column(nullable = false)
     private String dueDate;
 
+    private String priority;
+
+    private String labels;
+
+    private Integer estimate;
+
+    private Boolean blocked;
+
     public String getId() {
         return id;
     }
@@ -94,5 +102,37 @@ public class BoardCardEntity {
 
     public void setDueDate(String dueDate) {
         this.dueDate = dueDate;
+    }
+
+    public String getPriority() {
+        return priority;
+    }
+
+    public void setPriority(String priority) {
+        this.priority = priority;
+    }
+
+    public String getLabels() {
+        return labels;
+    }
+
+    public void setLabels(String labels) {
+        this.labels = labels;
+    }
+
+    public Integer getEstimate() {
+        return estimate;
+    }
+
+    public void setEstimate(Integer estimate) {
+        this.estimate = estimate;
+    }
+
+    public Boolean getBlocked() {
+        return blocked;
+    }
+
+    public void setBlocked(Boolean blocked) {
+        this.blocked = blocked;
     }
 }
