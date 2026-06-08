@@ -1,0 +1,33 @@
+# Project Manager
+
+Локальная Spring Boot панель для управления портфелем проектов: список инициатив, бюджетный срез, статусы, KPI и доски Kanban, Scrum, Waterfall.
+
+## Запуск
+
+```powershell
+mvn spring-boot:run
+```
+
+После старта приложение открывается на:
+
+```text
+http://localhost:8080
+```
+
+Проверка API:
+
+```text
+GET http://localhost:8080/api/health
+GET http://localhost:8080/api/projects
+GET http://localhost:8080/api/portfolio
+```
+
+## Данные
+
+Приложение использует файловую H2 базу:
+
+```text
+data/project_manager.mv.db
+```
+
+При пустой базе создаются три демо-проекта с разными health-статусами и delivery-моделями.

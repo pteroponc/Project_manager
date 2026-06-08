@@ -1,0 +1,322 @@
+﻿<!DOCTYPE html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Project Manager Workspace</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div class="page-shell">
+      <header class="hero panel">
+        <div class="hero-copy">
+          <p class="eyebrow">Project Manager</p>
+          <h1>Портфель проектов, статусы и рабочие доски в одном экране</h1>
+          <p class="hero-text">
+            Локальная рабочая панель для контроля инициатив: бюджет, прогресс, риски, квартальные фильтры,
+            Kanban, Scrum и Waterfall-доски поверх Spring Boot API.
+          </p>
+          <div class="hero-actions">
+            <button class="btn btn-primary" type="button" data-scroll="#project-form">Добавить проект</button>
+            <button class="btn btn-secondary" type="button" data-scroll="#board-panel">Открыть доску</button>
+          </div>
+        </div>
+      </header>
+
+      <main class="workspace">
+        <section class="panel projects-panel">
+          <div class="section-head">
+            <div>
+              <p class="section-kicker">Projects</p>
+              <h2>Список инициатив</h2>
+            </div>
+            <span class="pill" id="projects-count">0 проектов</span>
+          </div>
+          <div class="projects-list" id="projects-list">
+            <div class="empty-state">Пока нет проектов для выбранного фильтра.</div>
+          </div>
+        </section>
+
+        <section class="panel portfolio-slice-panel">
+          <div class="section-head">
+            <div>
+              <p class="section-kicker">Budget & Milestones</p>
+              <h2>Бюджеты и контрольные точки</h2>
+            </div>
+            <div class="slice-summary">
+              <span class="pill" id="slice-budget-total">0 ₽</span>
+              <span class="pill success" id="slice-milestones-on-track">0 в графике</span>
+            </div>
+          </div>
+          <div class="portfolio-slice-table" id="portfolio-slice-table">
+            <div class="empty-state compact">Срез появится после загрузки проектов.</div>
+          </div>
+        </section>
+
+        <section class="panel boards-panel" id="board-panel">
+          <div class="section-head">
+            <div>
+              <p class="section-kicker">Доски</p>
+              <h2 id="board-title">Раздел досок</h2>
+            </div>
+            <div class="board-toolbar">
+              <button class="btn btn-primary" type="button" id="create-task-button" disabled>Создать задачу</button>
+              <span class="pill" id="board-model">board</span>
+            </div>
+          </div>
+          <div class="board-deck" id="board-deck">
+            <button class="board-type-card" type="button" data-board-model="kanban">
+              <span>Kanban</span>
+              <strong>Создать Канбан-доску</strong>
+              <small>Поток задач: backlog, ready, in progress, review, done.</small>
+            </button>
+            <button class="board-type-card" type="button" data-board-model="scrum">
+              <span>Scrum</span>
+              <strong>Создать Скрам-доску</strong>
+              <small>Работа спринта: product backlog, sprint ready, in sprint, review, retrospective.</small>
+            </button>
+            <button class="board-type-card" type="button" data-board-model="waterfall">
+              <span>Waterfall</span>
+              <strong>Создать Waterfall-доску</strong>
+              <small>Последовательные этапы: initiation, planning, execution, verification, release.</small>
+            </button>
+          </div>
+          <section class="created-boards">
+            <div class="section-head compact-head">
+              <div>
+                <p class="section-kicker">Созданные доски</p>
+                <h3>Доски инициатив</h3>
+              </div>
+            </div>
+            <div class="created-board-list" id="created-board-list">
+              <div class="empty-state compact">Созданные доски появятся здесь.</div>
+            </div>
+          </section>
+          <section class="create-task-panel hidden" id="create-task-panel">
+            <form class="board-card-form" id="create-task-form">
+              <label>
+                <span>Колонка</span>
+                <select name="columnKey" id="create-task-column" required></select>
+              </label>
+              <label>
+                <span>Название</span>
+                <input name="title" id="create-task-title" placeholder="Новая задача" required />
+              </label>
+              <label>
+                <span>Описание</span>
+                <textarea name="description" rows="3" placeholder="Что нужно сделать" required></textarea>
+              </label>
+              <label>
+                <span>Owner</span>
+                <input name="owner" id="create-task-owner" required />
+              </label>
+              <label>
+                <span>Due date</span>
+                <input name="dueDate" id="create-task-due-date" type="date" required />
+              </label>
+              <div class="board-card-actions">
+                <button class="btn btn-primary btn-small" type="submit">Создать</button>
+                <button class="btn btn-ghost btn-small" type="button" id="cancel-task-create">Отмена</button>
+              </div>
+            </form>
+          </section>
+          <div class="board-columns" id="board-columns">
+            <div class="empty-state compact">Выберите Kanban, Scrum или Waterfall внутри раздела досок.</div>
+          </div>
+        </section>
+
+        <section class="stats-grid" id="stats-grid">
+          <article class="metric-card panel">
+            <span class="metric-label">Всего проектов</span>
+            <strong class="metric-value" data-stat="projectCount">0</strong>
+          </article>
+          <article class="metric-card panel">
+            <span class="metric-label">Активные</span>
+            <strong class="metric-value" data-stat="activeCount">0</strong>
+          </article>
+          <article class="metric-card panel">
+            <span class="metric-label">С риском</span>
+            <strong class="metric-value" data-stat="riskyCount">0</strong>
+          </article>
+          <article class="metric-card panel">
+            <span class="metric-label">Средний прогресс</span>
+            <strong class="metric-value" data-stat="averageProgress">0%</strong>
+          </article>
+        </section>
+
+        <section class="dashboard-grid">
+          <section class="panel filters-panel">
+            <div class="section-head">
+              <div>
+                <p class="section-kicker">Фильтры</p>
+                <h2>Срез портфеля</h2>
+              </div>
+              <button class="btn btn-ghost" type="button" id="refresh-button">Обновить</button>
+            </div>
+            <form class="filters-form" id="filters-form">
+              <label>
+                <span>Квартал</span>
+                <select name="quarter" id="quarter-filter">
+                  <option value="all">Все кварталы</option>
+                </select>
+              </label>
+              <label>
+                <span>Health-статус</span>
+                <select name="health" id="health-filter">
+                  <option value="all">Все статусы</option>
+                  <option value="green">Green</option>
+                  <option value="yellow">Yellow</option>
+                  <option value="red">Red</option>
+                </select>
+              </label>
+            </form>
+            <p class="hint-text" id="portfolio-summary">Загружаем данные портфеля…</p>
+          </section>
+        </section>
+
+        <section class="panel form-panel" id="project-form">
+          <div class="section-head">
+            <div>
+              <p class="section-kicker" id="form-kicker">Новый проект</p>
+              <h2 id="form-title">Добавить проект в портфель</h2>
+            </div>
+            <span class="pill success" id="form-status">API готов</span>
+          </div>
+          <form class="project-form" id="create-project-form">
+            <input type="hidden" name="projectId" id="project-id-field" />
+            <label>
+              <span>Название</span>
+              <input name="name" placeholder="Например, CRM Expansion" required />
+            </label>
+            <label>
+              <span>Владелец</span>
+              <input name="owner" placeholder="Команда или владелец" required />
+            </label>
+            <label>
+              <span>Статус</span>
+              <select name="status" required>
+                <option value="active">active</option>
+                <option value="planned">planned</option>
+                <option value="paused">paused</option>
+                <option value="done">done</option>
+              </select>
+            </label>
+            <label>
+              <span>Health</span>
+              <select name="health" required>
+                <option value="green">green</option>
+                <option value="yellow">yellow</option>
+                <option value="red">red</option>
+              </select>
+            </label>
+            <label>
+              <span>Delivery-модель</span>
+              <select name="deliveryModel" id="delivery-model-field" required></select>
+            </label>
+            <label>
+              <span>Бюджет</span>
+              <input name="budget" type="number" min="0" step="10000" value="1000000" required />
+            </label>
+            <label>
+              <span>Прогресс</span>
+              <input name="progress" type="number" min="0" max="100" value="25" required />
+            </label>
+            <label>
+              <span>Квартал</span>
+              <input name="quarter" placeholder="Q3 2026" required />
+            </label>
+            <label>
+              <span>Срок</span>
+              <input name="deadline" type="date" required />
+            </label>
+            <label>
+              <span>Контрольная точка</span>
+              <input name="milestone" placeholder="Ближайшая ключевая точка" required />
+            </label>
+            <label>
+              <span>Риск</span>
+              <textarea name="risk" rows="3" placeholder="Главный риск проекта" required></textarea>
+            </label>
+            <label>
+              <span>Зависимость</span>
+              <textarea name="dependency" rows="3" placeholder="Критичная зависимость" required></textarea>
+            </label>
+            <label>
+              <span>KPI</span>
+              <input name="kpiName" placeholder="Например, NPS" required />
+            </label>
+            <label>
+              <span>Цель KPI</span>
+              <input name="kpiTarget" placeholder="Например, 65+" required />
+            </label>
+            <label class="full-width">
+              <span>Описание</span>
+              <textarea name="summary" rows="4" placeholder="Короткое описание инициативы" required></textarea>
+            </label>
+            <div class="form-actions full-width">
+              <div class="action-cluster">
+                <button class="btn btn-primary" type="submit" id="submit-button">Создать проект</button>
+                <button class="btn btn-ghost hidden" type="button" id="cancel-edit-button">Отменить редактирование</button>
+              </div>
+              <p class="hint-text" id="submit-message">После сохранения список, метрики и доски обновятся автоматически.</p>
+            </div>
+          </form>
+        </section>
+      </main>
+    </div>
+
+    <div class="modal-overlay hidden" id="task-modal" role="dialog" aria-modal="true" aria-labelledby="task-modal-title">
+      <section class="task-modal panel">
+        <div class="section-head">
+          <div>
+            <p class="section-kicker" id="task-modal-column">Задача</p>
+            <h2 id="task-modal-title">Карточка доски</h2>
+          </div>
+          <button class="btn btn-ghost btn-small" type="button" id="task-modal-close">Закрыть</button>
+        </div>
+        <p class="task-modal-description" id="task-modal-description"></p>
+        <dl class="task-modal-details">
+          <div><dt>Владелец</dt><dd id="task-modal-owner"></dd></div>
+          <div><dt>Срок</dt><dd id="task-modal-due-date"></dd></div>
+        </dl>
+        <div class="task-modal-actions">
+          <button class="btn btn-primary" type="button" id="task-modal-edit">Редактировать</button>
+          <button class="btn btn-danger" type="button" id="task-modal-delete">Удалить</button>
+        </div>
+      </section>
+    </div>
+
+    <template id="project-card-template">
+      <article class="project-card">
+        <div class="project-card-top">
+          <div>
+            <p class="project-meta"></p>
+            <h3></h3>
+          </div>
+          <span class="pill project-health"></span>
+        </div>
+        <p class="project-summary"></p>
+        <div class="project-progress">
+          <div class="progress-bar"><span></span></div>
+          <strong class="progress-value"></strong>
+        </div>
+        <dl class="project-details">
+          <div><dt>Владелец</dt><dd data-field="owner"></dd></div>
+          <div><dt>Бюджет</dt><dd data-field="budget"></dd></div>
+          <div><dt>Срок</dt><dd data-field="deadline"></dd></div>
+          <div><dt>KPI</dt><dd data-field="kpi"></dd></div>
+        </dl>
+        <div class="project-actions">
+          <button class="btn btn-secondary" type="button" data-action="board">Показать доску</button>
+          <button class="btn btn-ghost" type="button" data-action="edit">Редактировать</button>
+          <button class="btn btn-danger" type="button" data-action="delete">Удалить</button>
+        </div>
+      </article>
+    </template>
+
+    <script src="/app.js?v=2026-05-09-4" defer></script>
+  </body>
+</html>
