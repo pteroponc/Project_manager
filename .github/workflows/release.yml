@@ -30,7 +30,9 @@ jobs:
           cache: maven
 
       - name: Verify and package the application
-        run: mvn --batch-mode --no-transfer-progress clean verify
+        run: >-
+          mvn --batch-mode --no-transfer-progress clean verify
+          -Dproject.build.finalName=project-manager-${{ github.ref_name }}
 
       - name: Create GitHub Release
         env:
