@@ -39,8 +39,12 @@ public class ReleaseChecksService {
             .build();
     }
 
-    public synchronized ReleaseChecksSnapshot getSnapshot() {
-        if (cachedSnapshot != null && Instant.now().isBefore(cachedAt.plus(CACHE_TTL))) {
+    public ReleaseChecksSnapshot getSnapshot() {
+        return getSnapshot(false);
+    }
+
+    public synchronized ReleaseChecksSnapshot getSnapshot(boolean forceRefresh) {
+        if (!forceRefresh && cachedSnapshot != null && Instant.now().isBefore(cachedAt.plus(CACHE_TTL))) {
             return cachedSnapshot;
         }
 
