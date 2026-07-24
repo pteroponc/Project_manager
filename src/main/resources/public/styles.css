@@ -817,3 +817,163 @@ textarea:focus {
     grid-template-columns: 1fr;
   }
 }
+
+.release-checks-panel {
+  display: grid;
+  gap: 18px;
+  padding: 24px;
+}
+
+.release-checks-actions,
+.release-overview,
+.release-check,
+.release-check-action {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.release-checks-actions {
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+
+.release-checks-actions .pill {
+  padding: 8px 12px;
+  font-size: 0.78rem;
+}
+
+.release-overview {
+  justify-content: space-between;
+  flex-wrap: wrap;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+}
+
+.release-overview > div {
+  display: grid;
+  gap: 5px;
+  min-width: 160px;
+}
+
+.release-label {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.release-overview strong {
+  font-size: 1.15rem;
+}
+
+.release-check-list {
+  display: grid;
+  gap: 8px;
+}
+
+.release-check {
+  display: grid;
+  grid-template-columns: 10px minmax(0, 1fr) auto minmax(150px, auto);
+  align-items: center;
+  gap: 14px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: #ffffff;
+}
+
+.release-check-indicator {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--muted);
+}
+
+.release-check[data-tone="green"] .release-check-indicator {
+  background: var(--success);
+}
+
+.release-check[data-tone="yellow"] .release-check-indicator {
+  background: var(--warning);
+}
+
+.release-check[data-tone="red"] .release-check-indicator {
+  background: var(--danger);
+}
+
+.release-check strong,
+.release-check p {
+  display: block;
+}
+
+.release-check p {
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 0.84rem;
+}
+
+.release-check-state {
+  padding: 6px 9px;
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 0.78rem;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.release-check[data-tone="green"] .release-check-state {
+  color: var(--success);
+  background: rgba(22, 121, 76, 0.1);
+}
+
+.release-check[data-tone="yellow"] .release-check-state {
+  color: var(--warning);
+  background: rgba(161, 92, 7, 0.1);
+}
+
+.release-check[data-tone="red"] .release-check-state {
+  color: var(--danger);
+  background: rgba(180, 35, 24, 0.1);
+}
+
+.release-check-action {
+  justify-content: flex-end;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 3px;
+}
+
+.release-check-action a {
+  color: var(--accent-dark);
+  font-size: 0.82rem;
+  font-weight: 800;
+  text-decoration: none;
+}
+
+.release-check-action small {
+  color: var(--muted);
+  font-size: 0.74rem;
+}
+
+@media (max-width: 760px) {
+  .release-checks-actions,
+  .release-overview,
+  .release-check {
+    align-items: flex-start;
+  }
+
+  .release-check {
+    grid-template-columns: 10px minmax(0, 1fr);
+  }
+
+  .release-check-state,
+  .release-check-action {
+    grid-column: 2;
+    justify-self: start;
+    align-items: flex-start;
+  }
+}
