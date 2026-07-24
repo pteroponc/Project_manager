@@ -28,8 +28,25 @@ jobs:
           java-version: "21"
           cache: maven
 
-      - name: Run tests and package the application
+      - name: Run integration tests and package the application
         run: mvn --batch-mode --no-transfer-progress clean verify
+
+      - name: Smoke test packaged JAR
+        shell: bash
+        run: |
+          java -jar target/*.jar --server.port=8081 > application.log 2>&1 &
+          app_pid=$!
+          trap 'kill "$app_pid" 2>/dev/null || true' EXIT
+
+          for attempt in {1..30}; do
+            if curl --fail --silent --show-error http://127.0.0.1:8081/api/health | grep -q '"status":"ok"'; then
+              exit 0
+            fi
+            sleep 1
+          done
+
+          cat application.log
+          exit 1
 
       - name: Upload packaged JAR
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
