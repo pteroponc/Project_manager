@@ -18,8 +18,7 @@ import java.util.List;
 @Service
 public class ReleaseChecksService {
     private static final Duration CACHE_TTL = Duration.ofSeconds(30);
-    private static final String INTEGRATION_STEP = "Run integration tests and package the application";
-    private static final String SMOKE_STEP = "Smoke test packaged JAR";
+    private static final String CI_STEP = "Run tests and package the application";
 
     private final ObjectMapper objectMapper;
     private final HttpClient httpClient;
@@ -62,17 +61,12 @@ public class ReleaseChecksService {
 
             List<ReleaseCheck> checks = new ArrayList<>();
             checks.add(workflowCheck(
-                "Интеграционные API-тесты",
+                "Сборка и тесты",
                 "mvn clean verify",
                 ciRun,
-                INTEGRATION_STEP
+                CI_STEP
             ));
-            checks.add(workflowCheck(
-                "Smoke-тест JAR",
-                "Запуск JAR и /api/health",
-                ciRun,
-                SMOKE_STEP
-            ));
+            checks.add(releaseArtifactCheck(latestRelease));
             checks.add(workflowCheck(
                 "Публикация релиза",
                 latestRelease == null ? "Релиз еще не опубликован" : latestRelease.tagName(),
@@ -115,6 +109,27 @@ public class ReleaseChecksService {
             release.path("published_at").asText(""),
             release.path("html_url").asText(""),
             assetCount
+        );
+    }
+
+    private ReleaseCheck releaseArtifactCheck(ReleaseInfo latestRelease) {
+        if (latestRelease == null) {
+            return new ReleaseCheck(
+                "Артефакт релиза",
+                "Опубликованного релиза пока нет",
+                "not_run",
+                "",
+                ""
+            );
+        }
+
+        String state = latestRelease.assetCount() > 0 ? "success" : "failure";
+        return new ReleaseCheck(
+            "Артефакт релиза",
+            latestRelease.assetCount() + " JAR в релизе " + latestRelease.tagName(),
+            state,
+            latestRelease.url(),
+            latestRelease.publishedAt()
         );
     }
 
