@@ -3,6 +3,7 @@ package project_manager.web;
 import project_manager.service.ReleaseChecksService;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
@@ -15,7 +16,9 @@ public class ReleaseChecksController {
     }
 
     @GetMapping("/release-checks")
-    public ReleaseChecksService.ReleaseChecksSnapshot releaseChecks() {
-        return releaseChecksService.getSnapshot();
+    public ReleaseChecksService.ReleaseChecksSnapshot releaseChecks(
+        @RequestParam(defaultValue = "false") boolean refresh
+    ) {
+        return releaseChecksService.getSnapshot(refresh);
     }
 }
