@@ -188,6 +188,34 @@
           </article>
         </section>
 
+        <section class="panel release-checks-panel" id="release-checks-panel">
+          <div class="section-head">
+            <div>
+              <p class="section-kicker">Release gates</p>
+              <h2>Готовность релиза</h2>
+            </div>
+            <div class="release-checks-actions">
+              <span class="pill" id="release-checks-updated">Загружаем...</span>
+              <button class="btn btn-ghost btn-small" type="button" id="refresh-release-checks">Обновить</button>
+            </div>
+          </div>
+          <div class="release-overview" id="release-overview">
+            <div>
+              <span class="release-label">Последний релиз</span>
+              <strong id="release-tag">Проверяем GitHub...</strong>
+            </div>
+            <div>
+              <span class="release-label">Артефакты</span>
+              <strong id="release-assets">--</strong>
+            </div>
+            <a class="btn btn-secondary btn-small hidden" id="release-link" target="_blank" rel="noreferrer">Открыть релиз</a>
+          </div>
+          <p class="hint-text" id="release-checks-message">Загружаем состояние CI и релиза...</p>
+          <div class="release-check-list" id="release-check-list">
+            <div class="empty-state compact">Проверки появятся после загрузки GitHub Actions.</div>
+          </div>
+        </section>
+
         <section class="dashboard-grid">
           <section class="panel filters-panel">
             <div class="section-head">
@@ -362,6 +390,6 @@
       </article>
     </template>
 
-    <script src="/app.js?v=2026-06-09-1" defer></script>
+    <script src="/app.js?v=2026-07-24-1" defer></script>
   </body>
 </html>
