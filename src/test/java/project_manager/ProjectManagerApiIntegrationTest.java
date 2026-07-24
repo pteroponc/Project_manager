@@ -44,7 +44,7 @@ class ProjectManagerApiIntegrationTest {
 
         mockMvc.perform(get("/api/portfolio"))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.projects").isArray());
+            .andExpect(jsonPath("$.projectCount").isNumber());
 
         String cardId = cardIdFrom(createCard(projectId, "backlog", "medium", 3));
 
