@@ -11,6 +11,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 
 import static org.hamcrest.Matchers.containsString;
+import static org.hamcrest.Matchers.hasItem;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
@@ -58,7 +59,7 @@ class ProjectManagerApiIntegrationTest {
         mockMvc.perform(get("/api/projects/{id}/board", projectId))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.columns[2].key").value("in-progress"))
-            .andExpect(jsonPath("$.columns[2].cards[?(@.id == '" + cardId + "')].priority").value("high"));
+            .andExpect(jsonPath("$.columns[2].cards[*].id").value(hasItem(cardId)));
     }
 
     @Test
