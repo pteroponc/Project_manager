@@ -83,8 +83,17 @@ const elements = {
   statProjectCount: document.querySelector('[data-stat="projectCount"]'),
   statActiveCount: document.querySelector('[data-stat="activeCount"]'),
   statRiskyCount: document.querySelector('[data-stat="riskyCount"]'),
-  statAverageProgress: document.querySelector('[data-stat="averageProgress"]')
+  statAverageProgress: document.querySelector('[data-stat="averageProgress"]'),
+  releaseChecksUpdated: document.getElementById("release-checks-updated"),
+  releaseTag: document.getElementById("release-tag"),
+  releaseAssets: document.getElementById("release-assets"),
+  releaseLink: document.getElementById("release-link"),
+  releaseChecksMessage: document.getElementById("release-checks-message"),
+  releaseCheckList: document.getElementById("release-check-list"),
+  refreshReleaseChecks: document.getElementById("refresh-release-checks")
 };
+
+elements.refreshReleaseChecks?.addEventListener("click", () => loadReleaseChecks(true));
 
 function ensureTaskModalMarkup() {
   if (document.getElementById("task-modal")) {
@@ -232,7 +241,7 @@ init().catch((error) => {
 
 async function init() {
   await loadDeliveryModels();
-  await loadDashboard();
+  await Promise.all([loadDashboard(), loadReleaseChecks()]);
 }
 
 async function loadDeliveryModels() {
@@ -1006,6 +1015,102 @@ function resetFormMode() {
   if (state.deliveryModels[0]) {
     elements.deliveryModelField.value = state.deliveryModels[0];
   }
+}
+
+async function loadReleaseChecks(forceRefresh = false) {
+  if (!elements.releaseCheckList) {
+    return;
+  }
+
+  elements.releaseChecksUpdated.textContent = "Обновляем...";
+  try {
+    const suffix = forceRefresh ? "?refresh=true" : "";
+    const snapshot = await fetchJson(`/api/release-checks${suffix}`);
+    renderReleaseChecks(snapshot);
+  } catch (error) {
+    renderReleaseChecks({
+      available: false,
+      message: error.message || "Не удалось загрузить release checks.",
+      checks: []
+    });
+  }
+}
+
+function renderReleaseChecks(snapshot) {
+  const release = snapshot.latestRelease;
+  elements.releaseChecksUpdated.textContent = snapshot.updatedAt
+    ? `Обновлено ${formatDateTime(snapshot.updatedAt)}`
+    : "Нет данных";
+  elements.releaseChecksMessage.textContent = snapshot.message || "Нет данных о релизе.";
+
+  if (release?.tagName) {
+    elements.releaseTag.textContent = release.tagName;
+    elements.releaseAssets.textContent = `${release.assetCount ?? 0} файлов`;
+    elements.releaseLink.href = release.url;
+    elements.releaseLink.classList.remove("hidden");
+  } else {
+    elements.releaseTag.textContent = "Релиз не найден";
+    elements.releaseAssets.textContent = "--";
+    elements.releaseLink.removeAttribute("href");
+    elements.releaseLink.classList.add("hidden");
+  }
+
+  const checks = snapshot.checks ?? [];
+  if (!checks.length) {
+    elements.releaseCheckList.innerHTML = '<div class="empty-state compact">GitHub пока не вернул статусы проверок.</div>';
+    return;
+  }
+
+  elements.releaseCheckList.innerHTML = checks
+    .map((check) => {
+      const meta = releaseCheckMeta(check.state);
+      const action = check.url
+        ? `<a href="${escapeAttr(check.url)}" target="_blank" rel="noreferrer">Открыть workflow</a>`
+        : '<span>Ожидает запуска</span>';
+      return `
+        <article class="release-check" data-tone="${meta.tone}">
+          <span class="release-check-indicator" aria-hidden="true"></span>
+          <div>
+            <strong>${escapeHtml(check.title)}</strong>
+            <p>${escapeHtml(check.description)}</p>
+          </div>
+          <span class="release-check-state">${meta.label}</span>
+          <div class="release-check-action">
+            ${action}
+            <small>${check.updatedAt ? escapeHtml(formatDateTime(check.updatedAt)) : ""}</small>
+          </div>
+        </article>
+      `;
+    })
+    .join("");
+}
+
+function releaseCheckMeta(state) {
+  return {
+    success: { tone: "green", label: "Пройдено" },
+    failure: { tone: "red", label: "Ошибка" },
+    cancelled: { tone: "red", label: "Отменено" },
+    timed_out: { tone: "red", label: "Тайм-аут" },
+    in_progress: { tone: "yellow", label: "Выполняется" },
+    queued: { tone: "yellow", label: "В очереди" },
+    not_run: { tone: "neutral", label: "Не запускалось" }
+  }[state] ?? { tone: "neutral", label: "Нет данных" };
+}
+
+function formatDateTime(value) {
+  if (!value) {
+    return "--";
+  }
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+  return new Intl.DateTimeFormat("ru-RU", {
+    day: "2-digit",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit"
+  }).format(date);
 }
 
 async function fetchJson(url, options) {
