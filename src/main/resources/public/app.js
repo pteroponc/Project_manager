@@ -1,12 +1,47 @@
 const BOARDS_STORAGE_KEY = "project-manager-created-boards";
 
+const LABELS = {
+  health: {
+    green: "В норме",
+    yellow: "Требует внимания",
+    red: "Проблемный"
+  },
+  status: {
+    active: "Активен",
+    planned: "Запланирован",
+    paused: "На паузе",
+    done: "Завершен"
+  },
+  deliveryModel: {
+    kanban: "Канбан",
+    scrum: "Скрам",
+    waterfall: "Каскад"
+  },
+  priority: {
+    critical: "Критичный",
+    high: "Высокий",
+    medium: "Средний",
+    low: "Низкий"
+  },
+  releaseStatus: {
+    planning: "Планирование",
+    boarding: "Комплектация",
+    frozen: "Код заморожен",
+    qa: "Тестирование",
+    released: "Выпущен"
+  }
+};
+
 const state = {
   projects: [],
+  releaseTrains: [],
+  releaseTrainSnapshot: null,
   createdBoards: loadCreatedBoards(),
   filters: {
     quarter: "all",
     health: "all"
   },
+  activeView: "overview",
   selectedProjectId: null,
   deliveryModels: [],
   editingProjectId: null,
@@ -56,11 +91,23 @@ const elements = {
   sliceBudgetTotal: document.getElementById("slice-budget-total"),
   sliceMilestonesOnTrack: document.getElementById("slice-milestones-on-track"),
   portfolioSliceTable: document.getElementById("portfolio-slice-table"),
+  overviewProjectList: document.getElementById("overview-project-list"),
+  overviewHealthyCount: document.getElementById("overview-healthy-count"),
+  overviewProblemCount: document.getElementById("overview-problem-count"),
+  releaseTrainList: document.getElementById("release-train-list"),
+  releaseTrainCount: document.getElementById("release-train-count"),
+  releaseTrainReadiness: document.getElementById("release-train-readiness"),
+  releaseTrainBlocked: document.getElementById("release-train-blocked"),
+  releaseTrainCapacity: document.getElementById("release-train-capacity"),
+  releaseTrainForm: document.getElementById("release-train-form"),
+  releaseTrainMessage: document.getElementById("release-train-message"),
   refreshButton: document.getElementById("refresh-button"),
   form: document.getElementById("create-project-form"),
   formKicker: document.getElementById("form-kicker"),
   formTitle: document.getElementById("form-title"),
   formStatus: document.getElementById("form-status"),
+  addProjectLink: document.getElementById("add-project-link"),
+  closeProjectFormButton: document.getElementById("close-project-form"),
   submitMessage: document.getElementById("submit-message"),
   submitButton: document.getElementById("submit-button"),
   cancelEditButton: document.getElementById("cancel-edit-button"),
@@ -90,7 +137,12 @@ const elements = {
   releaseLink: document.getElementById("release-link"),
   releaseChecksMessage: document.getElementById("release-checks-message"),
   releaseCheckList: document.getElementById("release-check-list"),
-  refreshReleaseChecks: document.getElementById("refresh-release-checks")
+  refreshReleaseChecks: document.getElementById("refresh-release-checks"),
+  projectDashboardGrid: document.getElementById("project-dashboard-grid"),
+  dashboardHealthSummary: document.getElementById("dashboard-health-summary"),
+  dashboardDeliverySummary: document.getElementById("dashboard-delivery-summary"),
+  viewSections: document.querySelectorAll("[data-view-section]"),
+  viewButtons: document.querySelectorAll("[data-view]")
 };
 
 elements.refreshReleaseChecks?.addEventListener("click", () => loadReleaseChecks(true));
@@ -183,12 +235,22 @@ scrollButtons.forEach((button) => {
   });
 });
 
-document.getElementById("filters-form").addEventListener("change", async (event) => {
+elements.viewButtons.forEach((button) => {
+  button.addEventListener("click", () => {
+    showView(button.dataset.view);
+    if (button.dataset.openProjectForm === "true") {
+      resetFormMode();
+      openProjectForm();
+    }
+  });
+});
+
+document.getElementById("filters-form")?.addEventListener("change", async (event) => {
   state.filters[event.target.name] = event.target.value;
   await loadDashboard();
 });
 
-elements.refreshButton.addEventListener("click", loadDashboard);
+elements.refreshButton?.addEventListener("click", loadDashboard);
 elements.boardFilters?.addEventListener("input", () => {
   state.boardFilters.query = elements.boardSearch.value.trim().toLowerCase();
   state.boardFilters.priority = elements.boardPriorityFilter.value;
@@ -207,7 +269,19 @@ elements.boardDeck?.querySelectorAll("[data-board-model]").forEach((button) => {
   });
 });
 elements.form.addEventListener("submit", handleProjectSubmit);
-elements.cancelEditButton.addEventListener("click", resetFormMode);
+elements.releaseTrainForm?.addEventListener("submit", handleReleaseTrainSubmit);
+elements.addProjectLink?.addEventListener("click", () => {
+  resetFormMode();
+  openProjectForm();
+});
+elements.closeProjectFormButton?.addEventListener("click", () => {
+  resetFormMode();
+  closeProjectForm();
+});
+elements.cancelEditButton.addEventListener("click", () => {
+  resetFormMode();
+  closeProjectForm();
+});
 elements.createTaskForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   await createBoardCard(elements.createTaskColumn.value, new FormData(elements.createTaskForm));
@@ -240,6 +314,7 @@ init().catch((error) => {
 });
 
 async function init() {
+  showView(state.activeView);
   await loadDeliveryModels();
   await Promise.all([loadDashboard(), loadReleaseChecks()]);
 }
@@ -253,22 +328,43 @@ async function loadDeliveryModels() {
   resetFormMode();
 }
 
+function showView(view) {
+  const nextView = view || "overview";
+  state.activeView = nextView;
+
+  elements.viewSections.forEach((section) => {
+    section.classList.toggle("active", section.dataset.viewSection === nextView);
+  });
+
+  elements.viewButtons.forEach((button) => {
+    button.classList.toggle("active", button.dataset.view === nextView);
+  });
+
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
 async function loadDashboard() {
   setSummary("Обновляем портфель и список проектов...");
   const query = new URLSearchParams(state.filters).toString();
-  const [portfolio, projects] = await Promise.all([
+  const [portfolio, projects, releaseTrainSnapshot] = await Promise.all([
     fetchJson(`/api/portfolio?${query}`),
-    fetchJson(`/api/projects?${query}`)
+    fetchJson(`/api/projects?${query}`),
+    fetchJson(`/api/release-trains/snapshot?${query}`)
   ]);
 
   state.projects = projects;
+  state.releaseTrainSnapshot = releaseTrainSnapshot;
+  state.releaseTrains = releaseTrainSnapshot.trains ?? [];
   if (!state.selectedProjectId || !projects.some((project) => project.id === state.selectedProjectId)) {
     state.selectedProjectId = projects[0]?.id ?? null;
   }
 
   populateQuarterFilter(projects);
   renderStats(portfolio);
+  renderProjectOverview(projects);
+  renderProjectDashboards(projects);
   renderPortfolioSlice(portfolio, projects);
+  renderReleaseTrains(releaseTrainSnapshot);
   renderProjects(projects);
   renderCreatedBoards();
   setSummary(buildSummary(portfolio, projects));
@@ -281,6 +377,10 @@ async function loadDashboard() {
 }
 
 function populateQuarterFilter(projects) {
+  if (!elements.quarterFilter) {
+    return;
+  }
+
   const current = state.filters.quarter;
   const quarters = [...new Set(projects.map((project) => project.quarter).filter(Boolean))].sort();
   elements.quarterFilter.innerHTML = ['<option value="all">Все кварталы</option>']
@@ -295,6 +395,209 @@ function renderStats(portfolio) {
   elements.statActiveCount.textContent = formatNumber(portfolio.activeCount ?? 0);
   elements.statRiskyCount.textContent = formatNumber(portfolio.riskyCount ?? 0);
   elements.statAverageProgress.textContent = `${portfolio.averageProgress ?? 0}%`;
+}
+
+function renderProjectDashboards(projects) {
+  if (!elements.projectDashboardGrid) {
+    return;
+  }
+
+  const total = projects.length;
+  const totalBudget = projects.reduce((sum, project) => sum + Number(project.budget || 0), 0);
+  const greenCount = projects.filter((project) => project.health === "green").length;
+  const riskCount = projects.filter((project) => project.health === "yellow" || project.health === "red").length;
+  const deliveryModels = groupCount(projects, "deliveryModel");
+  const statusCounts = groupCount(projects, "status");
+  const healthCounts = groupCount(projects, "health");
+  const deliveryCount = Object.keys(deliveryModels).length;
+
+  elements.dashboardHealthSummary.textContent = `${greenCount} стабильных / ${riskCount} с риском`;
+  elements.dashboardDeliverySummary.textContent = `${deliveryCount} ${declOfNum(deliveryCount, ["модель", "модели", "моделей"])}`;
+
+  if (!projects.length) {
+    elements.projectDashboardGrid.innerHTML = '<div class="empty-state compact">Для выбранного среза пока нет проектных данных.</div>';
+    return;
+  }
+
+  const budgetLeaders = projects
+    .slice()
+    .sort((a, b) => Number(b.budget || 0) - Number(a.budget || 0))
+    .slice(0, 4);
+  const deadlineWatch = projects
+    .slice()
+    .sort((a, b) => new Date(a.deadline).getTime() - new Date(b.deadline).getTime())
+    .slice(0, 4);
+  const riskWatch = projects
+    .filter((project) => project.health !== "green" || milestoneTone(project) !== "green")
+    .sort((a, b) => riskWeight(b) - riskWeight(a))
+    .slice(0, 4);
+
+  elements.projectDashboardGrid.innerHTML = `
+    <article class="dashboard-card">
+      <div class="dashboard-card-head">
+        <span class="metric-label">Состояние</span>
+        <strong>${greenCount}/${total} стабильных</strong>
+      </div>
+      ${renderDistributionBars(healthCounts, total, ["green", "yellow", "red"])}
+    </article>
+    <article class="dashboard-card">
+      <div class="dashboard-card-head">
+        <span class="metric-label">Модели поставки</span>
+        <strong>${deliveryCount} модели</strong>
+      </div>
+      ${renderDistributionBars(deliveryModels, total, ["kanban", "scrum", "waterfall"])}
+    </article>
+    <article class="dashboard-card">
+      <div class="dashboard-card-head">
+        <span class="metric-label">Крупные бюджеты</span>
+        <strong>${formatCurrency(totalBudget)}</strong>
+      </div>
+      ${renderProjectRows(budgetLeaders, (project) => formatCurrency(project.budget), totalBudget)}
+    </article>
+    <article class="dashboard-card">
+      <div class="dashboard-card-head">
+        <span class="metric-label">Статусы</span>
+        <strong>${projects.filter((project) => project.status === "active").length} активных</strong>
+      </div>
+      ${renderDistributionBars(statusCounts, total, ["active", "planned", "paused", "done"])}
+    </article>
+    <article class="dashboard-card dashboard-card-wide">
+      <div class="dashboard-card-head">
+        <span class="metric-label">Ближайшие сроки</span>
+        <strong>${deadlineWatch.length} ближайших</strong>
+      </div>
+      ${renderDeadlineRows(deadlineWatch)}
+    </article>
+    <article class="dashboard-card dashboard-card-wide">
+      <div class="dashboard-card-head">
+        <span class="metric-label">Контроль рисков</span>
+        <strong>${riskWatch.length} под контролем</strong>
+      </div>
+      ${riskWatch.length ? renderRiskRows(riskWatch) : '<div class="empty-state compact">Критичных рисков в выбранном срезе нет.</div>'}
+    </article>
+  `;
+}
+
+function renderDistributionBars(counts, total, order) {
+  return `
+    <div class="dashboard-bars">
+      ${order
+        .filter((key) => counts[key])
+        .map((key) => {
+          const count = counts[key];
+          const percent = total > 0 ? Math.round((count / total) * 100) : 0;
+          return `
+            <div class="dashboard-bar-row">
+              <span>${escapeHtml(displayLabel(key))}</span>
+              <div class="dashboard-bar"><span style="width: ${percent}%"></span></div>
+              <strong>${count}</strong>
+            </div>
+          `;
+        })
+        .join("")}
+    </div>
+  `;
+}
+
+function renderProjectRows(projects, valueLabel, totalBudget) {
+  return `
+    <div class="dashboard-project-rows">
+      ${projects
+        .map((project) => {
+          const percent = totalBudget > 0 ? Math.round((Number(project.budget || 0) / totalBudget) * 100) : Number(project.progress || 0);
+          return `
+            <div class="dashboard-project-row">
+              <div>
+                <strong>${escapeHtml(project.name)}</strong>
+                <small>${escapeHtml(project.owner)} / ${escapeHtml(project.quarter)}</small>
+              </div>
+              <span>${valueLabel(project)}</span>
+              <div class="dashboard-bar"><span style="width: ${percent}%"></span></div>
+            </div>
+          `;
+        })
+        .join("")}
+    </div>
+  `;
+}
+
+function renderDeadlineRows(projects) {
+  return `
+    <div class="dashboard-project-rows">
+      ${projects
+        .map((project) => `
+          <div class="deadline-row" data-tone="${milestoneTone(project)}">
+            <div>
+              <strong>${escapeHtml(project.name)}</strong>
+              <small>${escapeHtml(project.milestone)}</small>
+            </div>
+            <span>${formatDate(project.deadline)}</span>
+          </div>
+        `)
+        .join("")}
+    </div>
+  `;
+}
+
+function renderRiskRows(projects) {
+  return `
+    <div class="dashboard-project-rows">
+      ${projects
+        .map((project) => `
+          <div class="risk-row" data-tone="${milestoneTone(project)}">
+            <div>
+              <strong>${escapeHtml(project.name)}</strong>
+              <small>${escapeHtml(project.risk)}</small>
+            </div>
+            <span>${escapeHtml(displayLabel(project.health))}</span>
+          </div>
+        `)
+        .join("")}
+    </div>
+  `;
+}
+
+function renderProjectOverview(projects) {
+  if (!elements.overviewProjectList) {
+    return;
+  }
+
+  const rows = projects
+    .slice()
+    .sort((a, b) => riskWeight(b) - riskWeight(a));
+  const healthyCount = rows.filter((project) => projectProblemState(project).tone === "green").length;
+  const problemCount = rows.length - healthyCount;
+
+  elements.overviewHealthyCount.textContent = `${healthyCount} ${declOfNum(healthyCount, ["без проблем", "без проблем", "без проблем"])}`;
+  elements.overviewProblemCount.textContent = `${problemCount} ${declOfNum(problemCount, ["проблемный", "проблемных", "проблемных"])}`;
+
+  if (!rows.length) {
+    elements.overviewProjectList.innerHTML = '<div class="empty-state compact">Нет проектов для выбранного фильтра.</div>';
+    return;
+  }
+
+  elements.overviewProjectList.innerHTML = rows
+    .map((project) => {
+      const state = projectProblemState(project);
+      return `
+        <article class="overview-project-row" data-tone="${state.tone}">
+          <span class="overview-project-indicator" aria-hidden="true"></span>
+          <div class="overview-project-main">
+            <div>
+              <strong>${escapeHtml(project.name)}</strong>
+              <small>${escapeHtml(project.owner)} / ${escapeHtml(project.quarter)} / ${escapeHtml(displayLabel(project.deliveryModel))}</small>
+            </div>
+            <p>${escapeHtml(state.reason)}</p>
+          </div>
+          <div class="overview-project-progress">
+            <span>${Number(project.progress || 0)}%</span>
+            <div class="progress-bar"><span style="width: ${Number(project.progress || 0)}%"></span></div>
+          </div>
+          <span class="pill ${state.tone === "green" ? "success" : state.tone === "red" ? "danger" : "warning"}">${state.label}</span>
+        </article>
+      `;
+    })
+    .join("");
 }
 
 function renderPortfolioSlice(portfolio, projects) {
@@ -328,7 +631,7 @@ function renderPortfolioSlice(portfolio, projects) {
           <div class="slice-row" data-tone="${tone}">
             <span>
               <strong>${escapeHtml(project.name)}</strong>
-              <small>${escapeHtml(project.owner)} · ${escapeHtml(project.health)}</small>
+              <small>${escapeHtml(project.owner)} · ${escapeHtml(displayLabel(project.health))}</small>
             </span>
             <span>
               ${formatCurrency(project.budget)}
@@ -344,6 +647,75 @@ function renderPortfolioSlice(portfolio, projects) {
         `;
       })
       .join("")}
+  `;
+}
+
+function renderReleaseTrains(snapshot) {
+  const trains = snapshot?.trains ?? [];
+  const capacity = Number(snapshot?.totalCapacityPoints || 0);
+  const committed = Number(snapshot?.totalCommittedPoints || 0);
+
+  elements.releaseTrainCount.textContent = `${trains.length} ${declOfNum(trains.length, ["поезд", "поезда", "поездов"])}`;
+  elements.releaseTrainReadiness.textContent = `${snapshot?.averageReadiness ?? 0}% готовность`;
+  elements.releaseTrainBlocked.textContent = `${snapshot?.blockedItems ?? 0} блокеров`;
+  elements.releaseTrainCapacity.textContent = `${committed} / ${capacity} SP`;
+
+  if (!trains.length) {
+    elements.releaseTrainList.innerHTML = '<div class="empty-state compact">Для выбранного среза релизных поездов пока нет.</div>';
+    return;
+  }
+
+  elements.releaseTrainList.innerHTML = trains
+    .map((train) => {
+      const capacityPercent = capacityPercentFor(train);
+      return `
+        <article class="release-train-card" data-status="${escapeAttr(train.status)}">
+          <div class="release-train-top">
+            <div>
+              <p class="project-meta">${escapeHtml(train.quarter)} / ${escapeHtml(train.cadence)}</p>
+              <h3>${escapeHtml(train.name)}</h3>
+            </div>
+            <span class="pill ${releaseTrainTone(train)}">${escapeHtml(displayLabel(train.status))}</span>
+          </div>
+          <div class="release-track" aria-label="Этапы релизного потока">
+            ${renderReleaseStage("Заморозка кода", train.codeFreezeDate, train.status, ["planning", "boarding"])}
+            ${renderReleaseStage("Заморозка тестирования", train.qaFreezeDate, train.status, ["frozen"])}
+            ${renderReleaseStage("Запуск", train.goLiveDate, train.status, ["qa", "released"])}
+          </div>
+          <div class="release-train-progress">
+            <div>
+              <span>Готовность</span>
+              <strong>${train.readiness}%</strong>
+            </div>
+            <div class="progress-bar"><span style="width: ${Number(train.readiness || 0)}%"></span></div>
+          </div>
+          <dl class="release-train-details">
+            <div><dt>Состав</dt><dd>${escapeHtml(train.scope)}</dd></div>
+            <div><dt>Емкость</dt><dd>${train.committedPoints} / ${train.capacityPoints} SP (${capacityPercent}%)</dd></div>
+            <div><dt>Блокеры</dt><dd>${train.blockedItems}</dd></div>
+            <div><dt>Дата релиза</dt><dd>${formatDate(train.plannedReleaseDate)}</dd></div>
+          </dl>
+          <div class="release-train-note">
+            <strong>Риск</strong>
+            <p>${escapeHtml(train.risk)}</p>
+          </div>
+          <div class="release-train-note">
+            <strong>Решение до заморозки</strong>
+            <p>${escapeHtml(train.decision)}</p>
+          </div>
+        </article>
+      `;
+    })
+    .join("");
+}
+
+function renderReleaseStage(title, date, status, activeStatuses) {
+  const active = activeStatuses.includes(status);
+  return `
+    <div class="release-stage ${active ? "active" : ""}">
+      <span>${escapeHtml(title)}</span>
+      <strong>${formatDate(date)}</strong>
+    </div>
   `;
 }
 
@@ -380,16 +752,14 @@ function renderProjects(projects) {
     fragment.querySelector('[data-field="deadline"]').textContent = formatDate(project.deadline);
     fragment.querySelector('[data-field="kpi"]').textContent = `${project.kpiName}: ${project.kpiTarget}`;
 
-    if (project.id === state.selectedProjectId) {
-      card.style.outline = "2px solid rgba(200, 95, 44, 0.35)";
-    }
+    card.classList.toggle("is-selected", project.id === state.selectedProjectId);
 
     fragment.querySelector('[data-action="board"]').addEventListener("click", async () => {
       state.selectedProjectId = project.id;
       state.boardDrilledIn = false;
+      showView("boards");
       renderProjects(state.projects);
       renderBoardLanding();
-      document.getElementById("board-panel")?.scrollIntoView({ behavior: "smooth", block: "start" });
     });
 
     fragment.querySelector('[data-action="edit"]').addEventListener("click", () => {
@@ -626,10 +996,10 @@ async function openCreatedBoard(boardId) {
   state.selectedProjectId = board.projectId;
   state.activeBoardModel = board.model;
   state.boardDrilledIn = true;
+  showView("boards");
   renderProjects(state.projects);
   renderCreatedBoards();
   await loadBoard(board.projectId, board.model);
-  document.getElementById("board-panel")?.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
 function renderCreatedBoards() {
@@ -922,6 +1292,35 @@ function boardCardPayload(formData, columnKey) {
   return payload;
 }
 
+async function handleReleaseTrainSubmit(event) {
+  event.preventDefault();
+  const formData = new FormData(elements.releaseTrainForm);
+  const payload = Object.fromEntries(formData.entries());
+  payload.capacityPoints = Number(payload.capacityPoints || 0);
+  payload.committedPoints = Number(payload.committedPoints || 0);
+  payload.readiness = Number(payload.readiness || 0);
+  payload.blockedItems = Number(payload.blockedItems || 0);
+
+  elements.releaseTrainMessage.textContent = "Сохраняем релизный поезд...";
+
+  try {
+    const saved = await fetchJson("/api/release-trains", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify(payload)
+    });
+
+    elements.releaseTrainMessage.textContent = `Релизный поезд "${saved.name}" добавлен`;
+    elements.releaseTrainForm.reset();
+    await loadDashboard();
+  } catch (error) {
+    console.error(error);
+    elements.releaseTrainMessage.textContent = error.message || "Не удалось сохранить релизный поезд";
+  }
+}
+
 async function handleProjectSubmit(event) {
   event.preventDefault();
   const formData = new FormData(elements.form);
@@ -945,6 +1344,7 @@ async function handleProjectSubmit(event) {
 
     setFormState(isEditing ? `Проект "${saved.name}" обновлен` : `Проект "${saved.name}" создан`, false);
     resetFormMode();
+    closeProjectForm();
     state.selectedProjectId = saved.id;
     await loadDashboard();
   } catch (error) {
@@ -954,14 +1354,18 @@ async function handleProjectSubmit(event) {
 }
 
 function startEditProject(project) {
+  showView("projects");
+  openProjectForm();
   state.editingProjectId = project.id;
   elements.projectIdField.value = project.id;
   elements.formKicker.textContent = "Редактирование";
   elements.formTitle.textContent = `Редактируем: ${project.name}`;
   elements.submitButton.textContent = "Сохранить изменения";
   elements.cancelEditButton.classList.remove("hidden");
-  elements.formStatus.textContent = "Режим правки";
-  elements.formStatus.classList.remove("success");
+  if (elements.formStatus) {
+    elements.formStatus.textContent = "Режим правки";
+    elements.formStatus.classList.remove("success");
+  }
 
   for (const [key, value] of Object.entries(project)) {
     const field = elements.form.elements.namedItem(key);
@@ -969,8 +1373,15 @@ function startEditProject(project) {
       field.value = value ?? "";
     }
   }
-
   document.getElementById("project-form")?.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+function openProjectForm() {
+  document.getElementById("project-form")?.classList.remove("is-collapsed");
+}
+
+function closeProjectForm() {
+  document.getElementById("project-form")?.classList.add("is-collapsed");
 }
 
 async function deleteProject(project) {
@@ -1010,8 +1421,10 @@ function resetFormMode() {
   elements.formTitle.textContent = "Добавить проект в портфель";
   elements.submitButton.textContent = "Создать проект";
   elements.cancelEditButton.classList.add("hidden");
-  elements.formStatus.textContent = "API готов";
-  elements.formStatus.classList.add("success");
+  if (elements.formStatus) {
+    elements.formStatus.textContent = "API готов";
+    elements.formStatus.classList.add("success");
+  }
   if (state.deliveryModels[0]) {
     elements.deliveryModelField.value = state.deliveryModels[0];
   }
@@ -1147,6 +1560,24 @@ function boardTitleLabel(model) {
   }[model] ?? "Доска";
 }
 
+function releaseTrainTone(train) {
+  if (train.blockedItems > 0 || train.readiness < 55) {
+    return "danger";
+  }
+  if (train.status === "released" || train.readiness >= 80) {
+    return "success";
+  }
+  return "warning";
+}
+
+function capacityPercentFor(train) {
+  const capacity = Number(train.capacityPoints || 0);
+  if (!capacity) {
+    return 0;
+  }
+  return Math.round((Number(train.committedPoints || 0) / capacity) * 100);
+}
+
 function loadCreatedBoards() {
   try {
     const raw = localStorage.getItem(BOARDS_STORAGE_KEY);
@@ -1168,13 +1599,29 @@ function buildSummary(portfolio, projects) {
 }
 
 function setSummary(message) {
-  elements.summary.textContent = message;
+  if (elements.summary) {
+    elements.summary.textContent = message;
+  }
 }
 
 function setFormState(message, isError) {
-  elements.submitMessage.textContent = message;
-  elements.formStatus.textContent = isError ? "Ошибка" : state.editingProjectId ? "Режим правки" : "API готов";
-  elements.formStatus.classList.toggle("success", !isError && !state.editingProjectId);
+  if (elements.submitMessage) {
+    elements.submitMessage.textContent = message;
+  }
+  if (elements.formStatus) {
+    elements.formStatus.textContent = isError ? "Ошибка" : state.editingProjectId ? "Режим правки" : "API готов";
+    elements.formStatus.classList.toggle("success", !isError && !state.editingProjectId);
+  }
+}
+
+function displayLabel(value) {
+  const key = String(value ?? "");
+  return LABELS.health[key]
+    ?? LABELS.status[key]
+    ?? LABELS.deliveryModel[key]
+    ?? LABELS.priority[key]
+    ?? LABELS.releaseStatus[key]
+    ?? key;
 }
 
 function formatCurrency(value) {
@@ -1220,12 +1667,57 @@ function milestoneTone(project) {
   return "green";
 }
 
+function groupCount(items, field) {
+  return items.reduce((acc, item) => {
+    const key = item[field] || "unknown";
+    acc[key] = (acc[key] ?? 0) + 1;
+    return acc;
+  }, {});
+}
+
+function riskWeight(project) {
+  const healthWeight = {
+    red: 30,
+    yellow: 20,
+    green: 0
+  }[project.health] ?? 10;
+  const milestoneWeight = {
+    red: 20,
+    yellow: 10,
+    green: 0
+  }[milestoneTone(project)] ?? 5;
+  return healthWeight + milestoneWeight + (100 - Number(project.progress || 0)) / 10;
+}
+
 function milestoneStatusLabel(tone) {
   return {
     green: "в графике",
     yellow: "требует контроля",
     red: "под угрозой"
   }[tone] ?? "требует контроля";
+}
+
+function projectProblemState(project) {
+  const tone = milestoneTone(project);
+  if (tone === "red") {
+    return {
+      tone: "red",
+      label: "Проблемный",
+      reason: project.risk || "Есть критичный риск по статусу, срокам или прогрессу."
+    };
+  }
+  if (tone === "yellow") {
+    return {
+      tone: "yellow",
+      label: "Проблемный",
+      reason: project.risk || "Нужен контроль сроков, прогресса или контрольной точки."
+    };
+  }
+  return {
+    tone: "green",
+    label: "Не проблемный",
+    reason: project.milestone || "Проект идет без заметных отклонений."
+  };
 }
 
 function declOfNum(number, words) {
