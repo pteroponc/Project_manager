@@ -1223,12 +1223,142 @@ textarea:focus {
   display: flex;
   justify-content: space-between;
   gap: 12px;
+  align-items: flex-start;
 }
 
 .dashboard-card .value {
   font-size: 2rem;
   line-height: 1;
   font-weight: 800;
+}
+
+.dashboard-kpi-strip {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.dashboard-kpi-card {
+  display: grid;
+  gap: 8px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background:
+    linear-gradient(135deg, rgba(200, 95, 44, 0.12), transparent 58%),
+    var(--panel);
+}
+
+.dashboard-kpi-card span,
+.dashboard-kpi-card small {
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+
+.dashboard-kpi-card strong {
+  font-size: clamp(1.3rem, 2vw, 2rem);
+  line-height: 1;
+}
+
+.dashboard-bars,
+.dashboard-project-rows {
+  display: grid;
+  gap: 10px;
+}
+
+.dashboard-bar-row {
+  display: grid;
+  grid-template-columns: minmax(90px, 0.8fr) minmax(90px, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  color: var(--muted-strong);
+  font-size: 0.9rem;
+  font-weight: 750;
+}
+
+.dashboard-bar {
+  height: 9px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(23, 26, 31, 0.08);
+}
+
+.dashboard-bar span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--accent), #d9ccad);
+}
+
+.dashboard-project-row,
+.deadline-row,
+.risk-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.58);
+}
+
+.dashboard-project-row {
+  grid-template-columns: minmax(0, 1fr) auto minmax(84px, 0.34fr);
+}
+
+.dashboard-project-row strong,
+.deadline-row strong,
+.risk-row strong {
+  display: block;
+}
+
+.dashboard-project-row small,
+.deadline-row small,
+.risk-row small {
+  display: block;
+  margin-top: 3px;
+  color: var(--muted);
+}
+
+.deadline-row[data-tone="yellow"],
+.risk-row[data-tone="yellow"],
+.dashboard-timeline-summary [data-tone="yellow"] {
+  border-color: rgba(202, 143, 44, 0.35);
+  background: rgba(255, 245, 224, 0.72);
+}
+
+.deadline-row[data-tone="red"],
+.risk-row[data-tone="red"],
+.dashboard-timeline-summary [data-tone="red"] {
+  border-color: rgba(181, 74, 55, 0.35);
+  background: rgba(255, 235, 231, 0.72);
+}
+
+.dashboard-timeline-summary {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.dashboard-timeline-summary div {
+  display: grid;
+  gap: 6px;
+  padding: 14px;
+  border: 1px solid rgba(79, 138, 101, 0.3);
+  border-radius: var(--radius-sm);
+  background: rgba(232, 246, 237, 0.7);
+}
+
+.dashboard-timeline-summary span {
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+
+.dashboard-timeline-summary strong {
+  font-size: 1.8rem;
 }
 
 .bar-row {
@@ -1371,6 +1501,7 @@ textarea:focus {
   .overview-project-row,
   .slice-row,
   .dashboard-grid,
+  .dashboard-kpi-strip,
   .project-dashboard-grid,
   .docs-grid {
     grid-template-columns: 1fr;
@@ -1416,6 +1547,8 @@ textarea:focus {
   .project-form,
   .board-card-form,
   .filters-form,
+  .dashboard-timeline-summary,
+  .dashboard-project-row,
   .modal-form {
     grid-template-columns: 1fr;
   }

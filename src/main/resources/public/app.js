@@ -404,8 +404,18 @@ function renderProjectDashboards(projects) {
 
   const total = projects.length;
   const totalBudget = projects.reduce((sum, project) => sum + Number(project.budget || 0), 0);
+  const averageBudget = total > 0 ? Math.round(totalBudget / total) : 0;
+  const averageProgress = total > 0
+    ? Math.round(projects.reduce((sum, project) => sum + Number(project.progress || 0), 0) / total)
+    : 0;
+  const activeCount = projects.filter((project) => project.status === "active").length;
   const greenCount = projects.filter((project) => project.health === "green").length;
   const riskCount = projects.filter((project) => project.health === "yellow" || project.health === "red").length;
+  const overdueCount = projects.filter((project) => daysUntil(project.deadline) < 0).length;
+  const dueSoonCount = projects.filter((project) => {
+    const days = daysUntil(project.deadline);
+    return days >= 0 && days <= 30;
+  }).length;
   const deliveryModels = groupCount(projects, "deliveryModel");
   const statusCounts = groupCount(projects, "status");
   const healthCounts = groupCount(projects, "health");
@@ -419,6 +429,11 @@ function renderProjectDashboards(projects) {
     return;
   }
 
+  const progressBuckets = {
+    start: projects.filter((project) => Number(project.progress || 0) < 30).length,
+    middle: projects.filter((project) => Number(project.progress || 0) >= 30 && Number(project.progress || 0) < 70).length,
+    finish: projects.filter((project) => Number(project.progress || 0) >= 70).length
+  };
   const budgetLeaders = projects
     .slice()
     .sort((a, b) => Number(b.budget || 0) - Number(a.budget || 0))
@@ -433,6 +448,12 @@ function renderProjectDashboards(projects) {
     .slice(0, 4);
 
   elements.projectDashboardGrid.innerHTML = `
+    <div class="dashboard-kpi-strip dashboard-card-wide">
+      ${renderDashboardKpi("Всего проектов", formatNumber(total), `${activeCount} активных`)}
+      ${renderDashboardKpi("Бюджет", formatCurrency(totalBudget), `Средний: ${formatCurrency(averageBudget)}`)}
+      ${renderDashboardKpi("Средний прогресс", `${averageProgress}%`, progressComment(averageProgress))}
+      ${renderDashboardKpi("Риски", formatNumber(riskCount), overdueCount ? `${overdueCount} просрочено` : `${dueSoonCount} сроков в 30 дней`)}
+    </div>
     <article class="dashboard-card">
       <div class="dashboard-card-head">
         <span class="metric-label">Состояние</span>
@@ -457,9 +478,36 @@ function renderProjectDashboards(projects) {
     <article class="dashboard-card">
       <div class="dashboard-card-head">
         <span class="metric-label">Статусы</span>
-        <strong>${projects.filter((project) => project.status === "active").length} активных</strong>
+        <strong>${activeCount} активных</strong>
       </div>
       ${renderDistributionBars(statusCounts, total, ["active", "planned", "paused", "done"])}
+    </article>
+    <article class="dashboard-card">
+      <div class="dashboard-card-head">
+        <span class="metric-label">Прогресс</span>
+        <strong>${averageProgress}% средний</strong>
+      </div>
+      ${renderDistributionBars(progressBuckets, total, ["start", "middle", "finish"], {
+        start: "0-29%",
+        middle: "30-69%",
+        finish: "70-100%"
+      })}
+    </article>
+    <article class="dashboard-card">
+      <div class="dashboard-card-head">
+        <span class="metric-label">Сроки</span>
+        <strong>${dueSoonCount} в 30 дней</strong>
+      </div>
+      <div class="dashboard-timeline-summary">
+        <div data-tone="${overdueCount ? "red" : "green"}">
+          <span>Просрочено</span>
+          <strong>${overdueCount}</strong>
+        </div>
+        <div data-tone="${dueSoonCount ? "yellow" : "green"}">
+          <span>Скоро дедлайн</span>
+          <strong>${dueSoonCount}</strong>
+        </div>
+      </div>
     </article>
     <article class="dashboard-card dashboard-card-wide">
       <div class="dashboard-card-head">
@@ -478,7 +526,17 @@ function renderProjectDashboards(projects) {
   `;
 }
 
-function renderDistributionBars(counts, total, order) {
+function renderDashboardKpi(label, value, caption) {
+  return `
+    <article class="dashboard-kpi-card">
+      <span>${escapeHtml(label)}</span>
+      <strong>${escapeHtml(value)}</strong>
+      <small>${escapeHtml(caption)}</small>
+    </article>
+  `;
+}
+
+function renderDistributionBars(counts, total, order, labels = {}) {
   return `
     <div class="dashboard-bars">
       ${order
@@ -488,7 +546,7 @@ function renderDistributionBars(counts, total, order) {
           const percent = total > 0 ? Math.round((count / total) * 100) : 0;
           return `
             <div class="dashboard-bar-row">
-              <span>${escapeHtml(displayLabel(key))}</span>
+              <span>${escapeHtml(labels[key] ?? displayLabel(key))}</span>
               <div class="dashboard-bar"><span style="width: ${percent}%"></span></div>
               <strong>${count}</strong>
             </div>
@@ -1687,6 +1745,27 @@ function riskWeight(project) {
     green: 0
   }[milestoneTone(project)] ?? 5;
   return healthWeight + milestoneWeight + (100 - Number(project.progress || 0)) / 10;
+}
+
+function daysUntil(value) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return Number.POSITIVE_INFINITY;
+  }
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  date.setHours(0, 0, 0, 0);
+  return Math.ceil((date.getTime() - today.getTime()) / 86_400_000);
+}
+
+function progressComment(progress) {
+  if (progress >= 70) {
+    return "Портфель близко к поставке";
+  }
+  if (progress >= 40) {
+    return "Основная работа в движении";
+  }
+  return "Нужен разгон исполнения";
 }
 
 function milestoneStatusLabel(tone) {
