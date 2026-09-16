@@ -34,7 +34,10 @@ jobs:
       - name: Smoke test packaged JAR
         shell: bash
         run: |
-          java -jar target/*.jar --server.port=8081 > application.log 2>&1 &
+          java -jar target/*.jar --server.port=8081 \
+            --spring.profiles.active=smoke \
+            '--spring.datasource.url=jdbc:h2:mem:pmsmoke_ci;MODE=PostgreSQL' \
+            --spring.jpa.hibernate.ddl-auto=create-drop > application.log 2>&1 &
           app_pid=$!
           trap 'kill "$app_pid" 2>/dev/null || true' EXIT
 

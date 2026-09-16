@@ -5,10 +5,9 @@ import project_manager.domain.ReleaseTrainSnapshot;
 import project_manager.repository.ReleaseTrainRepository;
 import project_manager.web.dto.ReleaseTrainRequest;
 import project_manager.web.dto.ReleaseTrainResponse;
-import jakarta.annotation.PostConstruct;
+
 import org.springframework.stereotype.Service;
 
-import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
 
@@ -18,17 +17,6 @@ public class ReleaseTrainService {
 
     public ReleaseTrainService(ReleaseTrainRepository releaseTrainRepository) {
         this.releaseTrainRepository = releaseTrainRepository;
-    }
-
-    @PostConstruct
-    void seed() {
-        List<ReleaseTrainEntity> demoTrains = demoTrains();
-        if (releaseTrainRepository.count() > 0) {
-            refreshDemoTrains(demoTrains);
-            return;
-        }
-
-        releaseTrainRepository.saveAll(demoTrains);
     }
 
     public ReleaseTrainSnapshot snapshot(String quarter, String status) {
@@ -139,112 +127,6 @@ public class ReleaseTrainService {
             entity.getRisk(),
             entity.getDecision()
         );
-    }
-
-    private List<ReleaseTrainEntity> demoTrains() {
-        LocalDate today = LocalDate.now();
-        return List.of(
-            buildTrain(
-                "RT-2026-Q3 Platform",
-                "boarding",
-                "2 weeks",
-                "Q3 2026",
-                today.plusDays(35).toString(),
-                today.plusDays(21).toString(),
-                today.plusDays(28).toString(),
-                today.plusDays(38).toString(),
-                80,
-                68,
-                74,
-                2,
-                "Digital Commerce Platform, Mobile Workforce Rollout",
-                "ERP API и MDM-интеграция могут не войти в окно code freeze.",
-                "До freeze подтвердить владельцев интеграций и снять два блокера."
-            ),
-            buildTrain(
-                "RT-2026-Q3 Knowledge",
-                "planning",
-                "monthly",
-                "Q3 2026",
-                today.plusDays(63).toString(),
-                today.plusDays(45).toString(),
-                today.plusDays(54).toString(),
-                today.plusDays(66).toString(),
-                55,
-                37,
-                58,
-                1,
-                "Knowledge Hub Migration",
-                "Не все домены знаний имеют владельцев и критерии готовности.",
-                "Закрыть карту владельцев до начала boarding."
-            )
-        );
-    }
-
-    private ReleaseTrainEntity buildTrain(
-        String name,
-        String status,
-        String cadence,
-        String quarter,
-        String plannedReleaseDate,
-        String codeFreezeDate,
-        String qaFreezeDate,
-        String goLiveDate,
-        int capacityPoints,
-        int committedPoints,
-        int readiness,
-        int blockedItems,
-        String scope,
-        String risk,
-        String decision
-    ) {
-        ReleaseTrainEntity entity = new ReleaseTrainEntity();
-        entity.setId(UUID.randomUUID().toString());
-        entity.setName(name);
-        entity.setStatus(normalizeStatus(status));
-        entity.setCadence(cadence);
-        entity.setQuarter(quarter);
-        entity.setPlannedReleaseDate(plannedReleaseDate);
-        entity.setCodeFreezeDate(codeFreezeDate);
-        entity.setQaFreezeDate(qaFreezeDate);
-        entity.setGoLiveDate(goLiveDate);
-        entity.setCapacityPoints(capacityPoints);
-        entity.setCommittedPoints(committedPoints);
-        entity.setReadiness(readiness);
-        entity.setBlockedItems(blockedItems);
-        entity.setScope(scope);
-        entity.setRisk(risk);
-        entity.setDecision(decision);
-        return entity;
-    }
-
-    private void refreshDemoTrains(List<ReleaseTrainEntity> demoTrains) {
-        for (ReleaseTrainEntity demoTrain : demoTrains) {
-            releaseTrainRepository.findByName(demoTrain.getName()).ifPresent(existing -> {
-                String id = existing.getId();
-                copyTrainFields(demoTrain, existing);
-                existing.setId(id);
-                releaseTrainRepository.save(existing);
-            });
-        }
-    }
-
-    private void copyTrainFields(ReleaseTrainEntity source, ReleaseTrainEntity target) {
-        target.setName(source.getName());
-        target.setStatus(source.getStatus());
-        target.setCadence(source.getCadence());
-        target.setQuarter(source.getQuarter());
-        target.setPlannedReleaseDate(source.getPlannedReleaseDate());
-        target.setCodeFreezeDate(source.getCodeFreezeDate());
-        target.setQaFreezeDate(source.getQaFreezeDate());
-        target.setGoLiveDate(source.getGoLiveDate());
-        target.setCapacityPoints(source.getCapacityPoints());
-        target.setCommittedPoints(source.getCommittedPoints());
-        target.setReadiness(source.getReadiness());
-        target.setBlockedItems(source.getBlockedItems());
-        target.setScope(source.getScope());
-        target.setRisk(source.getRisk());
-        target.setDecision(source.getDecision());
     }
 
     private String normalizeStatus(String status) {

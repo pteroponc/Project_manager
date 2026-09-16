@@ -9,7 +9,6 @@ import project_manager.repository.BoardCardRepository;
 import project_manager.web.dto.BoardCardRequest;
 import org.springframework.stereotype.Service;
 
-import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
@@ -36,13 +35,22 @@ public class BoardService {
             boardModel == null || boardModel.isBlank() ? project.getDeliveryModel() : boardModel
         );
         List<BoardColumn> templateColumns = columnsFor(deliveryModel, project);
-        List<BoardCardEntity> cards = ensureCards(project, templateColumns);
+        List<BoardCardEntity> cards = boardCardRepository.findByProjectIdOrderByPositionAsc(projectId);
         return new ProjectBoard(
             project.getId(),
             project.getName(),
             deliveryModel,
             boardTitle(deliveryModel),
-            mergeCards(templateColumns, cards)
+            mergeCards(templateColumns, cards),
+            cards.stream().map(BoardCardEntity::getColumnKey).distinct()
+                .filter(key -> templateColumns.stream().noneMatch(column -> column.key().equals(key)))
+                .sorted()
+                .map(key -> new BoardColumn(key, key, null, cards.stream()
+                    .filter(card -> key.equals(card.getColumnKey()))
+                    .sorted(Comparator.comparingInt(BoardCardEntity::getPosition))
+                    .map(this::toCard).toList()))
+                .toList(),
+            cards.stream().collect(Collectors.toMap(BoardCardEntity::getId, BoardCardEntity::getPosition))
         );
     }
 
@@ -150,202 +158,30 @@ public class BoardService {
 
     private List<BoardColumn> kanbanBoard(ProjectEntity project) {
         return List.of(
-            new BoardColumn("backlog", "Backlog", null, List.of(
-                card(project, "scope", "Уточнить объем", project.getSummary()),
-                card(project, "dependency", "Разобрать зависимости", project.getDependency())
-            )),
-            new BoardColumn("ready", "Ready", 3, List.of(
-                card(project, "risk", "Снять риски перед стартом", project.getRisk())
-            )),
-            new BoardColumn("in-progress", "In progress", 3, List.of(
-                card(project, "milestone", "Текущий milestone", project.getMilestone())
-            )),
-            new BoardColumn("review", "Review", 2, List.of(
-                card(project, "kpi", "KPI и критерий приемки", project.getKpiName() + ": " + project.getKpiTarget())
-            )),
-            new BoardColumn("done", "Done", null, List.of())
-        );
+            new BoardColumn("backlog", "Backlog", null, List.of()),
+            new BoardColumn("ready", "Ready", 3, List.of()),
+            new BoardColumn("in-progress", "In progress", 3, List.of()),
+            new BoardColumn("review", "Review", 2, List.of()),
+            new BoardColumn("done", "Done", null, List.of()));
     }
 
     private List<BoardColumn> scrumBoard(ProjectEntity project) {
         return List.of(
-            new BoardColumn("product-backlog", "Product backlog", null, List.of(
-                card(project, "scrum", "epic", "Epic проекта", project.getSummary()),
-                card(project, "scrum", "dependency", "Enabler / зависимость", project.getDependency())
-            )),
-            new BoardColumn("sprint-ready", "Sprint ready", 5, List.of(
-                card(project, "scrum", "milestone", "Sprint goal", project.getMilestone())
-            )),
-            new BoardColumn("in-sprint", "In sprint", 4, List.of(
-                card(project, "scrum", "delivery", "Инкремент спринта", "Прогресс проекта: " + project.getProgress() + "%")
-            )),
-            new BoardColumn("review", "Sprint review", 3, List.of(
-                card(project, "scrum", "kpi", "Definition of Done", project.getKpiName() + ": " + project.getKpiTarget())
-            )),
-            new BoardColumn("retrospective", "Retrospective", null, List.of(
-                card(project, "scrum", "risk", "Что улучшить", project.getRisk())
-            ))
-        );
+            new BoardColumn("product-backlog", "Product backlog", null, List.of()),
+            new BoardColumn("sprint-ready", "Sprint ready", 5, List.of()),
+            new BoardColumn("in-sprint", "In sprint", 4, List.of()),
+            new BoardColumn("review", "Sprint review", 3, List.of()),
+            new BoardColumn("retrospective", "Retrospective", null, List.of()));
     }
 
     private List<BoardColumn> waterfallBoard(ProjectEntity project) {
         return List.of(
-            new BoardColumn("initiation", "Initiation", null, List.of(
-                card(project, "waterfall", "charter", "Project charter", project.getSummary())
-            )),
-            new BoardColumn("planning", "Planning", null, List.of(
-                card(project, "waterfall", "plan", "План и зависимости", project.getDependency()),
-                card(project, "waterfall", "risk", "Risk register", project.getRisk())
-            )),
-            new BoardColumn("execution", "Execution", null, List.of(
-                card(project, "waterfall", "milestone", "Исполняемый этап", project.getMilestone())
-            )),
-            new BoardColumn("verification", "Verification", null, List.of(
-                card(project, "waterfall", "kpi", "Критерии приемки", project.getKpiName() + ": " + project.getKpiTarget())
-            )),
-            new BoardColumn("release", "Release", null, List.of(
-                card(project, "waterfall", "deadline", "Поставка к сроку", "Плановая дата: " + project.getDeadline())
-            ))
-        );
+            new BoardColumn("initiation", "Initiation", null, List.of()),
+            new BoardColumn("planning", "Planning", null, List.of()),
+            new BoardColumn("execution", "Execution", null, List.of()),
+            new BoardColumn("verification", "Verification", null, List.of()),
+            new BoardColumn("release", "Release", null, List.of()));
     }
-
-    private BoardCard card(ProjectEntity project, String suffix, String title, String description) {
-        return new BoardCard(
-            project.getId() + "-" + suffix,
-            title,
-            description,
-            project.getOwner(),
-            project.getDeadline(),
-            "medium",
-            "project",
-            3,
-            false
-        );
-    }
-
-    private BoardCard card(ProjectEntity project, String boardModel, String suffix, String title, String description) {
-        return new BoardCard(
-            project.getId() + "-" + boardModel + "-" + suffix,
-            title,
-            description,
-            project.getOwner(),
-            project.getDeadline(),
-            "medium",
-            boardModel,
-            3,
-            false
-        );
-    }
-
-    private List<BoardCardEntity> ensureCards(ProjectEntity project, List<BoardColumn> templateColumns) {
-        List<BoardCardEntity> storedCards = boardCardRepository.findByProjectIdOrderByPositionAsc(project.getId());
-        List<String> columnKeys = templateColumns.stream().map(BoardColumn::key).toList();
-        Map<String, BoardCardEntity> storedById = storedCards.stream()
-            .collect(Collectors.toMap(BoardCardEntity::getId, card -> card));
-        List<BoardCardEntity> cardsToSave = new ArrayList<>();
-
-        for (BoardColumn column : templateColumns) {
-            for (BoardCard card : column.cards()) {
-                BoardCardEntity stored = storedById.get(card.id());
-                if (stored == null) {
-                    cardsToSave.add(toEntity(project, column.key(), nextPosition(column.key(), storedCards, cardsToSave), card));
-                } else {
-                    boolean changed = false;
-                    if (!columnKeys.contains(stored.getColumnKey())) {
-                        stored.setColumnKey(column.key());
-                        stored.setPosition(nextPosition(column.key(), storedCards, cardsToSave));
-                        changed = true;
-                    }
-                    if (refreshTemplateCard(stored, card)) {
-                        changed = true;
-                    }
-                    if (changed) {
-                        cardsToSave.add(stored);
-                    }
-                }
-            }
-        }
-
-        if (!cardsToSave.isEmpty()) {
-            boardCardRepository.saveAll(cardsToSave);
-            return boardCardRepository.findByProjectIdOrderByPositionAsc(project.getId());
-        }
-
-        return storedCards;
-    }
-
-    private BoardCardEntity toEntity(ProjectEntity project, String columnKey, int position, BoardCard card) {
-        BoardCardEntity entity = new BoardCardEntity();
-        entity.setId(card.id());
-        entity.setProjectId(project.getId());
-        entity.setColumnKey(columnKey);
-        entity.setPosition(position);
-        entity.setTitle(card.title());
-        entity.setDescription(card.description());
-        entity.setOwner(card.owner());
-        entity.setDueDate(card.dueDate());
-        entity.setPriority(card.priority());
-        entity.setLabels(card.labels());
-        entity.setEstimate(card.estimate());
-        entity.setBlocked(card.blocked());
-        return entity;
-    }
-
-    private boolean refreshTemplateCard(BoardCardEntity entity, BoardCard card) {
-        if (entity.getId().contains("-task-")) {
-            return false;
-        }
-
-        boolean changed = false;
-        if (!entity.getTitle().equals(card.title())) {
-            entity.setTitle(card.title());
-            changed = true;
-        }
-        if (!entity.getDescription().equals(card.description())) {
-            entity.setDescription(card.description());
-            changed = true;
-        }
-        if (!entity.getOwner().equals(card.owner())) {
-            entity.setOwner(card.owner());
-            changed = true;
-        }
-        if (!entity.getDueDate().equals(card.dueDate())) {
-            entity.setDueDate(card.dueDate());
-            changed = true;
-        }
-        if (!normalizePriority(entity.getPriority()).equals(card.priority())) {
-            entity.setPriority(card.priority());
-            changed = true;
-        }
-        if (!normalizeLabels(entity.getLabels()).equals(card.labels())) {
-            entity.setLabels(card.labels());
-            changed = true;
-        }
-        if (entity.getEstimate() == null) {
-            entity.setEstimate(card.estimate());
-            changed = true;
-        }
-        if (entity.getBlocked() == null) {
-            entity.setBlocked(card.blocked());
-            changed = true;
-        }
-        return changed;
-    }
-
-    private int nextPosition(String columnKey, List<BoardCardEntity> storedCards, List<BoardCardEntity> cardsToSave) {
-        int storedMax = storedCards.stream()
-            .filter(card -> card.getColumnKey().equals(columnKey))
-            .mapToInt(BoardCardEntity::getPosition)
-            .max()
-            .orElse(-1);
-        int pendingMax = cardsToSave.stream()
-            .filter(card -> card.getColumnKey().equals(columnKey))
-            .mapToInt(BoardCardEntity::getPosition)
-            .max()
-            .orElse(-1);
-        return Math.max(storedMax, pendingMax) + 1;
-    }
-
     private List<BoardColumn> mergeCards(List<BoardColumn> templateColumns, List<BoardCardEntity> cards) {
         Map<String, List<BoardCard>> cardsByColumn = cards.stream()
             .sorted(Comparator.comparingInt(BoardCardEntity::getPosition))

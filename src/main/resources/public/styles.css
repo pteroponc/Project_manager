@@ -1,3 +1,17 @@
+.board-unassigned {
+  grid-column: 1 / -1;
+  min-width: 0;
+  padding: 20px;
+  display: grid;
+  gap: 12px;
+  overflow-wrap: anywhere;
+}
+
+.board-unassigned summary {
+  cursor: pointer;
+  padding: 8px 0;
+}
+
 :root {
   --bg: #eef1ed;
   --panel: #ffffff;

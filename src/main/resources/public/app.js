@@ -884,6 +884,23 @@ function renderBoardColumns() {
     elements.boardColumns.appendChild(columnElement);
   });
 
+  const unassigned = board.unassignedColumns ?? [];
+  if (unassigned.length) {
+    const section = document.createElement("section");
+    section.className = "panel board-unassigned";
+    const count = unassigned.reduce((sum, column) => sum + column.cards.length, 0);
+    section.innerHTML = `<h3>Несопоставленные задачи: ${count}</h3>
+      <p>Сохранены без изменений. Просмотр исходных колонок; автоматический перенос отключён.</p>
+      ${unassigned.map((column) => `<details><summary>${escapeHtml(column.key)} (${column.cards.length})</summary>
+        ${column.cards.map((card) => `<article class="board-card">
+          <strong>${escapeHtml(card.title)}</strong><p>${escapeHtml(card.description)}</p>
+          <p>${escapeHtml(card.owner)} · ${escapeHtml(card.dueDate)}</p>
+          <p>Приоритет: ${escapeHtml(card.priority)} · SP: ${escapeHtml(card.estimate)} · ${card.blocked ? "Заблокирована" : "Без блокировки"}</p>
+          <p>${escapeHtml(card.labels)}</p><p>Исходная позиция: ${escapeHtml(board.storedPositions?.[card.id] ?? "Не указана")}</p><small>ID: ${escapeHtml(card.id)}</small>
+        </article>`).join("")}</details>`).join("")}`;
+    elements.boardColumns.appendChild(section);
+  }
+
   elements.boardColumns.querySelectorAll('[data-action="edit-card"]').forEach((button) => {
     button.addEventListener("click", () => {
       const card = findBoardCard(button.dataset.cardId);
