@@ -30,9 +30,10 @@ public class ProjectController {
     @GetMapping("/projects")
     public List<ProjectResponse> projects(
         @RequestParam(defaultValue = "all") String quarter,
-        @RequestParam(defaultValue = "all") String health
+        @RequestParam(defaultValue = "all") String health,
+        @RequestParam(defaultValue = "all") String status
     ) {
-        return projectService.getProjects(quarter, health);
+        return projectService.getProjects(quarter, health, status);
     }
 
     @GetMapping("/projects/{id}")

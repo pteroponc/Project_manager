@@ -15,7 +15,11 @@ public class PortfolioService {
     }
 
     public PortfolioSnapshot getSnapshot(String quarter, String health) {
-        List<ProjectEntity> filtered = projectService.findProjects(quarter, health);
+        return getSnapshot(quarter, health, "all");
+    }
+
+    public PortfolioSnapshot getSnapshot(String quarter, String health, String status) {
+        List<ProjectEntity> filtered = projectService.findProjects(quarter, health, status);
         int active = (int) filtered.stream().filter(project -> "active".equalsIgnoreCase(project.getStatus())).count();
         int risky = (int) filtered.stream().filter(project -> !"green".equalsIgnoreCase(project.getHealth())).count();
         int budget = filtered.stream().mapToInt(ProjectEntity::getBudget).sum();

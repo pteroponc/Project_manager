@@ -2,6 +2,7 @@ package project_manager.safety;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.mock.env.MockEnvironment;
+import java.sql.DriverManager;
 import static org.assertj.core.api.Assertions.*;
 
 class TestDatabaseGuardTest {
@@ -38,7 +39,8 @@ class TestDatabaseGuardTest {
     void acceptsOnlyIsolatedMemoryDatabase() {
         var env = new MockEnvironment().withProperty("spring.datasource.url", "jdbc:h2:mem:pmtest_safe");
         new TestDatabaseGuard().postProcessEnvironment(env, null);
-        assertThat(env.getProperty("spring.datasource.hikari.jdbc-url")).isEqualTo("jdbc:h2:mem:pmtest_safe");
+        assertThat(env.getProperty("spring.datasource.hikari.jdbc-url"))
+            .isEqualTo("jdbc:h2:mem:pmtest_safe;DB_CLOSE_DELAY=-1");
     }
 
     @Test
@@ -50,6 +52,40 @@ class TestDatabaseGuardTest {
                 .isInstanceOf(IllegalStateException.class);
             env.setProperty("spring.datasource.url", "jdbc:h2:mem:pm" + profile + "_safe");
             new IsolatedDatabaseGuard().postProcessEnvironment(env, null);
+            assertThat(env.getProperty("spring.datasource.url"))
+                .isEqualTo("jdbc:h2:mem:pm" + profile + "_safe;DB_CLOSE_DELAY=-1");
+            assertThat(env.getProperty("spring.datasource.hikari.jdbc-url"))
+                .isEqualTo("jdbc:h2:mem:pm" + profile + "_safe;DB_CLOSE_DELAY=-1");
+        }
+    }
+
+    @Test
+    void keepsExplicitDatabaseLifetimeSettingWithoutDuplicatingIt() {
+        var env = new MockEnvironment().withProperty("spring.datasource.url",
+            "jdbc:h2:mem:pmdemo_safe;MODE=PostgreSQL;DB_CLOSE_DELAY=-1");
+        env.setActiveProfiles("demo");
+        new IsolatedDatabaseGuard().postProcessEnvironment(env, null);
+        assertThat(env.getProperty("spring.datasource.url"))
+            .isEqualTo("jdbc:h2:mem:pmdemo_safe;MODE=PostgreSQL;DB_CLOSE_DELAY=-1");
+    }
+
+    @Test
+    void inMemorySchemaSurvivesTemporaryLossOfAllConnections() throws Exception {
+        var env = new MockEnvironment().withProperty("spring.datasource.url", "jdbc:h2:mem:pmdemo_lifetime");
+        env.setActiveProfiles("demo");
+        new IsolatedDatabaseGuard().postProcessEnvironment(env, null);
+        String url = env.getProperty("spring.datasource.url");
+
+        try (var connection = DriverManager.getConnection(url, "sa", "");
+             var statement = connection.createStatement()) {
+            statement.execute("create table portfolio_probe(id integer primary key)");
+            statement.execute("insert into portfolio_probe values (1)");
+        }
+
+        try (var connection = DriverManager.getConnection(url, "sa", "");
+             var result = connection.createStatement().executeQuery("select count(*) from portfolio_probe")) {
+            assertThat(result.next()).isTrue();
+            assertThat(result.getInt(1)).isEqualTo(1);
         }
     }
 

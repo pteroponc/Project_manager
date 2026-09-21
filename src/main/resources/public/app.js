@@ -3,7 +3,7 @@ const BOARDS_STORAGE_KEY = "project-manager-created-boards";
 const LABELS = {
   health: {
     green: "В норме",
-    yellow: "Требует внимания",
+    yellow: "Предупреждение",
     red: "Проблемный"
   },
   status: {
@@ -39,8 +39,14 @@ const state = {
   createdBoards: loadCreatedBoards(),
   filters: {
     quarter: "all",
-    health: "all"
+    health: "all",
+    status: "all"
   },
+  overview: null,
+  overviewRequest: 0,
+  projectsRequest: 0,
+  trainsRequest: 0,
+  overviewLoadedAt: null,
   activeView: "overview",
   selectedProjectId: null,
   deliveryModels: [],
@@ -63,6 +69,10 @@ ensureCreateTaskPanelMarkup();
 const elements = {
   quarterFilter: document.getElementById("quarter-filter"),
   healthFilter: document.getElementById("health-filter"),
+  statusFilter: document.getElementById("status-filter"),
+  resetOverviewFilters: document.getElementById("reset-overview-filters"),
+  overviewAsOf: document.getElementById("overview-as-of"),
+  overviewDataQuality: document.getElementById("overview-data-quality"),
   projectsList: document.getElementById("projects-list"),
   projectsCount: document.getElementById("projects-count"),
   boardColumns: document.getElementById("board-columns"),
@@ -129,7 +139,7 @@ const elements = {
   taskModalDelete: document.getElementById("task-modal-delete"),
   statProjectCount: document.querySelector('[data-stat="projectCount"]'),
   statActiveCount: document.querySelector('[data-stat="activeCount"]'),
-  statRiskyCount: document.querySelector('[data-stat="riskyCount"]'),
+  statRiskyCount: document.querySelector('[data-stat="attentionCount"]'),
   statAverageProgress: document.querySelector('[data-stat="averageProgress"]'),
   releaseChecksUpdated: document.getElementById("release-checks-updated"),
   releaseTag: document.getElementById("release-tag"),
@@ -247,10 +257,18 @@ elements.viewButtons.forEach((button) => {
 
 document.getElementById("filters-form")?.addEventListener("change", async (event) => {
   state.filters[event.target.name] = event.target.value;
-  await loadDashboard();
+  await loadOverview();
+});
+elements.resetOverviewFilters?.addEventListener("click", async () => {
+  state.filters = { quarter: "all", health: "all", status: "all" };
+  if (elements.quarterFilter) elements.quarterFilter.value = "all";
+  if (elements.healthFilter) elements.healthFilter.value = "all";
+  if (elements.statusFilter) elements.statusFilter.value = "all";
+  await loadOverview();
 });
 
-elements.refreshButton?.addEventListener("click", loadDashboard);
+elements.refreshButton?.addEventListener("click", loadOverview);
+document.getElementById("return-overview")?.addEventListener("click", () => showView("overview"));
 elements.boardFilters?.addEventListener("input", () => {
   state.boardFilters.query = elements.boardSearch.value.trim().toLowerCase();
   state.boardFilters.priority = elements.boardPriorityFilter.value;
@@ -310,13 +328,12 @@ elements.taskModalDelete.addEventListener("click", async () => {
 init().catch((error) => {
   console.error(error);
   setFormState("Ошибка инициализации", true);
-  elements.summary.textContent = "Не удалось загрузить данные API.";
+  setSummary("Не удалось загрузить данные API. Повторите загрузку.", "error");
 });
 
 async function init() {
   showView(state.activeView);
-  await loadDeliveryModels();
-  await Promise.all([loadDashboard(), loadReleaseChecks()]);
+  await Promise.allSettled([loadDeliveryModels(), loadDashboard(), loadReleaseChecks()]);
 }
 
 async function loadDeliveryModels() {
@@ -344,57 +361,123 @@ function showView(view) {
 }
 
 async function loadDashboard() {
-  setSummary("Обновляем портфель и список проектов...");
-  const query = new URLSearchParams(state.filters).toString();
-  const [portfolio, projects, releaseTrainSnapshot] = await Promise.all([
-    fetchJson(`/api/portfolio?${query}`),
-    fetchJson(`/api/projects?${query}`),
-    fetchJson(`/api/release-trains/snapshot?${query}`)
-  ]);
+  await Promise.allSettled([loadOverview(), loadProjectCatalog(), loadTrainSnapshot()]);
+}
 
-  state.projects = projects;
-  state.releaseTrainSnapshot = releaseTrainSnapshot;
-  state.releaseTrains = releaseTrainSnapshot.trains ?? [];
-  if (!state.selectedProjectId || !projects.some((project) => project.id === state.selectedProjectId)) {
-    state.selectedProjectId = projects[0]?.id ?? null;
-  }
-
-  populateQuarterFilter(projects);
-  renderStats(portfolio);
-  renderProjectOverview(projects);
-  renderProjectDashboards(projects);
-  renderPortfolioSlice(portfolio, projects);
-  renderReleaseTrains(releaseTrainSnapshot);
-  renderProjects(projects);
-  renderCreatedBoards();
-  setSummary(buildSummary(portfolio, projects));
-
-  if (state.selectedProjectId && state.boardDrilledIn) {
-    await loadBoard(state.selectedProjectId, state.activeBoardModel);
-  } else {
-    renderBoardLanding();
+async function loadProjectCatalog() {
+  const request = ++state.projectsRequest;
+  try {
+    const projects = await fetchJson("/api/projects");
+    if (request !== state.projectsRequest) return;
+    state.projects = projects;
+    if (!state.selectedProjectId || !projects.some(p => p.id === state.selectedProjectId)) {
+      state.selectedProjectId = projects[0]?.id ?? null;
+    }
+    renderProjectDashboards(projects);
+    renderProjects(projects);
+    renderCreatedBoards();
+    if (state.selectedProjectId && state.boardDrilledIn) {
+      await loadBoard(state.selectedProjectId, state.activeBoardModel);
+    } else renderBoardLanding();
+  } catch (error) {
+    if (request !== state.projectsRequest) return;
+    setFormState("Не удалось обновить список проектов. " + error.message, true);
   }
 }
 
-function populateQuarterFilter(projects) {
-  if (!elements.quarterFilter) {
-    return;
+async function loadTrainSnapshot() {
+  const request = ++state.trainsRequest;
+  try {
+    const snapshot = await fetchJson("/api/release-trains/snapshot");
+    if (request !== state.trainsRequest) return;
+    state.releaseTrainSnapshot = snapshot;
+    state.releaseTrains = snapshot.trains ?? [];
+    renderReleaseTrains(snapshot);
+  } catch (error) {
+    if (request !== state.trainsRequest) return;
+    elements.releaseTrainList.textContent = "Не удалось обновить релизные поезда. Повторите загрузку.";
   }
-
-  const current = state.filters.quarter;
-  const quarters = [...new Set(projects.map((project) => project.quarter).filter(Boolean))].sort();
-  elements.quarterFilter.innerHTML = ['<option value="all">Все кварталы</option>']
-    .concat(quarters.map((quarter) => `<option value="${quarter}">${quarter}</option>`))
-    .join("");
-  elements.quarterFilter.value = quarters.includes(current) || current === "all" ? current : "all";
-  state.filters.quarter = elements.quarterFilter.value;
 }
 
-function renderStats(portfolio) {
-  elements.statProjectCount.textContent = formatNumber(portfolio.projectCount ?? 0);
-  elements.statActiveCount.textContent = formatNumber(portfolio.activeCount ?? 0);
-  elements.statRiskyCount.textContent = formatNumber(portfolio.riskyCount ?? 0);
-  elements.statAverageProgress.textContent = `${portfolio.averageProgress ?? 0}%`;
+async function loadOverview() {
+  const request = ++state.overviewRequest;
+  const filters = { ...state.filters };
+  setSummary(state.overview
+    ? "Обновляем… Пока показан предыдущий снимок."
+    : "Загружаем портфель…", "quiet");
+  document.getElementById("overview-content").setAttribute("aria-busy", "true");
+  try {
+    const snapshot = await fetchJson("/api/portfolio/overview?" + new URLSearchParams(filters));
+    if (request !== state.overviewRequest) return;
+    state.overview = snapshot;
+    elements.overviewAsOf.textContent = "Состояние портфеля на " + overviewDate(snapshot.calculationDate);
+    state.overviewLoadedAt = new Intl.DateTimeFormat("ru-RU", {
+      timeZone: "Europe/Moscow", hour: "2-digit", minute: "2-digit", second: "2-digit"
+    }).format(new Date());
+    populateOverviewFilters(snapshot);
+    renderStats(snapshot);
+    renderProjectOverview(snapshot);
+    renderPortfolioSlice(snapshot);
+    setSummary("Данные портфеля обновлены " + state.overviewLoadedAt + ".", "quiet");
+    renderOverviewQuality(snapshot);
+  } catch (error) {
+    if (request !== state.overviewRequest) return;
+    setSummary("Не удалось загрузить портфель. Нажмите «Обновить». " +
+      (state.overview ? "Показан предыдущий снимок; последнее обновление " +
+        state.overviewLoadedAt + ". Текущие фильтры ещё не применены." : "Данные недоступны."),
+      state.overview ? "warning" : "error");
+  } finally {
+    if (request === state.overviewRequest) {
+      document.getElementById("overview-content").setAttribute("aria-busy", "false");
+    }
+  }
+}
+
+function populateOverviewFilters(snapshot) {
+  const populate = (element, values, selected, allLabel, labels = {}) => {
+    const options = [...new Set([...values, ...(selected === "all" ? [] : [selected])])];
+    element.replaceChildren(new Option(allLabel, "all"));
+    options.forEach(value => element.add(new Option((labels[value] ?? value) || "Не указано", value)));
+    element.value = selected;
+  };
+  populate(elements.quarterFilter, snapshot.quarters, state.filters.quarter, "Все кварталы");
+  populate(elements.statusFilter, snapshot.statuses, state.filters.status, "Все статусы", LABELS.status);
+  populate(elements.healthFilter, snapshot.healthValues, state.filters.health, "Все состояния", LABELS.health);
+}
+
+function renderStats(snapshot) {
+  elements.statProjectCount.textContent = formatNumber(snapshot.projectCount);
+  elements.statActiveCount.textContent = formatNumber(snapshot.activeCount);
+  elements.statRiskyCount.textContent = formatNumber(snapshot.attentionCount);
+  document.getElementById("attention-metric-card").classList.toggle("metric-card-alert", snapshot.attentionCount > 0);
+  elements.statAverageProgress.textContent = snapshot.averageProgress == null ? "Нет данных" : snapshot.averageProgress + "%";
+  elements.sliceBudgetTotal.textContent = snapshot.totalBudget == null
+    ? (snapshot.projectCount ? "Нет данных" : "Нет проектов") : formatCurrency(snapshot.totalBudget);
+  document.getElementById("overview-budget-coverage").textContent =
+    snapshot.projectCount ? "По " + snapshot.budgetCoverage + " из " + snapshot.projectCount + " проектов" : "";
+  document.getElementById("overview-progress-coverage").textContent =
+    snapshot.projectCount ? "По " + snapshot.progressCoverage + " из " + snapshot.projectCount + " проектов" : "";
+  const healthLabels = { ...LABELS.health, unknown: "Неизвестное состояние" };
+  const healthOrder = ["green", "yellow", "red", "unknown"];
+  const healthEntries = healthOrder
+    .filter(key => snapshot.healthCounts[key])
+    .map(key => [key, snapshot.healthCounts[key]]);
+  document.getElementById("overview-health-bar").innerHTML = snapshot.projectCount
+    ? healthEntries.map(([key, count]) => '<span data-health="' + key + '" style="--share:' +
+      (count / snapshot.projectCount * 100) + '%" title="' + escapeHtml(healthLabels[key]) +
+      ': ' + count + '"></span>').join("")
+    : '<span class="portfolio-health-bar-empty"></span>';
+  document.getElementById("overview-health-legend").innerHTML = snapshot.projectCount
+    ? healthEntries.map(([key, count]) => '<span><i data-health="' + key + '"></i>' +
+      escapeHtml(healthLabels[key]) + '<strong>' + count + '</strong></span>').join("")
+    : '<span class="empty-state compact">Нет проектов в выбранном срезе.</span>';
+
+  const statusLabels = { ...LABELS.status, unknown: "Неизвестный статус" };
+  const statusOrder = ["active", "planned", "paused", "done", "unknown"];
+  document.getElementById("overview-status-counts").innerHTML = snapshot.projectCount
+    ? statusOrder.filter(key => snapshot.statusCounts[key]).map(key =>
+      '<span>' + escapeHtml(statusLabels[key]) + '<strong>' + snapshot.statusCounts[key] + '</strong></span>').join("")
+    : '<span class="empty-state compact">Нет данных о статусах.</span>';
 }
 
 function renderProjectDashboards(projects) {
@@ -615,97 +698,89 @@ function renderRiskRows(projects) {
   `;
 }
 
-function renderProjectOverview(projects) {
-  if (!elements.overviewProjectList) {
-    return;
-  }
-
-  const rows = projects
-    .slice()
-    .sort((a, b) => riskWeight(b) - riskWeight(a));
-  const healthyCount = rows.filter((project) => projectProblemState(project).tone === "green").length;
-  const problemCount = rows.length - healthyCount;
-
-  elements.overviewHealthyCount.textContent = `${healthyCount} ${declOfNum(healthyCount, ["без проблем", "без проблем", "без проблем"])}`;
-  elements.overviewProblemCount.textContent = `${problemCount} ${declOfNum(problemCount, ["проблемный", "проблемных", "проблемных"])}`;
-
-  if (!rows.length) {
-    elements.overviewProjectList.innerHTML = '<div class="empty-state compact">Нет проектов для выбранного фильтра.</div>';
-    return;
-  }
-
-  elements.overviewProjectList.innerHTML = rows
-    .map((project) => {
-      const state = projectProblemState(project);
-      return `
-        <article class="overview-project-row" data-tone="${state.tone}">
-          <span class="overview-project-indicator" aria-hidden="true"></span>
-          <div class="overview-project-main">
-            <div>
-              <strong>${escapeHtml(project.name)}</strong>
-              <small>${escapeHtml(project.owner)} / ${escapeHtml(project.quarter)} / ${escapeHtml(displayLabel(project.deliveryModel))}</small>
-            </div>
-            <p>${escapeHtml(state.reason)}</p>
-          </div>
-          <div class="overview-project-progress">
-            <span>${Number(project.progress || 0)}%</span>
-            <div class="progress-bar"><span style="width: ${Number(project.progress || 0)}%"></span></div>
-          </div>
-          <span class="pill ${state.tone === "green" ? "success" : state.tone === "red" ? "danger" : "warning"}">${state.label}</span>
-        </article>
-      `;
-    })
-    .join("");
+function overviewProjectLink(project) {
+  return '<button type="button" class="text-link overview-project-link" data-project-id="' +
+    escapeHtml(project.id) + '">' + escapeHtml(project.name) + '</button>';
 }
 
-function renderPortfolioSlice(portfolio, projects) {
-  const totalBudget = portfolio.totalBudget ?? projects.reduce((sum, project) => sum + Number(project.budget || 0), 0);
-  const rows = projects
-    .slice()
-    .sort((a, b) => Number(b.budget || 0) - Number(a.budget || 0));
-  const onTrackCount = rows.filter((project) => milestoneTone(project) === "green").length;
+function overviewDate(value) {
+  // Date-only values are formatted without Date or the browser's time zone.
+  return /^\d{4}-\d{2}-\d{2}$/.test(value ?? "") ? value.split("-").reverse().join(".") : (value || "Не указан");
+}
 
-  elements.sliceBudgetTotal.textContent = formatCurrency(totalBudget);
-  elements.sliceMilestonesOnTrack.textContent = `${onTrackCount} в графике`;
+function bindOverviewLinks(container) {
+  container.querySelectorAll(".overview-project-link").forEach(link =>
+    link.addEventListener("click", () => openProjectFromOverview(link.dataset.projectId)));
+}
 
-  if (!rows.length) {
-    elements.portfolioSliceTable.innerHTML = '<div class="empty-state compact">Нет проектов для выбранного фильтра.</div>';
-    return;
+function overviewEmpty(snapshot, otherwise) {
+  if (!snapshot.totalProjectCount) return "Проектов пока нет. Создайте проект в разделе «Проекты».";
+  if (!snapshot.projectCount) return "Нет проектов по выбранным фильтрам. Нажмите «Сбросить».";
+  return otherwise;
+}
+
+function renderProjectOverview(snapshot) {
+  elements.overviewProblemCount.textContent = snapshot.attentionCount + " требуют внимания";
+  elements.overviewProjectList.innerHTML = snapshot.attentionProjects.length
+    ? snapshot.attentionProjects.map(project => '<article class="overview-entry overview-project-compact">' +
+      '<div class="overview-entry-main">' + overviewProjectLink(project) + '<span>' +
+      escapeHtml(project.owner) + " · " + escapeHtml(displayLabel(project.status)) + '</span></div>' +
+      '<p class="overview-entry-primary">' + project.attentionReasons.map(escapeHtml).join(" · ") + '</p>' +
+      '<p class="overview-entry-secondary">Срок: ' + escapeHtml(overviewDate(project.deadline)) +
+      (project.risk ? " · " + escapeHtml(project.risk) : "") + '</p></article>').join("")
+    : '<p class="empty-state compact">' + overviewEmpty(snapshot,
+      "По выбранным критериям отклонений не выявлено." +
+      (snapshot.dataQualityProjects.length ? " Проверьте качество данных рядом." : "")) + "</p>";
+  bindOverviewLinks(elements.overviewProjectList);
+}
+
+function renderPortfolioSlice(snapshot) {
+  elements.sliceMilestonesOnTrack.textContent = snapshot.dueSoonCount + " в ближайшие 14 дней";
+  elements.portfolioSliceTable.innerHTML = snapshot.milestones.length
+    ? snapshot.milestones.map(project => '<article class="overview-entry overview-project-compact">' +
+      '<div class="overview-entry-main">' + overviewProjectLink(project) + '<span>' +
+      escapeHtml(displayLabel(project.status)) + '</span></div>' +
+      '<p class="overview-entry-primary">' + escapeHtml(project.milestone || "Контрольная точка не указана") + '</p>' +
+      '<p class="overview-entry-secondary">' + escapeHtml(overviewDate(project.deadline)) + " · " +
+      (project.daysUntilDeadline === 0 ? "Сегодня" : "Через " + project.daysUntilDeadline + " дн.") +
+      '</p></article>').join("")
+    : '<p class="empty-state compact">' + overviewEmpty(snapshot, "В ближайшие 14 дней сроков проектов нет.") + "</p>";
+  bindOverviewLinks(elements.portfolioSliceTable);
+}
+
+function renderOverviewQuality(snapshot) {
+  elements.overviewDataQuality.innerHTML = snapshot.dataQualityProjects.length
+    ? "<div class=\"section-head\"><h2>Качество данных</h2><span class=\"pill warning\">" +
+      snapshot.dataQualityProjects.length + "</span></div>" + snapshot.dataQualityProjects.map(project =>
+      '<article class="overview-entry overview-quality-entry">' + overviewProjectLink(project) + "<ul>" +
+      project.dataQualityIssues.map(issue => "<li>" + escapeHtml(issue) + "</li>").join("") + "</ul></article>").join("")
+    : '<h2>Качество данных</h2><p class="empty-state compact">Неполных или противоречивых данных не обнаружено.</p>';
+  bindOverviewLinks(elements.overviewDataQuality);
+}
+
+async function openProjectFromOverview(projectId) {
+  const message = document.getElementById("project-navigation-message");
+  showView("projects");
+  closeProjectForm();
+  message.textContent = "Загружаем карточку…";
+  try {
+    const project = await fetchJson("/api/projects/" + encodeURIComponent(projectId));
+    if (state.activeView !== "projects") return;
+    const index = state.projects.findIndex(item => item.id === projectId);
+    if (index < 0) state.projects.push(project);
+    else state.projects[index] = project;
+    state.selectedProjectId = projectId;
+    renderProjects(state.projects);
+    message.textContent = "";
+    const card = document.querySelector('.project-card[data-project-id="' + CSS.escape(projectId) + '"]');
+    if (card) {
+      card.tabIndex = -1;
+      card.focus({ preventScroll: true });
+      card.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
+  } catch (error) {
+    message.textContent = "Не удалось открыть проект: он недоступен или удалён. Вернитесь к «Обзору» и обновите данные.";
   }
-
-  elements.portfolioSliceTable.innerHTML = `
-    <div class="slice-row slice-head">
-      <span>Проект</span>
-      <span>Бюджет</span>
-      <span>Прогресс</span>
-      <span>Майлстоун</span>
-      <span>Срок</span>
-    </div>
-    ${rows
-      .map((project) => {
-        const tone = milestoneTone(project);
-        const budgetShare = totalBudget > 0 ? Math.round((Number(project.budget || 0) / totalBudget) * 100) : 0;
-        return `
-          <div class="slice-row" data-tone="${tone}">
-            <span>
-              <strong>${escapeHtml(project.name)}</strong>
-              <small>${escapeHtml(project.owner)} · ${escapeHtml(displayLabel(project.health))}</small>
-            </span>
-            <span>
-              ${formatCurrency(project.budget)}
-              <small>${budgetShare}% портфеля</small>
-            </span>
-            <span>${project.progress ?? 0}%</span>
-            <span>${escapeHtml(project.milestone)}</span>
-            <span>
-              ${formatDate(project.deadline)}
-              <small>${milestoneStatusLabel(tone)}</small>
-            </span>
-          </div>
-        `;
-      })
-      .join("")}
-  `;
 }
 
 function renderReleaseTrains(snapshot) {
@@ -790,6 +865,7 @@ function renderProjects(projects) {
   projects.forEach((project) => {
     const fragment = elements.template.content.cloneNode(true);
     const card = fragment.querySelector(".project-card");
+    card.dataset.projectId = project.id;
     const meta = fragment.querySelector(".project-meta");
     const title = fragment.querySelector("h3");
     const health = fragment.querySelector(".project-health");
@@ -1673,9 +1749,10 @@ function buildSummary(portfolio, projects) {
   )}. Активные: ${portfolio.activeCount ?? 0}, с риском: ${portfolio.riskyCount ?? 0}.`;
 }
 
-function setSummary(message) {
+function setSummary(message, tone = "quiet") {
   if (elements.summary) {
     elements.summary.textContent = message;
+    elements.summary.setAttribute("data-tone", tone);
   }
 }
 

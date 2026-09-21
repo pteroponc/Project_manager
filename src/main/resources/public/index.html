@@ -17,7 +17,6 @@
             <span class="brand-mark">PM</span>
             <div>
               <strong>Менеджер проектов</strong>
-              <small>Spring Boot / H2</small>
             </div>
           </div>
           <nav class="sidebar-nav">
@@ -28,24 +27,106 @@
             <button class="nav-item" type="button" data-view="release" data-icon="→">Релизы</button>
             <button class="nav-item" type="button" data-view="docs" data-icon="□">Документы</button>
           </nav>
-          <div class="sidebar-status">
-            <span class="pill success">API готов</span>
-            <small>Spring Boot / H2</small>
-          </div>
         </aside>
 
         <div class="app-main">
-      <header class="hero panel view-section active" data-view-section="overview">
-          <div class="hero-copy">
-          <p class="eyebrow">Центр управления портфелем</p>
-          <h1>Портфель проектов</h1>
-          <p class="hero-text">
-            Статусы, бюджет, контрольные точки и релизные риски в одном рабочем срезе.
-          </p>
+      <header class="overview-header view-section active" data-view-section="overview">
+        <div class="overview-header-copy">
+          <p class="eyebrow">Портфель проектов</p>
+          <h1>Обзор</h1>
         </div>
+        <button class="btn btn-ghost btn-small overview-refresh" type="button" id="refresh-button">
+          <span>Обновить</span><span aria-hidden="true">↻</span>
+        </button>
+        <p class="overview-as-of" id="overview-as-of">Состояние портфеля — загружаем расчётную дату</p>
       </header>
 
       <main class="workspace">
+        <section class="panel overview-filters view-section active" data-view-section="overview">
+          <form class="filters-form" id="filters-form" onsubmit="return false">
+            <label>Квартал<select name="quarter" id="quarter-filter"><option value="all">Все кварталы</option></select></label>
+            <label>Статус<select name="status" id="status-filter"><option value="all">Все статусы</option></select></label>
+            <label>Состояние<select name="health" id="health-filter"><option value="all">Все состояния</option></select></label>
+            <button class="btn btn-ghost btn-small" type="button" id="reset-overview-filters">Сбросить</button>
+          </form>
+          <p class="portfolio-summary" id="portfolio-summary" role="status" aria-live="polite">Загружаем портфель…</p>
+        </section>
+        <section class="view-section active overview-content" id="overview-content" data-view-section="overview" aria-busy="true">
+          <h2>Сводка портфеля</h2>
+          <div class="stats-grid" id="stats-grid">
+            <article class="metric-card panel">
+              <div class="metric-card-head"><span class="metric-label">Всего проектов</span><span class="metric-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 7h6l2 2h8v10H4zM4 7V5h6l2 2" /></svg></span></div>
+              <strong class="metric-value" data-stat="projectCount">—</strong>
+            </article>
+            <article class="metric-card panel">
+              <div class="metric-card-head"><span class="metric-label">Активные</span><span class="metric-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="m9 12 2 2 4-5"/></svg></span></div>
+              <strong class="metric-value" data-stat="activeCount">—</strong>
+            </article>
+            <article class="metric-card panel" id="attention-metric-card">
+              <div class="metric-card-head"><span class="metric-label">Требуют внимания</span><span class="metric-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 4 3.5 19h17zM12 9v4M12 16h.01"/></svg></span></div>
+              <strong class="metric-value" data-stat="attentionCount">—</strong>
+            </article>
+            <article class="metric-card panel">
+              <div class="metric-card-head"><span class="metric-label">Средний прогресс</span><span class="metric-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 19V9M12 19V5M19 19v-7"/></svg></span></div>
+              <strong class="metric-value" data-stat="averageProgress">—</strong><small id="overview-progress-coverage"></small>
+            </article>
+            <article class="metric-card panel metric-card-budget">
+              <div class="metric-card-head"><span class="metric-label">Указанный бюджет</span><span class="metric-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M7 5h7a4 4 0 0 1 0 8H7M7 9h8M7 17h6M10 5v14"/></svg></span></div>
+              <strong class="metric-value" id="slice-budget-total">—</strong><small id="overview-budget-coverage"></small>
+            </article>
+          </div>
+          <div class="overview-insights-grid">
+            <section class="panel portfolio-health-panel">
+              <div class="section-head"><h2>Состояние портфеля</h2></div>
+              <div class="portfolio-health-bar" id="overview-health-bar" aria-label="Распределение проектов по состоянию"></div>
+              <div class="portfolio-health-legend" id="overview-health-legend"></div>
+              <h3 class="overview-subheading">Распределение по статусам</h3>
+              <div class="overview-status-counts" id="overview-status-counts">Данные появятся после загрузки.</div>
+            </section>
+            <section class="panel overview-quality-panel" id="overview-data-quality" aria-live="polite">
+              <h2>Качество данных</h2>
+              <p class="empty-state compact">Проверяем полноту и согласованность данных…</p>
+            </section>
+          </div>
+          <div class="overview-work-grid">
+            <section class="panel overview-attention-panel">
+              <div class="section-head"><h2>Требуют внимания</h2><span class="pill" id="overview-problem-count">—</span></div>
+              <div id="overview-project-list">Загружаем проекты…</div>
+            </section>
+            <section class="panel overview-deadlines-panel">
+              <div class="section-head"><h2>Ближайшие сроки</h2><span class="pill" id="slice-milestones-on-track">—</span></div>
+              <h3 class="overview-subheading">Контрольные точки</h3>
+              <div id="portfolio-slice-table">Загружаем сроки…</div>
+            </section>
+          </div>
+        </section>
+        <section class="panel release-checks-panel view-section" id="release-checks-panel" data-view-section="release">
+          <div class="section-head">
+            <div>
+              <p class="section-kicker">Release gates</p>
+              <h2>Сборка и релиз приложения</h2>
+            </div>
+            <div class="release-checks-actions">
+              <span class="pill" id="release-checks-updated">Загружаем...</span>
+              <button class="btn btn-ghost btn-small" type="button" id="refresh-release-checks">Обновить</button>
+            </div>
+          </div>
+          <div class="release-overview" id="release-overview">
+            <div>
+              <span class="release-label">Последний релиз</span>
+              <strong id="release-tag">Проверяем GitHub...</strong>
+            </div>
+            <div>
+              <span class="release-label">Артефакты</span>
+              <strong id="release-assets">--</strong>
+            </div>
+            <a class="btn btn-secondary btn-small hidden" id="release-link" target="_blank" rel="noreferrer">Открыть релиз</a>
+          </div>
+          <p class="hint-text" id="release-checks-message">Загружаем состояние CI и релиза...</p>
+          <div class="release-check-list" id="release-check-list">
+            <div class="empty-state compact">Проверки появятся после загрузки GitHub Actions.</div>
+          </div>
+        </section>
         <section class="panel projects-panel view-section" data-view-section="projects">
           <div class="section-head">
             <div>
@@ -57,26 +138,13 @@
               <span class="pill" id="projects-count">0 проектов</span>
             </div>
           </div>
+          <button class="text-link" type="button" id="return-overview">Вернуться к обзору</button>
+          <p id="project-navigation-message" role="status"></p>
           <div class="projects-list" id="projects-list">
             <div class="empty-state">Пока нет проектов для выбранного фильтра.</div>
           </div>
         </section>
 
-        <section class="panel portfolio-slice-panel view-section active" data-view-section="overview">
-          <div class="section-head">
-            <div>
-              <p class="section-kicker">Бюджет и контрольные точки</p>
-              <h2>Бюджеты и контрольные точки</h2>
-            </div>
-            <div class="slice-summary">
-              <span class="pill" id="slice-budget-total">0 ₽</span>
-              <span class="pill success" id="slice-milestones-on-track">0 в графике</span>
-            </div>
-          </div>
-          <div class="portfolio-slice-table" id="portfolio-slice-table">
-            <div class="empty-state compact">Срез появится после загрузки проектов.</div>
-          </div>
-        </section>
 
         <section class="panel release-train-panel view-section" id="release-train-panel" data-view-section="release">
           <div class="section-head">
@@ -290,67 +358,8 @@
           </div>
         </section>
 
-        <section class="stats-grid view-section active" id="stats-grid" data-view-section="overview">
-          <article class="metric-card panel">
-            <span class="metric-label">Всего проектов</span>
-            <strong class="metric-value" data-stat="projectCount">0</strong>
-          </article>
-          <article class="metric-card panel">
-            <span class="metric-label">Активные</span>
-            <strong class="metric-value" data-stat="activeCount">0</strong>
-          </article>
-          <article class="metric-card panel">
-            <span class="metric-label">С риском</span>
-            <strong class="metric-value" data-stat="riskyCount">0</strong>
-          </article>
-          <article class="metric-card panel">
-            <span class="metric-label">Средний прогресс</span>
-            <strong class="metric-value" data-stat="averageProgress">0%</strong>
-          </article>
-        </section>
 
-        <section class="panel release-checks-panel view-section active" id="release-checks-panel" data-view-section="overview">
-          <div class="section-head">
-            <div>
-              <p class="section-kicker">Release gates</p>
-              <h2>Готовность релиза</h2>
-            </div>
-            <div class="release-checks-actions">
-              <span class="pill" id="release-checks-updated">Загружаем...</span>
-              <button class="btn btn-ghost btn-small" type="button" id="refresh-release-checks">Обновить</button>
-            </div>
-          </div>
-          <div class="release-overview" id="release-overview">
-            <div>
-              <span class="release-label">Последний релиз</span>
-              <strong id="release-tag">Проверяем GitHub...</strong>
-            </div>
-            <div>
-              <span class="release-label">Артефакты</span>
-              <strong id="release-assets">--</strong>
-            </div>
-            <a class="btn btn-secondary btn-small hidden" id="release-link" target="_blank" rel="noreferrer">Открыть релиз</a>
-          </div>
-          <p class="hint-text" id="release-checks-message">Загружаем состояние CI и релиза...</p>
-          <div class="release-check-list" id="release-check-list">
-            <div class="empty-state compact">Проверки появятся после загрузки GitHub Actions.</div>
-          </div>
-        </section>
 
-        <section class="panel overview-projects-panel view-section active" data-view-section="overview">
-          <div class="section-head">
-            <div>
-              <h2>Состояние инициатив</h2>
-            </div>
-            <div class="slice-summary">
-              <span class="pill success" id="overview-healthy-count">0 в норме</span>
-              <span class="pill danger" id="overview-problem-count">0 проблемных</span>
-            </div>
-          </div>
-          <div class="overview-project-list" id="overview-project-list">
-            <div class="empty-state compact">Проекты появятся после загрузки портфеля.</div>
-          </div>
-        </section>
 
         <section class="panel project-dashboard-panel view-section" id="project-dashboard-panel" data-view-section="dashboards">
           <div class="section-head">
@@ -402,7 +411,7 @@
               <span>Состояние</span>
               <select name="health" required>
                 <option value="green">В норме</option>
-                <option value="yellow">Требует внимания</option>
+                <option value="yellow">Предупреждение</option>
                 <option value="red">Проблемный</option>
               </select>
             </label>
@@ -411,7 +420,7 @@
               <select name="deliveryModel" id="delivery-model-field" required></select>
             </label>
             <label>
-              <span>Бюджет</span>
+              <span>Указанный бюджет</span>
               <input name="budget" type="number" min="0" step="10000" value="1000000" required />
             </label>
             <label>
@@ -531,7 +540,7 @@
         </div>
         <dl class="project-details">
           <div><dt>Владелец</dt><dd data-field="owner"></dd></div>
-          <div><dt>Бюджет</dt><dd data-field="budget"></dd></div>
+          <div><dt>Указанный бюджет</dt><dd data-field="budget"></dd></div>
           <div><dt>Срок</dt><dd data-field="deadline"></dd></div>
           <div><dt>KPI</dt><dd data-field="kpi"></dd></div>
         </dl>
@@ -543,6 +552,6 @@
       </article>
     </template>
 
-    <script src="/app.js?v=2026-09-03-overview-health" defer></script>
+    <script src="/app.js?v=pm001-overview" defer></script>
   </body>
 </html>

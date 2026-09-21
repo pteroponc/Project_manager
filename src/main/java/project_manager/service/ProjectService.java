@@ -19,7 +19,11 @@ public class ProjectService {
     }
 
     public List<ProjectResponse> getProjects(String quarter, String health) {
-        return findProjects(quarter, health).stream()
+        return getProjects(quarter, health, "all");
+    }
+
+    public List<ProjectResponse> getProjects(String quarter, String health, String status) {
+        return findProjects(quarter, health, status).stream()
             .map(this::toResponse)
             .toList();
     }
@@ -46,19 +50,15 @@ public class ProjectService {
     }
 
     public List<ProjectEntity> findProjects(String quarter, String health) {
-        boolean allQuarter = "all".equalsIgnoreCase(quarter);
-        boolean allHealth = "all".equalsIgnoreCase(health);
+        return findProjects(quarter, health, "all");
+    }
 
-        if (allQuarter && allHealth) {
-            return projectRepository.findAll();
-        }
-        if (allQuarter) {
-            return projectRepository.findByHealthIgnoreCase(health);
-        }
-        if (allHealth) {
-            return projectRepository.findByQuarterIgnoreCase(quarter);
-        }
-        return projectRepository.findByQuarterIgnoreCaseAndHealthIgnoreCase(quarter, health);
+    public List<ProjectEntity> findProjects(String quarter, String health, String status) {
+        return projectRepository.findFiltered(filterValue(quarter), filterValue(health), filterValue(status));
+    }
+
+    private String filterValue(String value) {
+        return value == null || "all".equalsIgnoreCase(value) ? "all" : value;
     }
 
     public ProjectEntity requireProject(String id) {

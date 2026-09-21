@@ -22,6 +22,7 @@ public class IsolatedDatabaseGuard implements EnvironmentPostProcessor, Ordered 
     public static void requireMemoryDatabase(ConfigurableEnvironment environment, String pattern) {
         String url = environment.getProperty("spring.datasource.url", "");
         if (!url.matches(pattern)) throw new IllegalStateException("Isolated mode requires an approved in-memory H2 URL");
+        String stableUrl = url.contains(";DB_CLOSE_DELAY=-1") ? url : url + ";DB_CLOSE_DELAY=-1";
         for (String key : new String[]{"spring.datasource.jndi-name", "spring.datasource.type",
                 "spring.datasource.hikari.jdbc-url", "spring.datasource.hikari.data-source-class-name",
                 "spring.datasource.hikari.data-source-jndi", "spring.datasource.hikari.connection-init-sql"}) {
@@ -44,8 +45,8 @@ public class IsolatedDatabaseGuard implements EnvironmentPostProcessor, Ordered 
             }
         }
         environment.getPropertySources().addFirst(new MapPropertySource("isolatedDatabase", Map.of(
-            "spring.datasource.url", url,
-            "spring.datasource.hikari.jdbc-url", url,
+            "spring.datasource.url", stableUrl,
+            "spring.datasource.hikari.jdbc-url", stableUrl,
             "spring.datasource.driver-class-name", "org.h2.Driver",
             "spring.datasource.hikari.driver-class-name", "org.h2.Driver",
             "spring.sql.init.mode", "never")));
