@@ -16,6 +16,18 @@ public class ApiExceptionHandler {
         return Map.of("error", exception.getMessage());
     }
 
+    @ExceptionHandler(BadRequestException.class)
+    @ResponseStatus(HttpStatus.BAD_REQUEST)
+    public Map<String, String> handleBadRequest(BadRequestException exception) {
+        return Map.of("code", "BAD_REQUEST", "error", exception.getMessage());
+    }
+
+    @ExceptionHandler(ProjectConflictException.class)
+    @ResponseStatus(HttpStatus.CONFLICT)
+    public Map<String, String> handleConflict(ProjectConflictException exception) {
+        return Map.of("code", "PROJECT_HAS_BOARD_CARDS", "error", exception.getMessage());
+    }
+
     @ExceptionHandler(MethodArgumentNotValidException.class)
     @ResponseStatus(HttpStatus.BAD_REQUEST)
     public Map<String, String> handleValidation(MethodArgumentNotValidException exception) {

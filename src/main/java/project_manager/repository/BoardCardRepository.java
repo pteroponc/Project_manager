@@ -8,4 +8,5 @@ import java.util.List;
 public interface BoardCardRepository extends JpaRepository<BoardCardEntity, String> {
     List<BoardCardEntity> findByProjectIdOrderByPositionAsc(String projectId);
     List<BoardCardEntity> findByProjectIdAndColumnKeyOrderByPositionAsc(String projectId, String columnKey);
+    long countByProjectId(String projectId);
 }

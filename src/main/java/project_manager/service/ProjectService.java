@@ -45,10 +45,6 @@ public class ProjectService {
         return toResponse(projectRepository.save(entity));
     }
 
-    public void deleteProject(String id) {
-        projectRepository.delete(requireProject(id));
-    }
-
     public List<ProjectEntity> findProjects(String quarter, String health) {
         return findProjects(quarter, health, "all");
     }
