@@ -4,6 +4,9 @@ import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import jakarta.persistence.Version;
+
+import java.time.LocalDate;
 
 @Entity
 @Table(name = "projects")
@@ -26,11 +29,18 @@ public class ProjectEntity {
     @Column
     private String deliveryModel;
 
-    @Column(nullable = false)
-    private int budget;
+    @Column
+    private Integer budget;
 
+    @Column
+    private Integer progress;
+
+    @Column(name = "start_date")
+    private LocalDate startDate;
+
+    @Version
     @Column(nullable = false)
-    private int progress;
+    private Long version;
 
     @Column(nullable = false)
     private String quarter;
@@ -107,20 +117,32 @@ public class ProjectEntity {
         this.deliveryModel = deliveryModel;
     }
 
-    public int getBudget() {
+    public Integer getBudget() {
         return budget;
     }
 
-    public void setBudget(int budget) {
+    public void setBudget(Integer budget) {
         this.budget = budget;
     }
 
-    public int getProgress() {
+    public Integer getProgress() {
         return progress;
     }
 
-    public void setProgress(int progress) {
+    public void setProgress(Integer progress) {
         this.progress = progress;
+    }
+
+    public LocalDate getStartDate() {
+        return startDate;
+    }
+
+    public void setStartDate(LocalDate startDate) {
+        this.startDate = startDate;
+    }
+
+    public Long getVersion() {
+        return version;
     }
 
     public String getQuarter() {

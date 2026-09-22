@@ -1,5 +1,7 @@
 package project_manager.web.dto;
 
+import java.time.LocalDate;
+
 public record ProjectResponse(
     String id,
     String name,
@@ -7,8 +9,10 @@ public record ProjectResponse(
     String status,
     String health,
     String deliveryModel,
-    int budget,
-    int progress,
+    Integer budget,
+    Integer progress,
+    LocalDate startDate,
+    Long version,
     String quarter,
     String deadline,
     String milestone,

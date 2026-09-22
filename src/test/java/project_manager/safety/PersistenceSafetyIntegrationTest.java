@@ -158,6 +158,11 @@ class PersistenceSafetyIntegrationTest {
         Writes.count.set(0);
         var projects = context.getBean(ProjectService.class);
         projects.getProjects("all", "all"); projects.getProject("p");
+        context.getBean(ProjectRegistryService.class)
+            .getRegistry("", "all", "all", "all", "all", "name", "asc");
+        context.getBean(ProjectCardService.class).getCard("p");
+        context.getBean(ProjectDeletionService.class).getImpact("p");
+        context.getBean(ProjectMilestoneRepository.class).findByProject_IdOrderByPositionAscIdAsc("p");
         context.getBean(PortfolioService.class).getSnapshot("all", "all");
         context.getBean(ReleaseTrainService.class).snapshot("all", "all");
         for (String model : List.of("kanban", "scrum", "waterfall", "kanban")) {
@@ -177,7 +182,7 @@ class PersistenceSafetyIntegrationTest {
 
     private static Map<String, List<Map<String, Object>>> snapshot(JdbcTemplate jdbc) {
         var snapshot = new LinkedHashMap<String, List<Map<String, Object>>>();
-        for (String table : List.of("projects", "release_trains", "board_cards")) {
+        for (String table : List.of("projects", "release_trains", "board_cards", "project_milestones")) {
             snapshot.put(table, jdbc.queryForList("select * from " + table + " order by id"));
         }
         return snapshot;

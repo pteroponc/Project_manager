@@ -142,6 +142,26 @@ class PortfolioOverviewIntegrationTest {
         assertThat(result.budgetCoverage()).isEqualTo(1);
     }
 
+    @Test void nullMetricsAreUnknownWhileStoredZeroRemainsReal() {
+        project("missing", "active", "green", "2026-10-20", "Q3", 10, 10);
+        var missing = repository.findById("missing").orElseThrow();
+        missing.setBudget(null);
+        missing.setProgress(null);
+        repository.saveAndFlush(missing);
+        project("zero", "active", "green", "2026-10-20", "Q3", 0, 0);
+
+        var result = overview.getOverview("all", "all", "all");
+        assertThat(result.totalBudget()).isZero();
+        assertThat(result.averageProgress()).isZero();
+        assertThat(result.budgetCoverage()).isEqualTo(1);
+        assertThat(result.progressCoverage()).isEqualTo(1);
+        assertThat(result.projects()).filteredOn(item -> item.id().equals("missing"))
+            .allSatisfy(item -> {
+                assertThat(item.budget()).isNull();
+                assertThat(item.progress()).isNull();
+            });
+    }
+
     @Test void readAndFiltersPreserveAllStoredProjectFields() throws Exception {
         project("raw", "done", "red", "not-a-date", "Q4", 123, 77);
         repository.flush();

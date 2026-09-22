@@ -23,7 +23,7 @@ public record ProjectRegistryResponse(
         String status,
         String health,
         String quarter,
-        int progress,
+        Integer progress,
         String deadline,
         String milestone,
         ProjectAssessmentResponse assessment

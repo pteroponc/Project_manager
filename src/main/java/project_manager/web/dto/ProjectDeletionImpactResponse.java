@@ -6,6 +6,7 @@ public record ProjectDeletionImpactResponse(
     String id,
     String name,
     long taskCount,
+    long milestoneCount,
     boolean deletionAllowed,
     List<String> blockers
 ) { }

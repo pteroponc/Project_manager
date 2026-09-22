@@ -43,8 +43,10 @@ public class ProjectAssessmentService {
 
         if (!STATUSES.contains(status)) issues.add("Неизвестный статус: " + project.getStatus());
         if (!HEALTH.contains(health)) issues.add("Неизвестное состояние: " + project.getHealth());
-        if (project.getBudget() < 0) issues.add("Некорректный указанный бюджет");
-        if (project.getProgress() < 0 || project.getProgress() > 100) {
+        if (project.getBudget() != null && project.getBudget() < 0) {
+            issues.add("Некорректный указанный бюджет");
+        }
+        if (project.getProgress() != null && (project.getProgress() < 0 || project.getProgress() > 100)) {
             issues.add("Некорректный указанный прогресс");
         }
 

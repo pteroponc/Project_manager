@@ -12,6 +12,7 @@ import org.springframework.test.web.servlet.MvcResult;
 
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.hasItem;
+import static org.hamcrest.Matchers.nullValue;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
@@ -77,6 +78,65 @@ class ProjectManagerApiIntegrationTest {
             .andExpect(jsonPath("$.error").value(containsString("estimate")));
     }
 
+    @Test
+    void projectCanBeCreatedWithoutBudgetOrProgressAndZeroRemainsZero() throws Exception {
+        mockMvc.perform(post("/api/projects")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(projectRequestWithoutMetrics("No metrics")))
+            .andExpect(status().isCreated())
+            .andExpect(jsonPath("$.budget").value(nullValue()))
+            .andExpect(jsonPath("$.progress").value(nullValue()))
+            .andExpect(jsonPath("$.version").value(0));
+
+        mockMvc.perform(post("/api/projects")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(projectRequest("Real zero").replace("100000", "0").replace("\"progress\": 10", "\"progress\": 0")))
+            .andExpect(status().isCreated())
+            .andExpect(jsonPath("$.budget").value(0))
+            .andExpect(jsonPath("$.progress").value(0));
+    }
+
+    @Test
+    void legacyPutWithoutOptionalFieldsPreservesStoredBudgetProgressAndStartDate() throws Exception {
+        MvcResult created = mockMvc.perform(post("/api/projects")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(projectRequest("Preserved metrics").replace(
+                    "\"progress\": 10,", "\"progress\": 10,\n  \"startDate\": \"2026-09-01\",")))
+            .andExpect(status().isCreated())
+            .andReturn();
+        String projectId = projectIdFrom(created);
+
+        mockMvc.perform(put("/api/projects/{id}", projectId)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(projectRequestWithoutMetrics("Updated without metrics")))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.name").value("Updated without metrics"))
+            .andExpect(jsonPath("$.budget").value(100000))
+            .andExpect(jsonPath("$.progress").value(10))
+            .andExpect(jsonPath("$.startDate").value("2026-09-01"));
+
+        String explicitUpdate = projectRequest("Explicit metric update")
+            .replace("100000", "250000")
+            .replace("\"progress\": 10,", "\"progress\": 35,\n  \"startDate\": \"2026-10-01\",");
+        mockMvc.perform(put("/api/projects/{id}", projectId)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(explicitUpdate))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.budget").value(250000))
+            .andExpect(jsonPath("$.progress").value(35))
+            .andExpect(jsonPath("$.startDate").value("2026-10-01"));
+
+        String explicitNulls = projectRequestWithoutMetrics("Explicit nulls are not clearing")
+            .replace("\"quarter\":", "\"budget\": null,\n  \"progress\": null,\n  \"startDate\": null,\n  \"quarter\":");
+        mockMvc.perform(put("/api/projects/{id}", projectId)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(explicitNulls))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.budget").value(250000))
+            .andExpect(jsonPath("$.progress").value(35))
+            .andExpect(jsonPath("$.startDate").value("2026-10-01"));
+    }
+
     private MvcResult createProject() throws Exception {
         return mockMvc.perform(post("/api/projects")
                 .contentType(MediaType.APPLICATION_JSON)
@@ -123,6 +183,26 @@ class ProjectManagerApiIntegrationTest {
               "kpiName": "Release readiness",
               "kpiTarget": "100%%",
               "summary": "Project created by the release verification suite."
+            }
+            """.formatted(name);
+    }
+
+    private String projectRequestWithoutMetrics(String name) {
+        return """
+            {
+              "name": "%s",
+              "owner": "Release team",
+              "status": "planned",
+              "health": "green",
+              "deliveryModel": "kanban",
+              "quarter": "Q3 2026",
+              "deadline": "2026-12-31",
+              "milestone": "Release gate",
+              "risk": "No material risks",
+              "dependency": "CI pipeline",
+              "kpiName": "Release readiness",
+              "kpiTarget": "100%%",
+              "summary": "Project created without optional metrics."
             }
             """.formatted(name);
     }

@@ -35,13 +35,13 @@ public class ProjectService {
     public ProjectResponse createProject(ProjectRequest request) {
         ProjectEntity entity = new ProjectEntity();
         entity.setId(UUID.randomUUID().toString());
-        applyRequest(entity, request);
+        applyRequest(entity, request, true);
         return toResponse(projectRepository.save(entity));
     }
 
     public ProjectResponse updateProject(String id, ProjectRequest request) {
         ProjectEntity entity = requireProject(id);
-        applyRequest(entity, request);
+        applyRequest(entity, request, false);
         return toResponse(projectRepository.save(entity));
     }
 
@@ -62,14 +62,15 @@ public class ProjectService {
             .orElseThrow(() -> new IllegalArgumentException("Project not found: " + id));
     }
 
-    private void applyRequest(ProjectEntity entity, ProjectRequest request) {
+    private void applyRequest(ProjectEntity entity, ProjectRequest request, boolean creating) {
         entity.setName(request.name());
         entity.setOwner(request.owner());
         entity.setStatus(request.status());
         entity.setHealth(request.health());
         entity.setDeliveryModel(normalizeDeliveryModel(request.deliveryModel()));
-        entity.setBudget(request.budget());
-        entity.setProgress(request.progress());
+        if (creating || request.budgetPresent() && request.budget() != null) entity.setBudget(request.budget());
+        if (creating || request.progressPresent() && request.progress() != null) entity.setProgress(request.progress());
+        if (creating || request.startDatePresent() && request.startDate() != null) entity.setStartDate(request.startDate());
         entity.setQuarter(request.quarter());
         entity.setDeadline(request.deadline());
         entity.setMilestone(request.milestone());
@@ -90,6 +91,8 @@ public class ProjectService {
             normalizeDeliveryModel(entity.getDeliveryModel()),
             entity.getBudget(),
             entity.getProgress(),
+            entity.getStartDate(),
+            entity.getVersion(),
             entity.getQuarter(),
             entity.getDeadline(),
             entity.getMilestone(),

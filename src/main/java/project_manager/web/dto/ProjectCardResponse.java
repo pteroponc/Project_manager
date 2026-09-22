@@ -1,5 +1,8 @@
 package project_manager.web.dto;
 
+import java.time.LocalDate;
+import java.util.List;
+
 public record ProjectCardResponse(
     String calculationDate,
     String timeZone,
@@ -9,7 +12,9 @@ public record ProjectCardResponse(
     String status,
     String health,
     String deliveryModel,
-    int progress,
+    Integer progress,
+    LocalDate startDate,
+    Long version,
     String quarter,
     String deadline,
     String milestone,
@@ -19,7 +24,19 @@ public record ProjectCardResponse(
     String kpiTarget,
     String summary,
     ProjectAssessmentResponse assessment,
-    BoardSummary board
+    BoardSummary board,
+    long milestoneCount,
+    List<MilestoneResponse> milestones
 ) {
     public record BoardSummary(boolean viewAvailable, long taskCount) { }
+
+    public record MilestoneResponse(
+        String id,
+        String projectId,
+        String name,
+        LocalDate plannedDate,
+        boolean completed,
+        LocalDate completedDate,
+        int position
+    ) { }
 }

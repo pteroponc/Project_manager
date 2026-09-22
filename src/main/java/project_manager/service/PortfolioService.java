@@ -22,8 +22,10 @@ public class PortfolioService {
         List<ProjectEntity> filtered = projectService.findProjects(quarter, health, status);
         int active = (int) filtered.stream().filter(project -> "active".equalsIgnoreCase(project.getStatus())).count();
         int risky = (int) filtered.stream().filter(project -> !"green".equalsIgnoreCase(project.getHealth())).count();
-        int budget = filtered.stream().mapToInt(ProjectEntity::getBudget).sum();
-        int averageProgress = filtered.isEmpty() ? 0 : (int) filtered.stream().mapToInt(ProjectEntity::getProgress).average().orElse(0);
+        int budget = filtered.stream().map(ProjectEntity::getBudget).filter(java.util.Objects::nonNull)
+            .mapToInt(Integer::intValue).sum();
+        int averageProgress = (int) filtered.stream().map(ProjectEntity::getProgress)
+            .filter(java.util.Objects::nonNull).mapToInt(Integer::intValue).average().orElse(0);
         return new PortfolioSnapshot(filtered.size(), active, risky, budget, averageProgress);
     }
 }

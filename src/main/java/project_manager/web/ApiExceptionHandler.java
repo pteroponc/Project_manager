@@ -1,6 +1,7 @@
 package project_manager.web;
 
 import org.springframework.http.HttpStatus;
+import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.ResponseStatus;
@@ -25,7 +26,13 @@ public class ApiExceptionHandler {
     @ExceptionHandler(ProjectConflictException.class)
     @ResponseStatus(HttpStatus.CONFLICT)
     public Map<String, String> handleConflict(ProjectConflictException exception) {
-        return Map.of("code", "PROJECT_HAS_BOARD_CARDS", "error", exception.getMessage());
+        return Map.of("code", exception.getCode(), "error", exception.getMessage());
+    }
+
+    @ExceptionHandler(ObjectOptimisticLockingFailureException.class)
+    @ResponseStatus(HttpStatus.CONFLICT)
+    public Map<String, String> handleOptimisticConflict(ObjectOptimisticLockingFailureException exception) {
+        return Map.of("code", "PROJECT_VERSION_CONFLICT", "error", "Project was changed by another request");
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)

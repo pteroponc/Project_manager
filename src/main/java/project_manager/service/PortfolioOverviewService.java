@@ -55,11 +55,11 @@ public class PortfolioOverviewService {
                 Integer::sum);
             healthCounts.merge(assessmentService.isKnownHealth(projectHealth) ? projectHealth : "unknown", 1,
                 Integer::sum);
-            if (project.getBudget() >= 0) {
+            if (project.getBudget() != null && project.getBudget() >= 0) {
                 totalBudget += project.getBudget();
                 budgetCoverage++;
             }
-            if (project.getProgress() >= 0 && project.getProgress() <= 100) {
+            if (project.getProgress() != null && project.getProgress() >= 0 && project.getProgress() <= 100) {
                 progressTotal += project.getProgress();
                 progressCoverage++;
             }

@@ -13,7 +13,9 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.annotation.Transactional;
 import project_manager.domain.BoardCardEntity;
 import project_manager.domain.ProjectEntity;
+import project_manager.domain.ProjectMilestoneEntity;
 import project_manager.repository.BoardCardRepository;
+import project_manager.repository.ProjectMilestoneRepository;
 import project_manager.repository.ProjectRepository;
 import project_manager.service.ProjectAssessmentService;
 
@@ -46,6 +48,7 @@ class ProjectRegistryAndCardIntegrationTest {
     @Autowired MockMvc mvc;
     @Autowired ProjectRepository projects;
     @Autowired BoardCardRepository cards;
+    @Autowired ProjectMilestoneRepository milestones;
     @Autowired JdbcTemplate jdbc;
 
     @Test
@@ -120,9 +123,13 @@ class ProjectRegistryAndCardIntegrationTest {
         project("p", "Project", "Summary", "active", "green", "2026-09-20");
         ProjectEntity stored = projects.findById("p").orElseThrow();
         stored.setDeliveryModel("legacy-model");
+        stored.setStartDate(java.time.LocalDate.of(2026, 1, 15));
         projects.saveAndFlush(stored);
         card("c1", "p");
         card("c2", "p");
+        milestone("m-2", "p", 2, false);
+        milestone("m-1b", "p", 1, false);
+        milestone("m-1a", "p", 1, true);
 
         mvc.perform(get("/api/projects/p/card"))
             .andExpect(status().isOk())
@@ -132,10 +139,16 @@ class ProjectRegistryAndCardIntegrationTest {
             .andExpect(jsonPath("$.health").value("green"))
             .andExpect(jsonPath("$.deliveryModel").value("legacy-model"))
             .andExpect(jsonPath("$.progress").value(50))
+            .andExpect(jsonPath("$.startDate").value("2026-01-15"))
+            .andExpect(jsonPath("$.version").isNumber())
             .andExpect(jsonPath("$.assessment.overdue").value(true))
             .andExpect(jsonPath("$.assessment.daysUntilDeadline").value(-1))
             .andExpect(jsonPath("$.board.viewAvailable").value(true))
             .andExpect(jsonPath("$.board.taskCount").value(2))
+            .andExpect(jsonPath("$.milestoneCount").value(3))
+            .andExpect(jsonPath("$.milestones[0].id").value("m-1a"))
+            .andExpect(jsonPath("$.milestones[1].id").value("m-1b"))
+            .andExpect(jsonPath("$.milestones[2].id").value("m-2"))
             .andExpect(jsonPath("$.budget").doesNotExist())
             .andExpect(jsonPath("$.releaseCount").doesNotExist())
             .andExpect(jsonPath("$.documentCount").doesNotExist());
@@ -145,10 +158,13 @@ class ProjectRegistryAndCardIntegrationTest {
     void readApisDoNotModifyStoredRows() throws Exception {
         project("p", "Project", "Summary", "active", "green", "2026-10-20");
         card("c", "p");
+        milestone("m", "p", 0, false);
         projects.flush();
         cards.flush();
+        milestones.flush();
         var projectsBefore = jdbc.queryForList("select * from projects order by id");
         var cardsBefore = jdbc.queryForList("select * from board_cards order by id");
+        var milestonesBefore = jdbc.queryForList("select * from project_milestones order by id");
 
         mvc.perform(get("/api/projects/registry")).andExpect(status().isOk());
         mvc.perform(get("/api/projects/p/card")).andExpect(status().isOk());
@@ -156,6 +172,7 @@ class ProjectRegistryAndCardIntegrationTest {
 
         assertThat(jdbc.queryForList("select * from projects order by id")).isEqualTo(projectsBefore);
         assertThat(jdbc.queryForList("select * from board_cards order by id")).isEqualTo(cardsBefore);
+        assertThat(jdbc.queryForList("select * from project_milestones order by id")).isEqualTo(milestonesBefore);
     }
 
     @Test
@@ -171,6 +188,7 @@ class ProjectRegistryAndCardIntegrationTest {
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.name").value("Project"))
             .andExpect(jsonPath("$.taskCount").value(1))
+            .andExpect(jsonPath("$.milestoneCount").value(0))
             .andExpect(jsonPath("$.deletionAllowed").value(false))
             .andExpect(jsonPath("$.blockers[0]").value("У проекта есть задачи: 1"));
 
@@ -182,12 +200,36 @@ class ProjectRegistryAndCardIntegrationTest {
     }
 
     @Test
+    void deletionIsBlockedByMilestonesWithoutPartialChanges() throws Exception {
+        project("p", "Project", "Summary", "active", "green", "2026-10-20");
+        milestone("m", "p", 0, false);
+        projects.flush();
+        milestones.flush();
+        var projectsBefore = jdbc.queryForList("select * from projects order by id");
+        var milestonesBefore = jdbc.queryForList("select * from project_milestones order by id");
+
+        mvc.perform(get("/api/projects/p/deletion-impact"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.taskCount").value(0))
+            .andExpect(jsonPath("$.milestoneCount").value(1))
+            .andExpect(jsonPath("$.deletionAllowed").value(false))
+            .andExpect(jsonPath("$.blockers[0]").value("У проекта есть контрольные точки: 1"));
+
+        mvc.perform(delete("/api/projects/p"))
+            .andExpect(status().isConflict())
+            .andExpect(jsonPath("$.code").value("PROJECT_HAS_MILESTONES"));
+        assertThat(jdbc.queryForList("select * from projects order by id")).isEqualTo(projectsBefore);
+        assertThat(jdbc.queryForList("select * from project_milestones order by id")).isEqualTo(milestonesBefore);
+    }
+
+    @Test
     void projectWithoutTasksCanStillBeDeleted() throws Exception {
         project("p", "Project", "Summary", "active", "green", "2026-10-20");
 
         mvc.perform(get("/api/projects/p/deletion-impact"))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.taskCount").value(0))
+            .andExpect(jsonPath("$.milestoneCount").value(0))
             .andExpect(jsonPath("$.deletionAllowed").value(true));
         mvc.perform(delete("/api/projects/p")).andExpect(status().isNoContent());
         assertThat(projects.existsById("p")).isFalse();
@@ -235,5 +277,17 @@ class ProjectRegistryAndCardIntegrationTest {
         card.setEstimate(1);
         card.setBlocked(false);
         cards.saveAndFlush(card);
+    }
+
+    private void milestone(String id, String projectId, int position, boolean completed) {
+        ProjectMilestoneEntity milestone = new ProjectMilestoneEntity();
+        milestone.setId(id);
+        milestone.setProject(projects.findById(projectId).orElseThrow());
+        milestone.setName("Milestone " + id);
+        milestone.setPlannedDate(java.time.LocalDate.of(2026, 10, 20));
+        milestone.setCompleted(completed);
+        milestone.setCompletedDate(completed ? java.time.LocalDate.of(2026, 10, 19) : null);
+        milestone.setPosition(position);
+        milestones.saveAndFlush(milestone);
     }
 }

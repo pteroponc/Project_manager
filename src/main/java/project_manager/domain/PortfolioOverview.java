@@ -15,7 +15,7 @@ public record PortfolioOverview(
 ) {
     public record ProjectOverviewItem(
         String id, String name, String owner, String status, String health,
-        int budget, int progress, String quarter, String deadline, String milestone,
+        Integer budget, Integer progress, String quarter, String deadline, String milestone,
         String risk, List<String> attentionReasons, List<String> dataQualityIssues, Long daysUntilDeadline
     ) { }
 }
