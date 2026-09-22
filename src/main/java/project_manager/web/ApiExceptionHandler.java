@@ -1,7 +1,12 @@
 package project_manager.web;
 
+import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.orm.ObjectOptimisticLockingFailureException;
+import project_manager.repository.ProjectRepository;
+import project_manager.web.dto.ProjectMutationError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.ResponseStatus;
@@ -11,6 +16,24 @@ import java.util.Map;
 
 @RestControllerAdvice
 public class ApiExceptionHandler {
+    private final ProjectRepository projects;
+
+    public ApiExceptionHandler(ProjectRepository projects) {
+        this.projects = projects;
+    }
+
+    @ExceptionHandler(ProjectMutationException.class)
+    public ResponseEntity<ProjectMutationError> handleMutation(ProjectMutationException exception) {
+        return ResponseEntity.status(exception.getStatus()).body(new ProjectMutationError(
+            exception.getCode(), exception.getMessage(), exception.getFieldErrors(), exception.getCurrentVersion()));
+    }
+
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    @ResponseStatus(HttpStatus.BAD_REQUEST)
+    public ProjectMutationError handleUnreadableBody(HttpMessageNotReadableException exception) {
+        return new ProjectMutationError("BAD_REQUEST", "Invalid JSON request body", null, null);
+    }
+
     @ExceptionHandler(IllegalArgumentException.class)
     @ResponseStatus(HttpStatus.NOT_FOUND)
     public Map<String, String> handleNotFound(IllegalArgumentException exception) {
@@ -31,8 +54,13 @@ public class ApiExceptionHandler {
 
     @ExceptionHandler(ObjectOptimisticLockingFailureException.class)
     @ResponseStatus(HttpStatus.CONFLICT)
-    public Map<String, String> handleOptimisticConflict(ObjectOptimisticLockingFailureException exception) {
-        return Map.of("code", "PROJECT_VERSION_CONFLICT", "error", "Project was changed by another request");
+    public ProjectMutationError handleOptimisticConflict(ObjectOptimisticLockingFailureException exception,
+                                                         HttpServletRequest request) {
+        String[] segments = request.getRequestURI().split("/");
+        Long currentVersion = segments.length > 3 && "projects".equals(segments[2])
+            ? projects.currentVersion(segments[3]) : null;
+        return new ProjectMutationError("PROJECT_VERSION_CONFLICT", "Project was changed by another request",
+            null, currentVersion);
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)

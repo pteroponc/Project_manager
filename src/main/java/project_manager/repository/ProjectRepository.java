@@ -6,9 +6,17 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.repository.query.Param;
 
 public interface ProjectRepository extends JpaRepository<ProjectEntity, String> {
+    @Modifying
+    @Query("update ProjectEntity p set p.version = p.version + 1 where p.id = :id and p.version = :version")
+    int incrementVersionIfCurrent(@Param("id") String id, @Param("version") long version);
+
+    @Query("select p.version from ProjectEntity p where p.id = :id")
+    Long currentVersion(@Param("id") String id);
+
     @Query("select p from ProjectEntity p where (:quarter = 'all' or lower(p.quarter) = lower(:quarter)) "
         + "and (:health = 'all' or lower(p.health) = lower(:health)) "
         + "and (:status = 'all' or lower(p.status) = lower(:status)) order by p.name, p.id")

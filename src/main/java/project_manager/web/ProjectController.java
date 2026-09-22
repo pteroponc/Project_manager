@@ -1,7 +1,10 @@
 package project_manager.web;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import project_manager.service.ProjectCardService;
 import project_manager.service.ProjectDeletionService;
+import project_manager.service.ProjectMilestoneMutationService;
+import project_manager.service.ProjectMutationService;
 import project_manager.service.ProjectRegistryService;
 import project_manager.service.ProjectService;
 import project_manager.web.dto.ProjectRequest;
@@ -15,6 +18,7 @@ import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -31,13 +35,19 @@ public class ProjectController {
     private final ProjectRegistryService projectRegistryService;
     private final ProjectCardService projectCardService;
     private final ProjectDeletionService projectDeletionService;
+    private final ProjectMutationService projectMutationService;
+    private final ProjectMilestoneMutationService milestoneMutationService;
 
     public ProjectController(ProjectService projectService, ProjectRegistryService projectRegistryService,
-                             ProjectCardService projectCardService, ProjectDeletionService projectDeletionService) {
+                             ProjectCardService projectCardService, ProjectDeletionService projectDeletionService,
+                             ProjectMutationService projectMutationService,
+                             ProjectMilestoneMutationService milestoneMutationService) {
         this.projectService = projectService;
         this.projectRegistryService = projectRegistryService;
         this.projectCardService = projectCardService;
         this.projectDeletionService = projectDeletionService;
+        this.projectMutationService = projectMutationService;
+        this.milestoneMutationService = milestoneMutationService;
     }
 
     @GetMapping("/projects")
@@ -86,6 +96,33 @@ public class ProjectController {
     @PutMapping("/projects/{id}")
     public ProjectResponse update(@PathVariable String id, @Valid @RequestBody ProjectRequest request) {
         return projectService.updateProject(id, request);
+    }
+
+    @PatchMapping("/projects/{id}")
+    public ProjectCardResponse patch(@PathVariable String id, @RequestBody JsonNode body) {
+        projectMutationService.patch(id, body);
+        return projectCardService.getCard(id);
+    }
+
+    @PostMapping("/projects/{projectId}/milestones")
+    @ResponseStatus(HttpStatus.CREATED)
+    public ProjectCardResponse createMilestone(@PathVariable String projectId, @RequestBody JsonNode body) {
+        milestoneMutationService.create(projectId, body);
+        return projectCardService.getCard(projectId);
+    }
+
+    @PatchMapping("/projects/{projectId}/milestones/{milestoneId}")
+    public ProjectCardResponse patchMilestone(@PathVariable String projectId, @PathVariable String milestoneId,
+                                              @RequestBody JsonNode body) {
+        milestoneMutationService.patch(projectId, milestoneId, body);
+        return projectCardService.getCard(projectId);
+    }
+
+    @DeleteMapping("/projects/{projectId}/milestones/{milestoneId}")
+    public ProjectCardResponse deleteMilestone(@PathVariable String projectId, @PathVariable String milestoneId,
+                                               @RequestParam(required = false) String expectedVersion) {
+        milestoneMutationService.delete(projectId, milestoneId, expectedVersion);
+        return projectCardService.getCard(projectId);
     }
 
     @DeleteMapping("/projects/{id}")
