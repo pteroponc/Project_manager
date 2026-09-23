@@ -98,7 +98,6 @@ const elements = {
   boardBlockedCount: document.getElementById("board-blocked-count"),
   cancelTaskCreate: document.getElementById("cancel-task-create"),
   summary: document.getElementById("portfolio-summary"),
-  sliceBudgetTotal: document.getElementById("slice-budget-total"),
   sliceMilestonesOnTrack: document.getElementById("slice-milestones-on-track"),
   portfolioSliceTable: document.getElementById("portfolio-slice-table"),
   overviewProjectList: document.getElementById("overview-project-list"),
@@ -123,7 +122,6 @@ const elements = {
   cancelEditButton: document.getElementById("cancel-edit-button"),
   projectIdField: document.getElementById("project-id-field"),
   deliveryModelField: document.getElementById("delivery-model-field"),
-  template: document.getElementById("project-card-template"),
   taskModal: document.getElementById("task-modal"),
   taskModalColumn: document.getElementById("task-modal-column"),
   taskModalTitle: document.getElementById("task-modal-title"),
@@ -357,6 +355,8 @@ function showView(view) {
     button.classList.toggle("active", button.dataset.view === nextView);
   });
 
+  window.PMProjectsUI?.onView?.(nextView);
+
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
@@ -374,7 +374,6 @@ async function loadProjectCatalog() {
       state.selectedProjectId = projects[0]?.id ?? null;
     }
     renderProjectDashboards(projects);
-    renderProjects(projects);
     renderCreatedBoards();
     if (state.selectedProjectId && state.boardDrilledIn) {
       await loadBoard(state.selectedProjectId, state.activeBoardModel);
@@ -451,10 +450,6 @@ function renderStats(snapshot) {
   elements.statRiskyCount.textContent = formatNumber(snapshot.attentionCount);
   document.getElementById("attention-metric-card").classList.toggle("metric-card-alert", snapshot.attentionCount > 0);
   elements.statAverageProgress.textContent = snapshot.averageProgress == null ? "Нет данных" : snapshot.averageProgress + "%";
-  elements.sliceBudgetTotal.textContent = snapshot.totalBudget == null
-    ? (snapshot.projectCount ? "Нет данных" : "Нет проектов") : formatCurrency(snapshot.totalBudget);
-  document.getElementById("overview-budget-coverage").textContent =
-    snapshot.projectCount ? "По " + snapshot.budgetCoverage + " из " + snapshot.projectCount + " проектов" : "";
   document.getElementById("overview-progress-coverage").textContent =
     snapshot.projectCount ? "По " + snapshot.progressCoverage + " из " + snapshot.projectCount + " проектов" : "";
   const healthLabels = { ...LABELS.health, unknown: "Неизвестное состояние" };
@@ -759,28 +754,7 @@ function renderOverviewQuality(snapshot) {
 }
 
 async function openProjectFromOverview(projectId) {
-  const message = document.getElementById("project-navigation-message");
-  showView("projects");
-  closeProjectForm();
-  message.textContent = "Загружаем карточку…";
-  try {
-    const project = await fetchJson("/api/projects/" + encodeURIComponent(projectId));
-    if (state.activeView !== "projects") return;
-    const index = state.projects.findIndex(item => item.id === projectId);
-    if (index < 0) state.projects.push(project);
-    else state.projects[index] = project;
-    state.selectedProjectId = projectId;
-    renderProjects(state.projects);
-    message.textContent = "";
-    const card = document.querySelector('.project-card[data-project-id="' + CSS.escape(projectId) + '"]');
-    if (card) {
-      card.tabIndex = -1;
-      card.focus({ preventScroll: true });
-      card.scrollIntoView({ behavior: "smooth", block: "center" });
-    }
-  } catch (error) {
-    message.textContent = "Не удалось открыть проект: он недоступен или удалён. Вернитесь к «Обзору» и обновите данные.";
-  }
+  await window.PMProjectsUI.openCard(projectId, "overview");
 }
 
 function renderReleaseTrains(snapshot) {
@@ -850,62 +824,6 @@ function renderReleaseStage(title, date, status, activeStatuses) {
       <strong>${formatDate(date)}</strong>
     </div>
   `;
-}
-
-function renderProjects(projects) {
-  elements.projectsCount.textContent = `${projects.length} ${declOfNum(projects.length, ["проект", "проекта", "проектов"])}`;
-
-  if (!projects.length) {
-    elements.projectsList.innerHTML = '<div class="empty-state">Для выбранного фильтра проектов нет.</div>';
-    return;
-  }
-
-  elements.projectsList.innerHTML = "";
-
-  projects.forEach((project) => {
-    const fragment = elements.template.content.cloneNode(true);
-    const card = fragment.querySelector(".project-card");
-    card.dataset.projectId = project.id;
-    const meta = fragment.querySelector(".project-meta");
-    const title = fragment.querySelector("h3");
-    const health = fragment.querySelector(".project-health");
-    const summary = fragment.querySelector(".project-summary");
-    const progressBar = fragment.querySelector(".progress-bar span");
-    const progressValue = fragment.querySelector(".progress-value");
-
-    meta.textContent = `${project.deliveryModel} / ${project.status} / ${project.quarter}`;
-    title.textContent = project.name;
-    health.textContent = project.health;
-    health.dataset.tone = project.health;
-    summary.textContent = project.summary;
-    progressBar.style.width = `${project.progress}%`;
-    progressValue.textContent = `${project.progress}%`;
-
-    fragment.querySelector('[data-field="owner"]').textContent = project.owner;
-    fragment.querySelector('[data-field="budget"]').textContent = formatCurrency(project.budget);
-    fragment.querySelector('[data-field="deadline"]').textContent = formatDate(project.deadline);
-    fragment.querySelector('[data-field="kpi"]').textContent = `${project.kpiName}: ${project.kpiTarget}`;
-
-    card.classList.toggle("is-selected", project.id === state.selectedProjectId);
-
-    fragment.querySelector('[data-action="board"]').addEventListener("click", async () => {
-      state.selectedProjectId = project.id;
-      state.boardDrilledIn = false;
-      showView("boards");
-      renderProjects(state.projects);
-      renderBoardLanding();
-    });
-
-    fragment.querySelector('[data-action="edit"]').addEventListener("click", () => {
-      startEditProject(project);
-    });
-
-    fragment.querySelector('[data-action="delete"]').addEventListener("click", async () => {
-      await deleteProject(project);
-    });
-
-    elements.projectsList.appendChild(fragment);
-  });
 }
 
 async function loadBoard(projectId, boardModel = state.activeBoardModel) {
@@ -1148,7 +1066,6 @@ async function openCreatedBoard(boardId) {
   state.activeBoardModel = board.model;
   state.boardDrilledIn = true;
   showView("boards");
-  renderProjects(state.projects);
   renderCreatedBoards();
   await loadBoard(board.projectId, board.model);
 }
@@ -1473,112 +1390,27 @@ async function handleReleaseTrainSubmit(event) {
 }
 
 async function handleProjectSubmit(event) {
-  event.preventDefault();
-  const formData = new FormData(elements.form);
-  const payload = Object.fromEntries(formData.entries());
-  delete payload.projectId;
-  payload.budget = Number(payload.budget);
-  payload.progress = Number(payload.progress);
-
-  setFormState("Сохраняем проект...", false);
-
-  try {
-    const isEditing = Boolean(state.editingProjectId);
-    const url = isEditing ? `/api/projects/${state.editingProjectId}` : "/api/projects";
-    const saved = await fetchJson(url, {
-      method: isEditing ? "PUT" : "POST",
-      headers: {
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify(payload)
-    });
-
-    setFormState(isEditing ? `Проект "${saved.name}" обновлен` : `Проект "${saved.name}" создан`, false);
-    resetFormMode();
-    closeProjectForm();
-    state.selectedProjectId = saved.id;
-    await loadDashboard();
-  } catch (error) {
-    console.error(error);
-    setFormState(error.message || "Не удалось сохранить проект", true);
-  }
+  await window.PMProjectsUI.submitProject(event);
 }
 
 function startEditProject(project) {
-  showView("projects");
-  openProjectForm();
-  state.editingProjectId = project.id;
-  elements.projectIdField.value = project.id;
-  elements.formKicker.textContent = "Редактирование";
-  elements.formTitle.textContent = `Редактируем: ${project.name}`;
-  elements.submitButton.textContent = "Сохранить изменения";
-  elements.cancelEditButton.classList.remove("hidden");
-  if (elements.formStatus) {
-    elements.formStatus.textContent = "Режим правки";
-    elements.formStatus.classList.remove("success");
-  }
-
-  for (const [key, value] of Object.entries(project)) {
-    const field = elements.form.elements.namedItem(key);
-    if (field) {
-      field.value = value ?? "";
-    }
-  }
-  document.getElementById("project-form")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  window.PMProjectsUI.startEditProject(project);
 }
 
 function openProjectForm() {
-  document.getElementById("project-form")?.classList.remove("is-collapsed");
+  window.PMProjectsUI.openProjectForm();
 }
 
 function closeProjectForm() {
-  document.getElementById("project-form")?.classList.add("is-collapsed");
+  window.PMProjectsUI.closeProjectForm();
 }
 
 async function deleteProject(project) {
-  const approved = window.confirm(`Удалить проект "${project.name}"?`);
-  if (!approved) {
-    return;
-  }
-
-  setFormState(`Удаляем проект "${project.name}"...`, false);
-
-  try {
-    await fetchJson(`/api/projects/${project.id}`, {
-      method: "DELETE"
-    });
-
-    if (state.editingProjectId === project.id) {
-      resetFormMode();
-    }
-    if (state.selectedProjectId === project.id) {
-      state.selectedProjectId = null;
-    }
-    state.createdBoards = state.createdBoards.filter((board) => board.projectId !== project.id);
-    saveCreatedBoards();
-    setFormState(`Проект "${project.name}" удален`, false);
-    await loadDashboard();
-  } catch (error) {
-    console.error(error);
-    setFormState(error.message || "Не удалось удалить проект", true);
-  }
+  await window.PMProjectsUI.deleteProject(project);
 }
 
 function resetFormMode() {
-  state.editingProjectId = null;
-  elements.projectIdField.value = "";
-  elements.form.reset();
-  elements.formKicker.textContent = "Новый проект";
-  elements.formTitle.textContent = "Добавить проект в портфель";
-  elements.submitButton.textContent = "Создать проект";
-  elements.cancelEditButton.classList.add("hidden");
-  if (elements.formStatus) {
-    elements.formStatus.textContent = "API готов";
-    elements.formStatus.classList.add("success");
-  }
-  if (state.deliveryModels[0]) {
-    elements.deliveryModelField.value = state.deliveryModels[0];
-  }
+  window.PMProjectsUI?.resetFormMode();
 }
 
 async function loadReleaseChecks(forceRefresh = false) {
@@ -1684,13 +1516,19 @@ async function fetchJson(url, options) {
   }
   if (!response.ok) {
     let message = `HTTP ${response.status}`;
+    let details = null;
     try {
-      const data = await response.json();
-      message = data.message || data.error || JSON.stringify(data);
+      details = await response.json();
+      message = details.message || details.error || JSON.stringify(details);
     } catch {
       message = await response.text() || message;
     }
-    throw new Error(message);
+    const error = new Error(message);
+    error.status = response.status;
+    error.code = details?.code;
+    error.fieldErrors = details?.fieldErrors;
+    error.currentVersion = details?.currentVersion;
+    throw error;
   }
   return response.json();
 }

@@ -1882,7 +1882,7 @@ body { background: #f4f7f6; }
 
 .overview-content { gap: 16px; }
 .overview-content > h2 { font-size: 1.05rem; }
-.overview-content .stats-grid { grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; }
+.overview-content .stats-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
 .overview-content .metric-card {
   min-width: 0;
   min-height: 122px;
@@ -2023,6 +2023,89 @@ body { background: #f4f7f6; }
   .overview-filters button { justify-self: start; }
   .overview-content .stats-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .overview-content .metric-card { min-height: 112px; padding: 13px; }
-  .metric-card-budget { grid-column: 1 / -1; }
   .overview-entry-main { align-items: flex-start; flex-direction: column; gap: 3px; }
+}
+
+/* PM-002C registry and project card */
+.projects-panel, .project-detail, .form-panel {
+  min-width: 0;
+  border: 1px solid #dde5e2;
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: none;
+}
+.projects-panel .section-head { align-items: center; }
+.projects-panel h2, .project-detail h1 { color: #18372d; }
+.registry-filters {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin: 18px 0;
+  padding: 16px;
+  border: 1px solid #dde5e2;
+  border-radius: 12px;
+  background: #f9fbfa;
+}
+.registry-filters label, .milestone-form label { display: grid; align-content: start; gap: 6px; min-width: 0; color: #52625c; font-size: .78rem; font-weight: 700; }
+.registry-filters input, .registry-filters select, .milestone-form input { width: 100%; min-width: 0; height: 38px; padding: 7px 9px; border: 1px solid #cbd8d2; border-radius: 8px; background: #fff; color: #20322b; }
+.registry-filters button { align-self: end; justify-self: start; min-height: 38px; }
+.registry-filters .registry-search { grid-column: span 2; }
+#project-navigation-message:not(:empty), #project-card-notice:not(:empty), #milestone-message:not(:empty) { margin: 12px 0; font-size: .83rem; color: #5c6d66; }
+#project-navigation-message:not(:empty)[data-tone="warning"], #project-card-notice[data-tone="warning"] { color: #805b16; }
+#project-card-notice[data-tone="error"] { color: #9a3834; }
+.projects-list { display: grid; grid-template-columns: 1fr; gap: 10px; }
+.registry-row { display: grid; grid-template-columns: minmax(200px, 1.05fr) minmax(0, 2fr); gap: 18px; min-width: 0; padding: 16px; border: 1px solid #dde5e2; border-radius: 10px; background: #fff; }
+.registry-row:hover { border-color: #b9cbc3; }
+.registry-row-main { min-width: 0; }
+.registry-open { font-size: 1rem; font-weight: 800; color: #184b3e; text-align: left; overflow-wrap: anywhere; }
+.registry-row-main p { margin: 6px 0; color: #61716b; font-size: .82rem; overflow-wrap: anywhere; }
+.registry-row-data { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin: 0; }
+.registry-row-data div, .project-detail-facts div { min-width: 0; }
+.registry-row-data dt, .project-detail-facts dt { color: #687872; font-size: .7rem; }
+.registry-row-data dd, .project-detail-facts dd { margin: 4px 0 0; color: #20362c; font-size: .83rem; font-weight: 700; overflow-wrap: anywhere; }
+.registry-row .pill { display: inline-block; max-width: 100%; margin-top: 6px; white-space: normal; }
+.assessment-reasons { margin: 7px 0 0; padding-left: 18px; color: #90433c; font-size: .76rem; }
+.project-detail { display: none; }
+.project-detail.view-section.active { display: block; }
+.project-detail-head { display: flex; justify-content: space-between; gap: 18px; margin-top: 18px; }
+.project-detail-head h1 { margin: 4px 0; font-size: 1.8rem; overflow-wrap: anywhere; }
+.project-detail-head p { color: #5e6e66; overflow-wrap: anywhere; }
+.project-detail-actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 18px 0; }
+.project-detail-facts { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; margin: 0; padding: 18px; border: 1px solid #dde5e2; border-radius: 10px; background: #f9fbfa; }
+.project-attention, .project-milestones { margin-top: 20px; padding: 18px; border: 1px solid #dde5e2; border-radius: 10px; }
+.project-attention { background: #fbeeee; }
+.project-attention h2, .project-milestones h2 { font-size: 1.05rem; }
+.milestone-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 0; border-bottom: 1px solid #e2e9e5; }
+.milestone-row p { margin: 4px 0 0; color: #61716a; font-size: .8rem; }
+.milestone-actions { display: flex; flex-wrap: wrap; gap: 10px; }
+.milestone-form { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-top: 18px; }
+.milestone-form h3, .milestone-form .form-actions, #milestone-message { grid-column: 1 / -1; }
+.milestone-form h3 { font-size: .95rem; }
+.milestone-form .check-field { align-self: end; display: flex; align-items: center; min-height: 38px; }
+.milestone-form .check-field input { width: auto; height: auto; }
+.technical-version { display: block; margin-top: 18px; color: #718079; }
+.field-error { display: block; color: #a7342e; font-weight: 600; }
+[aria-invalid="true"] { border-color: #b43e37 !important; }
+.project-dialog-panel { width: min(460px, calc(100vw - 28px)); max-height: calc(100vh - 32px); overflow: auto; padding: 22px; }
+.project-dialog-panel p { margin-top: 10px; }
+.project-dialog-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; margin-top: 20px; }
+
+@media (max-width: 1100px) {
+  .registry-filters { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .registry-row { grid-template-columns: 1fr; }
+}
+@media (max-width: 780px) {
+  .registry-filters { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .registry-row-data, .project-detail-facts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .milestone-form { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 520px) {
+  .registry-filters, .milestone-form { grid-template-columns: 1fr; }
+  .registry-filters .registry-search, .milestone-form h3, .milestone-form .form-actions, #milestone-message { grid-column: 1; }
+  .registry-row, .project-attention, .project-milestones { padding: 13px; }
+  .registry-row-data, .project-detail-facts { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 11px; }
+  .project-detail-head, .milestone-row { flex-direction: column; align-items: flex-start; }
+  .project-detail-head h1 { font-size: 1.45rem; }
+  .milestone-actions { width: 100%; }
+  .project-dialog-panel { padding: 16px; }
 }

@@ -53,10 +53,10 @@ test('KPI distinguishes unknown from real zero and uses attentionCount', () => {
   context.renderStats(snapshot({ attentionCount: 2, averageProgress: null, totalBudget: null }));
   assert.equal(elements.statRiskyCount.textContent, '2');
   assert.equal(elements.statAverageProgress.textContent, 'Нет данных');
-  assert.equal(elements.sliceBudgetTotal.textContent, 'Нет данных');
+  assert.equal(elements.sliceBudgetTotal.textContent, '');
   context.renderStats(snapshot());
   assert.equal(elements.statAverageProgress.textContent, '0%');
-  assert.match(elements.sliceBudgetTotal.textContent, /0.*₽/);
+  assert.equal(elements.sliceBudgetTotal.textContent, '');
 });
 
 test('late response cannot overwrite the latest filter result or board selection', async () => {
@@ -134,24 +134,24 @@ test('empty portfolio, empty filter and no attention are different messages', ()
   assert.equal(context.overviewEmpty(snapshot(), 'Отклонений нет'), 'Отклонений нет');
 });
 
-test('navigation reads selected project, focuses existing card and preserves filters on return', async () => {
-  const { context, state, get } = setup();
+test('overview project link opens the common project card and keeps overview filters', async () => {
+  const { context, state } = setup();
   state.filters = { quarter: 'Q3', status: 'active', health: 'red' };
-  context.fetchJson = async url => { assert.equal(url, '/api/projects/x'); return { id: 'x', name: 'X' }; };
+  const calls = [];
+  context.window.PMProjectsUI = { openCard: async (...args) => calls.push(args) };
   await context.openProjectFromOverview('x');
-  assert.equal(get('form').closed, true);
-  assert.equal(state.activeView, 'projects');
-  assert.equal(get('card').focused, true);
-  assert.equal(get('card').scrolled, true);
+  assert.equal(JSON.stringify(calls), JSON.stringify([['x', 'overview']]));
   context.showView('overview');
   assert.equal(state.filters.quarter, 'Q3');
   assert.equal(state.filters.health, 'red');
 });
 
-test('unavailable project gives a recoverable navigation error', async () => {
-  const { context, get } = setup();
+test('overview delegates missing project handling to the common card view', async () => {
+  const { context } = setup();
+  let opened;
+  context.window.PMProjectsUI = { openCard: async id => { opened = id; } };
   await context.openProjectFromOverview('missing');
-  assert.match(get('project-navigation-message').textContent, /недоступен или удалён/);
+  assert.equal(opened, 'missing');
 });
 
 test('train failure does not block a successful overview snapshot', async () => {
@@ -171,7 +171,7 @@ test('HTML contains approved overview heading and keeps GitHub outside overview'
   assert.match(html, /Контрольные точки/);
   assert.match(html, /Состояние портфеля/);
   assert.match(html, /Качество данных/);
-  assert.match(html, /Указанный бюджет/);
+  assert.doesNotMatch(html, /Указанный бюджет/);
   assert.match(html, /<h1>Обзор<\/h1>/);
   assert.match(html, /id="overview-as-of">Состояние портфеля/);
   assert.match(html, /id="release-checks-panel" data-view-section="release"/);
@@ -197,8 +197,8 @@ test('approved desktop and mobile overview layout rules are present', () => {
   assert.match(css, /grid-template-columns:\s*214px minmax\(0, 1fr\)/);
   assert.match(css, /background:\s*#11251f/);
   assert.match(css, /background:\s*#20483c/);
-  assert.match(css, /grid-template-columns:\s*repeat\(5, minmax\(0, 1fr\)\)/);
+  assert.match(css, /grid-template-columns:\s*repeat\(4, minmax\(0, 1fr\)\)/);
   assert.match(css, /border:\s*1px solid #dde5e2/);
   assert.match(css, /@media \(max-width: 520px\)[\s\S]*grid-template-columns:\s*repeat\(2, minmax\(0, 1fr\)\)/);
-  assert.match(css, /\.metric-card-budget\s*\{\s*grid-column:\s*1 \/ -1/);
+  assert.doesNotMatch(css, /\.metric-card-budget\s*\{\s*grid-column:\s*1 \/ -1/);
 });

@@ -70,10 +70,6 @@
               <div class="metric-card-head"><span class="metric-label">Средний прогресс</span><span class="metric-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 19V9M12 19V5M19 19v-7"/></svg></span></div>
               <strong class="metric-value" data-stat="averageProgress">—</strong><small id="overview-progress-coverage"></small>
             </article>
-            <article class="metric-card panel metric-card-budget">
-              <div class="metric-card-head"><span class="metric-label">Указанный бюджет</span><span class="metric-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M7 5h7a4 4 0 0 1 0 8H7M7 9h8M7 17h6M10 5v14"/></svg></span></div>
-              <strong class="metric-value" id="slice-budget-total">—</strong><small id="overview-budget-coverage"></small>
-            </article>
           </div>
           <div class="overview-insights-grid">
             <section class="panel portfolio-health-panel">
@@ -127,22 +123,33 @@
             <div class="empty-state compact">Проверки появятся после загрузки GitHub Actions.</div>
           </div>
         </section>
-        <section class="panel projects-panel view-section" data-view-section="projects">
+        <section class="panel projects-panel view-section" data-view-section="projects" aria-label="Реестр проектов">
           <div class="section-head">
             <div>
               <p class="section-kicker">Проекты</p>
-              <h2>Список инициатив</h2>
+              <h2>Реестр проектов</h2>
             </div>
             <div class="section-actions">
-              <button class="text-link" type="button" id="add-project-link">Добавить проект</button>
+              <button class="btn btn-primary btn-small" type="button" id="add-project-link">Создать проект</button>
               <span class="pill" id="projects-count">0 проектов</span>
             </div>
           </div>
-          <button class="text-link" type="button" id="return-overview">Вернуться к обзору</button>
-          <p id="project-navigation-message" role="status"></p>
-          <div class="projects-list" id="projects-list">
-            <div class="empty-state">Пока нет проектов для выбранного фильтра.</div>
-          </div>
+          <form class="registry-filters" id="registry-filters" role="search">
+            <label class="registry-search">Поиск по названию и описанию<input name="query" type="search" placeholder="Название или описание" /></label>
+            <label>Квартал<select name="quarter"><option value="all">Все кварталы</option></select></label>
+            <label>Статус<select name="status"><option value="all">Все статусы</option></select></label>
+            <label>Состояние<select name="health"><option value="all">Все состояния</option></select></label>
+            <label>Внимание<select name="attention"><option value="all">Все проекты</option><option value="only">Требуют внимания</option></select></label>
+            <label>Сортировка<select name="sort"><option value="name">Название</option><option value="deadline">Срок</option><option value="progress">Прогресс</option><option value="health">Состояние</option></select></label>
+            <label>Порядок<select name="direction"><option value="asc">По возрастанию</option><option value="desc">По убыванию</option></select></label>
+            <button class="btn btn-ghost btn-small" type="button" id="reset-registry-filters">Сбросить</button>
+          </form>
+          <p id="project-navigation-message" role="status" aria-live="polite"></p>
+          <div class="projects-list" id="projects-list" aria-busy="true">Загружаем реестр…</div>
+        </section>
+        <section class="panel project-detail view-section" data-view-section="project-card" id="project-detail" aria-busy="false">
+          <button class="text-link" type="button" id="back-to-registry">← Назад к реестру</button>
+          <div id="project-detail-content" aria-live="polite">Загружаем карточку…</div>
         </section>
 
 
@@ -385,7 +392,7 @@
             </div>
             <div class="section-actions">
               <button class="text-link" type="button" id="close-project-form">Скрыть</button>
-              <span class="pill success" id="form-status">API готов</span>
+              <span class="pill hidden" id="form-status"></span>
             </div>
           </div>
           <form class="project-form" id="create-project-form">
@@ -420,12 +427,12 @@
               <select name="deliveryModel" id="delivery-model-field" required></select>
             </label>
             <label>
-              <span>Указанный бюджет</span>
-              <input name="budget" type="number" min="0" step="10000" value="1000000" required />
+              <span>Дата начала</span>
+              <input name="startDate" type="date" />
             </label>
             <label>
               <span>Прогресс</span>
-              <input name="progress" type="number" min="0" max="100" value="25" required />
+              <input name="progress" type="number" min="0" max="100" placeholder="Не указан" />
             </label>
             <label>
               <span>Квартал</span>
@@ -464,7 +471,7 @@
                 <button class="btn btn-primary" type="submit" id="submit-button">Создать проект</button>
                 <button class="btn btn-ghost hidden" type="button" id="cancel-edit-button">Отменить редактирование</button>
               </div>
-              <p class="hint-text" id="submit-message">После сохранения список, метрики и доски обновятся автоматически.</p>
+              <p class="hint-text" id="submit-message" role="status" aria-live="polite"></p>
             </div>
           </form>
         </section>
@@ -524,34 +531,18 @@
       </section>
     </div>
 
-    <template id="project-card-template">
-      <article class="project-card">
-        <div class="project-card-top">
-          <div>
-            <p class="project-meta"></p>
-            <h3></h3>
-          </div>
-          <span class="pill project-health"></span>
+    <div class="modal-overlay hidden" id="project-dialog" role="dialog" aria-modal="true" aria-labelledby="project-dialog-title">
+      <section class="panel project-dialog-panel">
+        <h2 id="project-dialog-title"></h2>
+        <div id="project-dialog-content"></div>
+        <div class="project-dialog-actions">
+          <button class="btn btn-ghost" type="button" id="project-dialog-cancel">Отмена</button>
+          <button class="btn btn-danger" type="button" id="project-dialog-confirm">Подтвердить</button>
         </div>
-        <p class="project-summary"></p>
-        <div class="project-progress">
-          <div class="progress-bar"><span></span></div>
-          <strong class="progress-value"></strong>
-        </div>
-        <dl class="project-details">
-          <div><dt>Владелец</dt><dd data-field="owner"></dd></div>
-          <div><dt>Указанный бюджет</dt><dd data-field="budget"></dd></div>
-          <div><dt>Срок</dt><dd data-field="deadline"></dd></div>
-          <div><dt>KPI</dt><dd data-field="kpi"></dd></div>
-        </dl>
-        <div class="project-actions">
-          <button class="btn btn-secondary" type="button" data-action="board">Показать доску</button>
-          <button class="btn btn-ghost" type="button" data-action="edit">Редактировать</button>
-          <button class="btn btn-danger" type="button" data-action="delete">Удалить</button>
-        </div>
-      </article>
-    </template>
+      </section>
+    </div>
 
-    <script src="/app.js?v=pm001-overview" defer></script>
+    <script src="/app.js?v=pm002c" defer></script>
+    <script src="/projects-ui.js?v=pm002c" defer></script>
   </body>
 </html>
