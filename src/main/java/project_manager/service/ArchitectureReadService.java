@@ -3,6 +3,7 @@ package project_manager.service;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.annotation.Propagation;
 import project_manager.domain.ArchitectureAssessmentContext;
 import project_manager.domain.ArchitectureReadinessAssessment.RiskLevel;
 import project_manager.domain.ArchitectureReadinessAssessment.Status;
@@ -33,6 +34,16 @@ public class ArchitectureReadService {
 
     @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
     public Card card(String id) {
+        return assembleCard(id);
+    }
+
+    /** Joins the mutation transaction; no separate GET/transaction after commit. */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public Card cardAfterWrite(String id) {
+        return assembleCard(id);
+    }
+
+    private Card assembleCard(String id) {
         ProjectInfo project = repository.project(id);
         var context = assessments.newContext();
         return card(project, new Grouped(repository.load(List.of(id))), context);
