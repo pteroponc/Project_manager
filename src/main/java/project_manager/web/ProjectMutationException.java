@@ -32,6 +32,11 @@ public class ProjectMutationException extends RuntimeException {
         return new ProjectMutationException(HttpStatus.NOT_FOUND, "PROJECT_NOT_FOUND", "Project not found", null, null);
     }
 
+    public static ProjectMutationException boardCardNotFound() {
+        return new ProjectMutationException(HttpStatus.NOT_FOUND, "BOARD_CARD_NOT_FOUND", "Board card not found",
+            null, null);
+    }
+
     public static ProjectMutationException milestoneNotFound() {
         return new ProjectMutationException(HttpStatus.NOT_FOUND, "MILESTONE_NOT_FOUND", "Milestone not found", null, null);
     }

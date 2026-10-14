@@ -14,6 +14,7 @@ import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.hasItem;
 import static org.hamcrest.Matchers.nullValue;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -76,6 +77,18 @@ class ProjectManagerApiIntegrationTest {
                 .content(cardRequest("backlog", "medium", -1)))
             .andExpect(status().isBadRequest())
             .andExpect(jsonPath("$.error").value(containsString("estimate")));
+    }
+
+    @Test
+    void missingProjectOnCardCreateAndDeleteUsesStructuredNotFound() throws Exception {
+        mockMvc.perform(post("/api/projects/missing/board/cards")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(cardRequest("backlog", "medium", 1)))
+            .andExpect(status().isNotFound())
+            .andExpect(jsonPath("$.code").value("PROJECT_NOT_FOUND"));
+        mockMvc.perform(delete("/api/projects/missing"))
+            .andExpect(status().isNotFound())
+            .andExpect(jsonPath("$.code").value("PROJECT_NOT_FOUND"));
     }
 
     @Test

@@ -1,5 +1,6 @@
 package project_manager.service;
 
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
@@ -17,14 +18,17 @@ import java.util.ArrayList;
 public class ProjectDeletionService {
     private final ProjectService projectService;
     private final ProjectRepository projectRepository;
+    private final ProjectWriteLock projectWriteLock;
     private final BoardCardRepository boardCardRepository;
     private final ProjectMilestoneRepository milestoneRepository;
 
     public ProjectDeletionService(ProjectService projectService, ProjectRepository projectRepository,
+                                  ProjectWriteLock projectWriteLock,
                                   BoardCardRepository boardCardRepository,
                                   ProjectMilestoneRepository milestoneRepository) {
         this.projectService = projectService;
         this.projectRepository = projectRepository;
+        this.projectWriteLock = projectWriteLock;
         this.boardCardRepository = boardCardRepository;
         this.milestoneRepository = milestoneRepository;
     }
@@ -41,7 +45,7 @@ public class ProjectDeletionService {
 
     @Transactional
     public void delete(String id) {
-        ProjectEntity project = projectService.requireProject(id);
+        ProjectEntity project = projectWriteLock.require(id);
         long taskCount = boardCardRepository.countByProjectId(id);
         long milestoneCount = milestoneRepository.countByProject_Id(id);
         if (taskCount > 0 || milestoneCount > 0) {
@@ -52,7 +56,13 @@ public class ProjectDeletionService {
                     : "PROJECT_HAS_DEPENDENCIES";
             throw new ProjectConflictException(code, "Project has dependent records and cannot be deleted: " + id);
         }
-        projectRepository.delete(project);
+        try {
+            projectRepository.delete(project);
+            projectRepository.flush();
+        } catch (DataIntegrityViolationException exception) {
+            throw new ProjectConflictException("PROJECT_HAS_DEPENDENCIES",
+                "Project has dependent records and cannot be deleted");
+        }
     }
 
     private List<String> blockers(long taskCount, long milestoneCount) {

@@ -1,7 +1,9 @@
 package project_manager.repository;
 
+import jakarta.persistence.LockModeType;
 import project_manager.domain.ProjectEntity;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 
 import java.util.List;
 import java.util.Optional;
@@ -10,6 +12,10 @@ import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.repository.query.Param;
 
 public interface ProjectRepository extends JpaRepository<ProjectEntity, String> {
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select p from ProjectEntity p where p.id = :id")
+    Optional<ProjectEntity> findByIdForUpdate(@Param("id") String id);
+
     @Modifying
     @Query("update ProjectEntity p set p.version = p.version + 1 where p.id = :id and p.version = :version")
     int incrementVersionIfCurrent(@Param("id") String id, @Param("version") long version);

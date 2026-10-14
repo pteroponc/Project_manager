@@ -6,8 +6,10 @@ import project_manager.domain.BoardColumn;
 import project_manager.domain.ProjectBoard;
 import project_manager.domain.ProjectEntity;
 import project_manager.repository.BoardCardRepository;
+import project_manager.web.ProjectMutationException;
 import project_manager.web.dto.BoardCardRequest;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Comparator;
 import java.util.List;
@@ -19,10 +21,13 @@ import java.util.stream.Collectors;
 public class BoardService {
     private final ProjectService projectService;
     private final BoardCardRepository boardCardRepository;
+    private final ProjectWriteLock projectWriteLock;
 
-    public BoardService(ProjectService projectService, BoardCardRepository boardCardRepository) {
+    public BoardService(ProjectService projectService, BoardCardRepository boardCardRepository,
+                        ProjectWriteLock projectWriteLock) {
         this.projectService = projectService;
         this.boardCardRepository = boardCardRepository;
+        this.projectWriteLock = projectWriteLock;
     }
 
     public ProjectBoard getBoard(String projectId) {
@@ -58,12 +63,14 @@ public class BoardService {
         return List.of("kanban", "scrum", "waterfall");
     }
 
+    @Transactional
     public BoardCard createCard(String projectId, BoardCardRequest request) {
         return createCard(projectId, request, null);
     }
 
+    @Transactional
     public BoardCard createCard(String projectId, BoardCardRequest request, String boardModel) {
-        ProjectEntity project = projectService.requireProject(projectId);
+        ProjectEntity project = projectWriteLock.require(projectId);
         List<BoardColumn> columns = columnsFor(project, boardModel);
         validateColumn(columns, request.columnKey());
         int nextPosition = boardCardRepository
@@ -86,20 +93,22 @@ public class BoardService {
         card.setLabels(normalizeLabels(request.labels()));
         card.setEstimate(request.estimate());
         card.setBlocked(request.blocked());
-        return toCard(boardCardRepository.save(card));
+        return toCard(boardCardRepository.saveAndFlush(card));
     }
 
+    @Transactional
     public BoardCard updateCard(String projectId, String cardId, BoardCardRequest request) {
         return updateCard(projectId, cardId, request, null);
     }
 
+    @Transactional
     public BoardCard updateCard(String projectId, String cardId, BoardCardRequest request, String boardModel) {
-        ProjectEntity project = projectService.requireProject(projectId);
+        ProjectEntity project = projectWriteLock.require(projectId);
         List<BoardColumn> columns = columnsFor(project, boardModel);
         validateColumn(columns, request.columnKey());
         BoardCardEntity card = boardCardRepository.findById(cardId)
             .filter(item -> item.getProjectId().equals(projectId))
-            .orElseThrow(() -> new IllegalArgumentException("Board card not found: " + cardId));
+            .orElseThrow(ProjectMutationException::boardCardNotFound);
 
         if (!card.getColumnKey().equals(request.columnKey())) {
             int nextPosition = boardCardRepository
@@ -111,6 +120,41 @@ public class BoardService {
             card.setColumnKey(request.columnKey());
             card.setPosition(nextPosition);
         }
+        applyCardRequest(card, request);
+        return toCard(boardCardRepository.saveAndFlush(card));
+    }
+
+    /** Service-level transfer for callers that move a card between projects. */
+    @Transactional
+    public BoardCard transferCard(String sourceProjectId, String targetProjectId, String cardId,
+                                  BoardCardRequest request) {
+        projectWriteLock.requireBoth(sourceProjectId, targetProjectId);
+        ProjectEntity target = projectService.requireProject(targetProjectId);
+        List<BoardColumn> columns = columnsFor(target);
+        validateColumn(columns, request.columnKey());
+        BoardCardEntity card = boardCardRepository.findById(cardId)
+            .filter(item -> item.getProjectId().equals(sourceProjectId))
+            .orElseThrow(ProjectMutationException::boardCardNotFound);
+        int nextPosition = boardCardRepository
+            .findByProjectIdAndColumnKeyOrderByPositionAsc(targetProjectId, request.columnKey())
+            .stream().mapToInt(BoardCardEntity::getPosition).max().orElse(-1) + 1;
+        card.setProjectId(targetProjectId);
+        card.setColumnKey(request.columnKey());
+        card.setPosition(nextPosition);
+        applyCardRequest(card, request);
+        return toCard(boardCardRepository.saveAndFlush(card));
+    }
+
+    @Transactional
+    public void deleteCard(String projectId, String cardId) {
+        projectWriteLock.require(projectId);
+        BoardCardEntity card = boardCardRepository.findById(cardId)
+            .filter(item -> item.getProjectId().equals(projectId))
+            .orElseThrow(ProjectMutationException::boardCardNotFound);
+        boardCardRepository.delete(card);
+    }
+
+    private void applyCardRequest(BoardCardEntity card, BoardCardRequest request) {
         card.setTitle(request.title());
         card.setDescription(request.description());
         card.setOwner(request.owner());
@@ -119,15 +163,6 @@ public class BoardService {
         card.setLabels(normalizeLabels(request.labels()));
         card.setEstimate(request.estimate());
         card.setBlocked(request.blocked());
-        return toCard(boardCardRepository.save(card));
-    }
-
-    public void deleteCard(String projectId, String cardId) {
-        projectService.requireProject(projectId);
-        BoardCardEntity card = boardCardRepository.findById(cardId)
-            .filter(item -> item.getProjectId().equals(projectId))
-            .orElseThrow(() -> new IllegalArgumentException("Board card not found: " + cardId));
-        boardCardRepository.delete(card);
     }
 
     private List<BoardColumn> columnsFor(ProjectEntity project) {

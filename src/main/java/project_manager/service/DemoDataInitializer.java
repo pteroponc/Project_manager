@@ -29,7 +29,7 @@ public class DemoDataInitializer implements ApplicationRunner {
     public void run(ApplicationArguments args) {
         // Never repair, refill or overwrite an existing dataset, even in demo mode.
         if (projects.count() != 0 || trains.count() != 0 || cards.count() != 0) return;
-        var examples = projects.saveAll(DemoFixtures.demoProjects());
+        var examples = projects.saveAllAndFlush(DemoFixtures.demoProjects());
         trains.saveAll(DemoFixtures.demoTrains());
         for (var project : examples) {
             String column = switch (project.getDeliveryModel()) {
