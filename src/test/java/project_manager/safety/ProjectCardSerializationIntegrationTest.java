@@ -152,6 +152,7 @@ class ProjectCardSerializationIntegrationTest {
             ScriptUtils.executeSqlScript(connection, new ClassPathResource("pm002a-old-schema.sql"));
             ScriptUtils.executeSqlScript(connection, new FileSystemResource("db/manual/V002__project_model_and_milestones.sql"));
             ScriptUtils.executeSqlScript(connection, new FileSystemResource("db/manual/V003__board_cards_project_fk.sql"));
+            ScriptUtils.executeSqlScript(connection, new FileSystemResource("db/manual/V004__architecture_security.sql"));
             JdbcTemplate jdbc = new JdbcTemplate(new SingleConnectionDataSource(connection, true));
             for (String id : new String[]{"p1", "p2"}) {
                 jdbc.update("insert into projects(id,name,owner,status,health,delivery_model,budget,progress,quarter,"

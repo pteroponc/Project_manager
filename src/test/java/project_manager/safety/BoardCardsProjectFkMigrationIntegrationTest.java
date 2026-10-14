@@ -112,7 +112,11 @@ class BoardCardsProjectFkMigrationIntegrationTest {
     @Test
     void hibernateValidateIsSupplementedByDirectFkMetadataCheck() throws Exception {
         String url = memoryUrl();
-        try (Connection setup = setup(url)) { migrate(setup); }
+        try (Connection setup = setup(url)) {
+            migrate(setup);
+            ScriptUtils.executeSqlScript(setup,
+                new FileSystemResource("db/manual/V004__architecture_security.sql"));
+        }
         try (var context = new SpringApplicationBuilder(ProjectManagerApplication.class)
             .web(WebApplicationType.NONE).run(
                 "--spring.datasource.url=" + url,

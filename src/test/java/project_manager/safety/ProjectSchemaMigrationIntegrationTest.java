@@ -77,6 +77,10 @@ class ProjectSchemaMigrationIntegrationTest {
                 .isInstanceOf(ScriptException.class)
                 .hasStackTraceContaining("PM002B1_PRECONDITION_FAILED_EXPECTED_PM002A_SCHEMA");
             assertThat(jdbc.queryForList("select * from projects order by id")).isEqualTo(afterFirstMigration);
+            ScriptUtils.executeSqlScript(connection,
+                new FileSystemResource("db/manual/V003__board_cards_project_fk.sql"));
+            ScriptUtils.executeSqlScript(connection,
+                new FileSystemResource("db/manual/V004__architecture_security.sql"));
         }
 
         try (var context = new SpringApplicationBuilder(ProjectManagerApplication.class)
