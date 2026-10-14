@@ -16,31 +16,40 @@ import java.util.ArrayList;
 
 @Service
 public class ProjectDeletionService {
-    private final ProjectService projectService;
     private final ProjectRepository projectRepository;
     private final ProjectWriteLock projectWriteLock;
     private final BoardCardRepository boardCardRepository;
     private final ProjectMilestoneRepository milestoneRepository;
+    private final ArchitectureReadService architectureReads;
 
-    public ProjectDeletionService(ProjectService projectService, ProjectRepository projectRepository,
+    public ProjectDeletionService(ProjectRepository projectRepository,
                                   ProjectWriteLock projectWriteLock,
                                   BoardCardRepository boardCardRepository,
-                                  ProjectMilestoneRepository milestoneRepository) {
-        this.projectService = projectService;
+                                  ProjectMilestoneRepository milestoneRepository, ArchitectureReadService architectureReads) {
         this.projectRepository = projectRepository;
         this.projectWriteLock = projectWriteLock;
         this.boardCardRepository = boardCardRepository;
         this.milestoneRepository = milestoneRepository;
+        this.architectureReads = architectureReads;
     }
 
     @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
     public ProjectDeletionImpactResponse getImpact(String id) {
-        ProjectEntity project = projectService.requireProject(id);
+        var architecture = architectureReads.projectDependencies(id);
+        var project = architecture.project();
+        var counts = architecture.counts();
         long taskCount = boardCardRepository.countByProjectId(id);
         long milestoneCount = milestoneRepository.countByProject_Id(id);
-        List<String> blockers = blockers(taskCount, milestoneCount);
+        List<String> blockers = new ArrayList<>(blockers(taskCount, milestoneCount));
+        if (counts.architecturePassportCount() > 0) blockers.add("У проекта есть архитектурный паспорт");
+        if (counts.componentCount() > 0) blockers.add("Компоненты: " + counts.componentCount());
+        if (counts.integrationCount() > 0) blockers.add("Интеграции: " + counts.integrationCount());
+        if (counts.checkCount() > 0) blockers.add("Проверки: " + counts.checkCount());
+        if (counts.securityRiskCount() > 0) blockers.add("Риски ИБ: " + counts.securityRiskCount());
         return new ProjectDeletionImpactResponse(
-            id, project.getName(), taskCount, milestoneCount, blockers.isEmpty(), blockers);
+            id, project.name(), taskCount, milestoneCount, blockers.isEmpty(), List.copyOf(blockers),
+            counts.architecturePassportCount(), counts.componentCount(), counts.integrationCount(),
+            counts.checkCount(), counts.securityRiskCount(), true);
     }
 
     @Transactional

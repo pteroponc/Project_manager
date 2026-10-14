@@ -8,5 +8,11 @@ public record ProjectDeletionImpactResponse(
     long taskCount,
     long milestoneCount,
     boolean deletionAllowed,
-    List<String> blockers
+    List<String> blockers,
+    long architecturePassportCount,
+    long componentCount,
+    long integrationCount,
+    long checkCount,
+    long securityRiskCount,
+    boolean architectureImpactPreliminary
 ) { }
