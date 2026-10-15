@@ -67,8 +67,8 @@ class ArchitectureChildDeletionIntegrationTest {
             jdbc.update("insert into projects(id,name,owner,status,health,budget,progress,quarter,deadline,milestone,risk,dependency,kpi_name,kpi_target,summary,version) "
                 + "values (?,?,'Owner','active','green',2147483647,0,'Q1','','','','','','','Summary',1)",id,id);
             if (!id.equals("no-passport")) {
-                jdbc.update("insert into project_architecture_passports(project_id,criticality,stage,solution_type,architect,solution_summary,availability_requirement,recovery_requirement,last_review_date,version,created_at,updated_at) "
-                    + "values (?,'HIGH','APPROVED','NEW_SOLUTION','Architect','Solution','Availability','Recovery','2026-10-01',0,'2026-01-01T00:00:00Z','2026-02-01T00:00:00Z')",id);
+                jdbc.update("insert into project_architecture_passports(instance_id,project_id,criticality,stage,solution_type,architect,solution_summary,availability_requirement,recovery_requirement,last_review_date,version,created_at,updated_at) "
+                    + "values (random_uuid(),?,'HIGH','APPROVED','NEW_SOLUTION','Architect','Solution','Availability','Recovery','2026-10-01',0,'2026-01-01T00:00:00Z','2026-02-01T00:00:00Z')",id);
                 jdbc.update("insert into project_architecture_data_classes(project_id,class_code) values (?,'PUBLIC')",id);
                 jdbc.update("insert into project_architecture_environments(project_id,environment_code) values (?,'PROD')",id);
             }
@@ -303,7 +303,7 @@ class ArchitectureChildDeletionIntegrationTest {
         try (var executor = Executors.newSingleThreadExecutor()) {
             Card own = new TransactionTemplate(manager).execute(status -> {
                 Card card = mutations.delete("p","integrations-1",ArchitectureChildDeletionService.Kind.INTEGRATION,
-                    Map.of("expectedVersion",new String[]{"3"},"expectedPassportVersion",new String[]{"7"},"confirmed",new String[]{"true"}));
+                    Map.of("expectedPassportInstanceId",new String[]{ArchitectureTestTokens.token(jdbc,"p")},"expectedVersion",new String[]{"3"},"expectedPassportVersion",new String[]{"7"},"confirmed",new String[]{"true"}));
                 assertThat(card.integrations()).hasSize(1); assertThat(card.passport().version()).isEqualTo(8);
                 try {
                     JsonNode external = executor.submit(() -> getCard()).get(5,TimeUnit.SECONDS);
@@ -348,6 +348,7 @@ class ArchitectureChildDeletionIntegrationTest {
     }
     private JsonNode call(MockHttpServletRequestBuilder request,String body,int expected) throws Exception {
         if (body!=null) request.contentType(MediaType.APPLICATION_JSON).content(body);
+        ArchitectureTestTokens.supply(request,jdbc,json);
         var response = mvc.perform(request).andReturn().getResponse();
         assertThat(response.getStatus()).as(response.getContentAsString()).isEqualTo(expected);
         return json.readTree(response.getContentAsString());

@@ -7,10 +7,19 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 import java.util.Map;
 
 @RestControllerAdvice(assignableTypes = {ArchitecturePassportMutationController.class, ArchitectureChildMutationController.class,
-    ArchitectureCheckMutationController.class, ArchitectureRiskMutationController.class, ArchitectureChildDeletionController.class})
+    ArchitectureCheckMutationController.class, ArchitectureRiskMutationController.class, ArchitectureChildDeletionController.class,
+    ArchitecturePassportDeletionController.class})
 public class ArchitectureMutationExceptionHandler {
     @JsonInclude(JsonInclude.Include.NON_NULL)
     public record Error(String code, String error, Map<String, String> fieldErrors, Long currentVersion, String versionResource) { }
+    public record PassportDependenciesError(String code, String error, long currentVersion, String versionResource,
+        project_manager.web.dto.ArchitectureReadDtos.PassportDeletionImpact impact) { }
+
+    @ExceptionHandler(ArchitecturePassportDependenciesException.class)
+    public ResponseEntity<PassportDependenciesError> handlePassportDependencies(ArchitecturePassportDependenciesException error) {
+        return ResponseEntity.status(org.springframework.http.HttpStatus.CONFLICT).body(new PassportDependenciesError(
+            "PASSPORT_HAS_DEPENDENCIES", error.getMessage(), error.version(), "PASSPORT", error.impact()));
+    }
 
     @ExceptionHandler(ArchitectureMutationException.class)
     public ResponseEntity<Error> handle(ArchitectureMutationException error) {

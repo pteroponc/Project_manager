@@ -35,7 +35,7 @@ public class ArchitectureChildMutationService {
     @Transactional
     public Card createComponent(String projectId, JsonNode body) {
         var input = ArchitectureChildInput.parse(body, true, false);
-        var passport = creationPassport(projectId, input.expectedVersion());
+        var passport = creationPassport(projectId, input.expectedVersion(), input.expectedPassportInstanceId());
         var component = new ArchitectureComponentEntity();
         component.setId(UUID.randomUUID().toString()); component.setPassport(passport);
         componentFields(component, input.changes());
@@ -47,7 +47,7 @@ public class ArchitectureChildMutationService {
     @Transactional
     public Card createIntegration(String projectId, JsonNode body) {
         var input = ArchitectureChildInput.parse(body, true, true);
-        var passport = creationPassport(projectId, input.expectedVersion());
+        var passport = creationPassport(projectId, input.expectedVersion(), input.expectedPassportInstanceId());
         var integration = new ArchitectureIntegrationEntity();
         integration.setId(UUID.randomUUID().toString()); integration.setPassport(passport);
         integrationFields(integration, input.changes());
@@ -94,10 +94,11 @@ public class ArchitectureChildMutationService {
         return reads.cardAfterWrite(projectId);
     }
 
-    private ArchitecturePassportEntity creationPassport(String projectId, long expected) {
+    private ArchitecturePassportEntity creationPassport(String projectId, long expected, String instanceId) {
         // Lock order agrees with passport creation and project deletion: project -> passport -> new child.
         projectLock.require(projectId);
         var passport = passports.findForUpdate(projectId).orElseThrow(ArchitectureMutationException::missingPassport);
+        ArchitecturePassportInstance.check(passport, instanceId);
         if (passport.getVersion() != expected) throw ArchitectureMutationException.version("PASSPORT", passport.getVersion());
         return passport;
     }

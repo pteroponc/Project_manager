@@ -14,7 +14,7 @@ import java.util.TreeSet;
 import java.util.regex.Pattern;
 
 /** Closed contract for passport writes, independent of the legacy JSON validator. */
-public record ArchitecturePassportInput(long expectedVersion, Map<String, Object> changes) {
+public record ArchitecturePassportInput(long expectedVersion, String expectedPassportInstanceId, Map<String, Object> changes) {
     private static final List<String> FIELDS = List.of("criticality", "stage", "solutionType", "architect", "solutionSummary",
         "availabilityRequirement", "recoveryRequirement", "lastReviewDate", "dataClasses", "environments");
     static final Set<String> CRITICALITY = Set.of("LOW", "MEDIUM", "HIGH", "CRITICAL");
@@ -36,10 +36,11 @@ public record ArchitecturePassportInput(long expectedVersion, Map<String, Object
         if (body == null || !body.isObject()) throw ArchitectureMutationException.badRequest();
         String versionField = create ? "expectedProjectVersion" : "expectedVersion";
         body.fieldNames().forEachRemaining(field -> {
-            if (!field.equals(versionField) && !FIELDS.contains(field)) throw ArchitectureMutationException.badRequest();
+            if (!field.equals(versionField) && !(field.equals("expectedPassportInstanceId") && !create) && !FIELDS.contains(field)) throw ArchitectureMutationException.badRequest();
         });
+        String instance = create ? null : ArchitecturePassportInstance.json(body);
         long version = version(body.get(versionField), versionField);
-        if (!create && body.size() == 1) throw ArchitectureMutationException.badRequest();
+        if (!create && body.size() == 2) throw ArchitectureMutationException.badRequest();
         Map<String, Object> changes = new LinkedHashMap<>();
         for (String field : FIELDS) {
             JsonNode value = body.get(field);
@@ -61,7 +62,7 @@ public record ArchitecturePassportInput(long expectedVersion, Map<String, Object
             };
             changes.put(field, parsed);
         }
-        return new ArchitecturePassportInput(version, Collections.unmodifiableMap(changes));
+        return new ArchitecturePassportInput(version, instance, Collections.unmodifiableMap(changes));
     }
     static long version(JsonNode value, String field) {
         if (value == null || !value.isIntegralNumber() || !value.canConvertToLong()

@@ -70,8 +70,8 @@ class ArchitectureChildMutationIntegrationTest {
         for (String id : List.of("p", "q", "no-passport")) {
             jdbc.update("insert into projects(id,name,owner,status,health,budget,progress,quarter,deadline,milestone,risk,dependency,kpi_name,kpi_target,summary,version) "
                 + "values (?,?,'Owner','active','green',2147483647,0,'Q1','','','','','','','Summary',1)",id,id);
-            if (!id.equals("no-passport")) jdbc.update("insert into project_architecture_passports(project_id,criticality,stage,solution_type,version,created_at,updated_at) "
-                + "values (?,'HIGH','NOT_STARTED','NEW_SOLUTION',0,'2026-01-01T00:00:00Z','2026-02-01T00:00:00Z')",id);
+            if (!id.equals("no-passport")) jdbc.update("insert into project_architecture_passports(instance_id,project_id,criticality,stage,solution_type,version,created_at,updated_at) "
+                + "values (random_uuid(),?,'HIGH','NOT_STARTED','NEW_SOLUTION',0,'2026-01-01T00:00:00Z','2026-02-01T00:00:00Z')",id);
         }
     }
 
@@ -374,7 +374,7 @@ class ArchitectureChildMutationIntegrationTest {
     void responseIsAssembledInsideWriteTransactionWithItsOwnUncommittedChild(String kind) throws Exception {
         try (var executor = Executors.newSingleThreadExecutor()) {
             Card own = new TransactionTemplate(manager).execute(status -> {
-                Card result = kind.equals("components") ? mutations.createComponent("p",createBody(kind,0)) : mutations.createIntegration("p",createBody(kind,0));
+                Card result = kind.equals("components") ? mutations.createComponent("p",((ObjectNode)createBody(kind,0)).put("expectedPassportInstanceId",ArchitectureTestTokens.token(jdbc,"p"))) : mutations.createIntegration("p",((ObjectNode)createBody(kind,0)).put("expectedPassportInstanceId",ArchitectureTestTokens.token(jdbc,"p")));
                 assertThat(result.passport().version()).isEqualTo(1);
                 try {
                     JsonNode external = executor.submit(() -> getCard()).get(5,TimeUnit.SECONDS);
@@ -423,6 +423,7 @@ class ArchitectureChildMutationIntegrationTest {
     }
     private JsonNode call(MockHttpServletRequestBuilder request, String body, int expected) throws Exception {
         if (body != null) request.contentType(MediaType.APPLICATION_JSON).content(body);
+        ArchitectureTestTokens.supply(request,jdbc,json);
         var response = mvc.perform(request).andReturn().getResponse();
         assertThat(response.getStatus()).as(response.getContentAsString()).isEqualTo(expected);
         return json.readTree(response.getContentAsString());

@@ -96,6 +96,11 @@ public class ArchitectureReadService {
     @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
     public PassportDeletionImpact passportImpact(String id) {
         Counts counts = projectDependencies(id).counts();
+        return passportImpact(id, counts);
+    }
+
+    /** Shared pure formatter for GET and the counts rechecked under deletion locks. */
+    static PassportDeletionImpact passportImpact(String id, Counts counts) {
         List<String> blockers = new ArrayList<>();
         if (counts.architecturePassportCount() == 0) blockers.add("Паспорт отсутствует");
         blocker(blockers, counts.componentCount(), "Компоненты");

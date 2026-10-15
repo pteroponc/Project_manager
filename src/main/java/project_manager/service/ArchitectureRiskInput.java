@@ -13,7 +13,7 @@ import java.util.Set;
 import static project_manager.service.ArchitecturePassportInput.*;
 
 /** Explicit commands; merged business state is validated before changing a managed entity. */
-public record ArchitectureRiskInput(long expectedVersion, Map<String, Object> changes) {
+public record ArchitectureRiskInput(long expectedVersion, String expectedPassportInstanceId, Map<String, Object> changes) {
     private static final List<String> FIELDS = List.of("name", "description", "category", "probability", "impact", "owner",
         "treatmentDueDate", "treatmentPlan", "status", "closedDate", "acceptanceJustification");
     private static final Set<String> REQUIRED = Set.of("name", "category", "probability", "impact", "status");
@@ -24,8 +24,9 @@ public record ArchitectureRiskInput(long expectedVersion, Map<String, Object> ch
         if (body == null || !body.isObject()) throw ArchitectureMutationException.badRequest();
         String versionField = create ? "expectedPassportVersion" : "expectedVersion";
         body.fieldNames().forEachRemaining(field -> {
-            if (!field.equals(versionField) && !FIELDS.contains(field)) throw ArchitectureMutationException.badRequest();
+            if (!field.equals(versionField) && !(field.equals("expectedPassportInstanceId") && create) && !FIELDS.contains(field)) throw ArchitectureMutationException.badRequest();
         });
+        String instance = create ? ArchitecturePassportInstance.json(body) : null;
         long expected = version(body.get(versionField), versionField);
         if (!create && body.size() == 1) throw ArchitectureMutationException.badRequest();
         Map<String, Object> changes = new LinkedHashMap<>();
@@ -47,7 +48,7 @@ public record ArchitectureRiskInput(long expectedVersion, Map<String, Object> ch
             };
             changes.put(field, parsed);
         }
-        return new ArchitectureRiskInput(expected, Collections.unmodifiableMap(changes));
+        return new ArchitectureRiskInput(expected, instance, Collections.unmodifiableMap(changes));
     }
 
     public State merge(SecurityRiskEntity existing) {

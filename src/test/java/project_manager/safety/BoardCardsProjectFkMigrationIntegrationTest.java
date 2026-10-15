@@ -116,6 +116,7 @@ class BoardCardsProjectFkMigrationIntegrationTest {
             migrate(setup);
             ScriptUtils.executeSqlScript(setup,
                 new FileSystemResource("db/manual/V004__architecture_security.sql"));
+            ScriptUtils.executeSqlScript(setup, new FileSystemResource("db/manual/V005__architecture_passport_instance.sql"));
         }
         try (var context = new SpringApplicationBuilder(ProjectManagerApplication.class)
             .web(WebApplicationType.NONE).run(

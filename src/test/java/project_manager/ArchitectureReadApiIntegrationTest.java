@@ -366,8 +366,8 @@ class ArchitectureReadApiIntegrationTest {
             + "values (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", id,name,owner,status,"green",quarter,"","","","","","","hidden-summary",2147483647,0,7);
     }
     private void passport(String id, String criticality, String stage, boolean complete) {
-        jdbc.update("insert into project_architecture_passports (project_id,criticality,stage,solution_type,architect,solution_summary,availability_requirement,recovery_requirement,last_review_date,version,created_at,updated_at) "
-            + "values (?,?,?,?,?,?,?,?,?,?,?,?)", id,criticality,stage,"NEW_SOLUTION",complete ? "Architect" : null,complete ? "Solution" : null,
+        jdbc.update("insert into project_architecture_passports (instance_id,project_id,criticality,stage,solution_type,architect,solution_summary,availability_requirement,recovery_requirement,last_review_date,version,created_at,updated_at) "
+            + "values (random_uuid(),?,?,?,?,?,?,?,?,?,?,?,?)", id,criticality,stage,"NEW_SOLUTION",complete ? "Architect" : null,complete ? "Solution" : null,
             complete ? "99.9%" : null,complete ? "1 hour" : null,complete ? "2026-10-01" : null,8,
             "2026-01-01T00:00:00Z","2026-02-01T00:00:00Z");
     }

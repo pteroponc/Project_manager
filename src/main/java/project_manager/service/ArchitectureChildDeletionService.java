@@ -59,6 +59,7 @@ public class ArchitectureChildDeletionService {
             }
             default -> throw new IllegalStateException("Unsupported deletion kind");
         }
+        ArchitecturePassportInstance.check(passport, input.expectedPassportInstanceId());
         if (passport.getVersion() != input.expectedPassportVersion()) throw ArchitectureMutationException.version("PASSPORT", passport.getVersion());
         if (version != input.expectedVersion()) throw ArchitectureMutationException.version(kind.name(), version);
         if (record instanceof ArchitectureIntegrationEntity integration) {

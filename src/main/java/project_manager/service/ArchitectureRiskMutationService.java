@@ -35,6 +35,7 @@ public class ArchitectureRiskMutationService {
         input.merge(risk).applyTo(risk);
         projectLock.require(projectId);
         var passport = passports.findForUpdate(projectId).orElseThrow(ArchitectureMutationException::missingPassport);
+        ArchitecturePassportInstance.check(passport, input.expectedPassportInstanceId());
         if (passport.getVersion() != input.expectedVersion()) throw ArchitectureMutationException.version("PASSPORT", passport.getVersion());
         risk.setId(UUID.randomUUID().toString()); risk.setPassport(passport);
         // Hibernate assigns the initial @Version; level and acceptance verification are read projections only.

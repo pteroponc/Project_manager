@@ -87,7 +87,7 @@ in-memory базу. PM-003 не должен ослаблять эти огра�
 
 | Таблица / сущность | Столбцы и nullable | Ключи, ограничения и индексы |
 |---|---|---|
-| `project_architecture_passports` — архитектурный паспорт | `project_id VARCHAR(255) NOT NULL`; `criticality VARCHAR(16) NOT NULL`; `stage VARCHAR(32) NOT NULL`; `solution_type VARCHAR(32) NOT NULL`; `architect VARCHAR(255) NULL`; `solution_summary VARCHAR(2000) NULL`; `availability_requirement VARCHAR(1000) NULL`; `recovery_requirement VARCHAR(1000) NULL`; `last_review_date DATE NULL`; `version BIGINT NOT NULL DEFAULT 0`; `created_at TIMESTAMP WITH TIME ZONE NOT NULL`; `updated_at TIMESTAMP WITH TIME ZONE NOT NULL` | PK/FK `project_id → projects.id`, `NO ACTION`; индекс `(criticality, stage, project_id)` для портфеля. `version >= 0`. |
+| `project_architecture_passports` — архитектурный паспорт | `project_id VARCHAR(255) NOT NULL`; `instance_id VARCHAR(36) NOT NULL` (V005, UNIQUE `uq_arch_passport_instance`, UUID сервера, неизменяемый); `criticality VARCHAR(16) NOT NULL`; `stage VARCHAR(32) NOT NULL`; `solution_type VARCHAR(32) NOT NULL`; `architect VARCHAR(255) NULL`; `solution_summary VARCHAR(2000) NULL`; `availability_requirement VARCHAR(1000) NULL`; `recovery_requirement VARCHAR(1000) NULL`; `last_review_date DATE NULL`; `version BIGINT NOT NULL DEFAULT 0`; `created_at TIMESTAMP WITH TIME ZONE NOT NULL`; `updated_at TIMESTAMP WITH TIME ZONE NOT NULL` | PK/FK `project_id → projects.id`, `NO ACTION`; индекс `(criticality, stage, project_id)` для портфеля. `version >= 0`. |
 | `project_architecture_data_classes` — классы данных паспорта | `project_id VARCHAR(255) NOT NULL`; `class_code VARCHAR(32) NOT NULL` | PK `(project_id, class_code)`; FK на паспорт `NO ACTION`. Никаких CSV/JSON. Изменение набора через версионный PATCH паспорта. |
 | `project_architecture_environments` — целевые среды | `project_id VARCHAR(255) NOT NULL`; `environment_code VARCHAR(16) NOT NULL` | PK `(project_id, environment_code)`; FK на паспорт `NO ACTION`. Только категория среды, без адреса/конфигурации. |
 | `project_architecture_components` — компоненты | `id VARCHAR(36) NOT NULL`; `project_id VARCHAR(255) NOT NULL`; `name VARCHAR(255) NOT NULL`; `component_type VARCHAR(32) NOT NULL`; `purpose VARCHAR(1000) NULL`; `platform VARCHAR(255) NULL`; `criticality VARCHAR(16) NOT NULL`; `external_component BOOLEAN NOT NULL`; `position INTEGER NOT NULL`; `version BIGINT NOT NULL DEFAULT 0` | PK `id`; FK на паспорт `NO ACTION`; `position >= 0`; индекс `(project_id, position, id)` для устойчивого порядка. |
@@ -211,6 +211,19 @@ PM-003B3.2b: десять записей проверок создаёт тол�
 
 ## 4. Проект API и конкурентных изменений
 
+Согласованное уточнение B3.3b: `passport.instanceId` — неизменяемый UUID каждого
+экземпляра, хранится в V005 и переживает перезапуск. Новый паспорт того же проекта
+получает другой UUID, даже при technical version=0 и documentVersion=1.0.
+`expectedPassportInstanceId` обязателен в PATCH/DELETE паспорта, POST компонента/
+интеграции/риска, initialize, DELETE всех четырёх дочерних типов. Для JSON это поле
+тела, для DELETE — одиночный query-параметр. POST самого паспорта по-прежнему требует
+expectedProjectVersion; PATCH ребёнка — его UUID и expectedVersion без токена паспорта.
+Под locks: существование/принадлежность → instanceId → числовые версии → запись.
+Неверный/отсутствующий UUID — 400; несовпадение — 409 PASSPORT_INSTANCE_CONFLICT,
+реальная currentVersion и versionResource=PASSPORT; отсутствующий ресурс — 404.
+Не подставлять актуальный токен в старый запрос и не повторять автоматически.
+Полный контракт и ручная V005: `docs/PM-003B3.3b-manual-V005.md`.
+
 Все GET только читают и возвращают снимок; отсутствующий проект — 404 `PROJECT_NOT_FOUND`.
 `GET /api/projects/{id}/architecture` для существующего проекта **без** паспорта возвращает
 200 с `passport: null`, пустыми списками, `NOT_ASSESSED`, пользовательским названием
@@ -235,7 +248,7 @@ PM-003B3.2b: десять записей проверок создаёт тол�
 | `GET /api/projects/{id}/architecture` | Полный паспорт, классы/среды, компоненты, интеграции, проверки, риски с версиями; рассчитанные уровни риска и готовность. Не включает старый `budget` и технические секреты. |
 | `POST /api/projects/{id}/architecture` | PM-003B3.1: создать паспорт под общим `ProjectWriteLock`; `expectedProjectVersion`, обязательные `criticality`, `stage`, `solutionType`. 201 с полным агрегатом после flush в той же транзакции. Версия паспорта 0, проекта +1; повторное создание — 409. Автоматического создания проверок/дочерних записей нет. |
 | `PATCH /api/projects/{id}/architecture` | PM-003B3.1: явно переданные поля/наборы классов и сред; `expectedVersion` паспорта, lock строки паспорта. `null` — только для nullable-реквизитов; отсутствие поля — сохранить; массив полностью заменяет набор, `[]` очищает, `null` запрещён. 200 с полным агрегатом в той же транзакции; версия паспорта +1 ровно один раз, включая прежние значения, версия проекта не меняется. |
-| `DELETE /api/projects/{id}/architecture?expectedVersion=…` | Следующий этап, в B3.3a не реализован. Только когда нет компонентов, интеграций, проверок, рисков, классов и сред; иначе 409 и impact. Никакого каскада. |
+| `DELETE /api/projects/{id}/architecture?expectedVersion=…&confirmed=true` | PM-003B3.3b: только пустой паспорт, expectedPassportInstanceId/expectedVersion/confirmed обязательны и одиночные. Locks проект → паспорт, проверка версии и повторный подсчёт шести видов зависимостей; при зависимостях 409 с актуальным impact. Успех 200 с passport=null и PASSPORT_MISSING, техническая версия проекта +1, полный ответ в той же write-транзакции. Никакого каскада или автоматической очистки классов/сред. |
 | `GET /api/projects/{id}/architecture/deletion-impact` | Отдельные количества компонент, интеграций, проверок, рисков, классов и сред; причины запрета удаления паспорта. Если паспорта нет: `passportPresent=false`, `deletionAllowed=false`, причина «Паспорт отсутствует». |
 | `POST /api/projects/{id}/architecture/checks/initialize` | PM-003B3.2b: `expectedPassportVersion`, только пустой набор; ровно десять проверок, техническая версия паспорта +1; 201 с полным агрегатом в той же write-транзакции. Любой непустой набор — 409. |
 | `PATCH /api/projects/{id}/architecture/checks/{recordId}` | PM-003B3.2b: `expectedVersion` проверки, принадлежность проекту; только required/status/owner/plannedDate/actualDate/comment; проверка объединённого состояния до изменения сущности; версия проверки +1, версии родителей прежние; 200 с полным агрегатом. |
@@ -258,9 +271,9 @@ dirty checking; отсутствие частичных изменений пр�
 дубликатов нет. Даты/длины/NFC/управленческий текст валидируются до изменений.
 `createdAt` и `updatedAt` задаются сервером в UTC через Clock; PATCH сохраняет `createdAt`.
 409 версии содержит реальную `currentVersion` и `versionResource=PROJECT|PASSPORT`.
-Правила старых API не меняются. DELETE паспорта и расширение DELETE проекта относятся
-к следующим этапам B3; инициализация/PATCH проверок — B3.2b, POST/PATCH рисков — B3.2c,
-DELETE дочерних записей — B3.3a.
+Правила старых API не меняются. Расширение DELETE проекта относится к следующему
+этапу B3; инициализация/PATCH проверок — B3.2b, POST/PATCH рисков — B3.2c,
+DELETE дочерних записей — B3.3a, DELETE пустого паспорта — B3.3b.
 
 Пользовательская версия нового паспорта — **1.0** (`passport.documentVersion`, read-only).
 Это метаданные документа, не счётчик конкурентных изменений. `passport.version` и версии
@@ -302,6 +315,13 @@ PASSPORT_VERSION_CONFLICT, иначе конфликт соответствую�
 Удалённая проверка не восстанавливается GET; неполный набор не даёт READY, initialize
 при любом оставшемся наборе даёт 409. Даты паспорта, версия проекта и documentVersion
 не меняются. FK NO ACTION сохранены, каскадов нет; ошибки после flush откатывают всё.
+
+Контракт удаления пустого паспорта B3.3b: `docs/PM-003B3.3b-passport-deletion-api.md`.
+Удаляются только паспорт и его принадлежность проекту; техническая версия проекта
+атомарно увеличивается на 1. При зависимостях никаких записей: пользователь сначала
+явно удаляет дочерние записи и очищает классы/среды PATCH. При конфликте зависимости
+ответ содержит тот же формат impact и причины, что GET deletion-impact; версии
+проверяются раньше зависимостей. Ошибка после flush откатывает паспорт и версию проекта.
 
 Рекомендация по версиям: паспорт и каждая компонентная/интеграционная/проверочная/рисковая
 строка имеют **свою** `@Version`. Редактирование двух разных строк разными специалистами не
@@ -384,6 +404,13 @@ versioned DELETE интеграции после подтверждения уд
 расширении; сейчас вложения и документы не проектируются.
 
 ## 7. Ручная миграция следующей версии и откат
+
+Дополнение B3.3b: после выпущенной V004 применяется отдельная ручная V005
+`db/manual/V005__architecture_passport_instance.sql` с полной precondition схемы V004,
+уникальными UUID существующих паспортов, NOT NULL/UNIQUE и postcondition/маркером.
+V002/V003/V004 не изменяются. Автозапуска нет; записи остановлены на весь скрипт,
+при частичном DDL — восстановление проверенной резервной копии. Рабочая БД в этом
+этапе не открывается. Инструкция: `docs/PM-003B3.3b-manual-V005.md`.
 
 В PM-003B1 подготовить **два последовательных ручных скрипта** вне
 `src/main/resources`: `db/manual/V003__board_cards_project_fk.sql` и
@@ -480,7 +507,8 @@ V003/V004 не применять к рабочей базе автоматич�
 | PM-003B3.2b | Только явная инициализация десяти проверок при пустом наборе и PATCH итогового состояния; общий lock проекта/паспорта для набора, независимые версии/locks проверок для PATCH; без поштучного POST, DELETE, рисков, frontend и изменений схемы. |
 | PM-003B3.2c | Только POST/PATCH ИБ-рисков: общий lock проекта/паспорта при создании, независимые версии/locks рисков при PATCH, проверка объединённого состояния ACCEPTED/CLOSED; вычисляемый level и неизменная формула B2, UNVERIFIED. Без DELETE, frontend, операций проверок и изменений схемы. |
 | PM-003B3.3a | Четыре DELETE дочерних записей с обеими техническими версиями и confirmed=true; общий порядок locks проект → паспорт → запись, паспорт +1, явное атомарное удаление классификации интеграции. Полный агрегат после flush в той же транзакции; без DELETE паспорта/расширения DELETE проекта, frontend и изменения схемы. |
-| PM-003B3 (следующие этапы) | DELETE паспорта; расширение DELETE проекта только после подтверждённого FK V003 и соблюдения общего протокола блокировки проекта с повторной проверкой зависимостей. |
+| PM-003B3.3b | DELETE только пустого паспорта: проект → паспорт, instanceId/версия и шесть счётчиков под locks, 409 с impact, проект +1 при успехе; полный DTO в той же транзакции. Ручная V005 с UUID экземпляра и защита от старых команд после DELETE/recreate, без автоматической очистки/каскадов, расширения DELETE проекта и frontend. |
+| PM-003B3 (следующие этапы) | Расширение DELETE проекта только после подтверждённого FK V003 и соблюдения общего протокола блокировки проекта с повторной проверкой зависимостей. |
 | PM-003C | Карточка архитектуры и ИБ в существующей навигации/карточке проекта: паспорт, компоненты, интеграции, проверки, риски, причины и версионные конфликты. Согласовать макет до кода. |
 | PM-003D | Портфельный экран архитектурной готовности с фильтрами/переходами; только серверные агрегаты, без раскрытия технических сведений. Согласовать макет до кода. |
 | PM-003E | После отдельного разрешения: backup, проверка восстановления, миграция и запуск новой версии на **восстановленной копии**, сравнение данных, эксплуатационная и UI-приёмка. Рабочая миграция — отдельное решение. |

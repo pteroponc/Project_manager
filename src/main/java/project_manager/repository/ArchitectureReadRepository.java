@@ -19,6 +19,21 @@ public class ArchitectureReadRepository {
         return em.createQuery(projectSelect() + " where p.id=:id", ProjectInfo.class).setParameter("id", id)
             .getResultList().stream().findFirst().orElseThrow(ProjectMutationException::projectNotFound);
     }
+    /** Caller has verified/locked the existing passport; scalar counts never load or modify children. */
+    public Counts dependenciesOfExistingPassport(String id) {
+        return new Counts(1,
+            count("ArchitectureComponentEntity", "passport.projectId", id),
+            count("ArchitectureIntegrationEntity", "passport.projectId", id),
+            count("ArchitectureCheckEntity", "passport.projectId", id),
+            count("SecurityRiskEntity", "passport.projectId", id),
+            count("ArchitectureDataClassEntity", "id.projectId", id),
+            count("ArchitectureEnvironmentEntity", "id.projectId", id));
+    }
+    private long count(String entity, String owner, String id) {
+        // Both query fragments are internal constants, never request input.
+        return em.createQuery("select count(r) from " + entity + " r where r." + owner + "=:id", Long.class)
+            .setParameter("id", id).getSingleResult();
+    }
     public List<String> quarters() {
         return em.createQuery("select distinct lower(trim(p.quarter)) from ProjectEntity p", String.class).getResultList();
     }
@@ -43,7 +58,7 @@ public class ArchitectureReadRepository {
         List<Check> checks = new ArrayList<>(); List<RiskData> risks = new ArrayList<>();
         for (int start = 0; start < projectIds.size(); start += BATCH_SIZE) {
             List<String> ids = projectIds.subList(start, Math.min(start + BATCH_SIZE, projectIds.size()));
-            passports.addAll(query(Passport.class, "p.projectId,p.criticality,p.stage,p.solutionType,p.architect,p.solutionSummary,"
+            passports.addAll(query(Passport.class, "p.projectId,p.instanceId,p.criticality,p.stage,p.solutionType,p.architect,p.solutionSummary,"
                 + "p.availabilityRequirement,p.recoveryRequirement,p.lastReviewDate,p.version,p.createdAt,p.updatedAt",
                 "ArchitecturePassportEntity p", "p.projectId", ids));
             data.addAll(query(Membership.class, "d.id.projectId,d.id.classCode", "ArchitectureDataClassEntity d", "d.id.projectId", ids));

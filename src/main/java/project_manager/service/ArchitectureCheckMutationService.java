@@ -29,9 +29,11 @@ public class ArchitectureCheckMutationService {
 
     @Transactional
     public Card initialize(String projectId, JsonNode body) {
-        long expected = ArchitectureCheckInput.initializationVersion(body);
+        var input = ArchitectureCheckInput.initializationVersion(body);
+        long expected = input.version();
         projectLock.require(projectId);
         var passport = passports.findForUpdate(projectId).orElseThrow(ArchitectureMutationException::missingPassport);
+        ArchitecturePassportInstance.check(passport, input.instanceId());
         if (passport.getVersion() != expected) throw ArchitectureMutationException.version("PASSPORT", passport.getVersion());
         if (checks.anyForProject(projectId)) throw ArchitectureMutationException.checksAlreadyExist();
         for (String type : ArchitectureReadinessAssessmentService.CHECK_TYPES) {

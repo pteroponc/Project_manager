@@ -49,6 +49,10 @@ public class ArchitectureMutationException extends RuntimeException {
         return new ArchitectureMutationException(HttpStatus.CONFLICT, resource + "_VERSION_CONFLICT",
             "Version does not match", null, version, resource);
     }
+    public static ArchitectureMutationException instanceConflict(long version) {
+        return new ArchitectureMutationException(HttpStatus.CONFLICT, "PASSPORT_INSTANCE_CONFLICT",
+            "Passport instance does not match", null, version, "PASSPORT");
+    }
     public HttpStatus status() { return status; }
     public String code() { return code; }
     public Map<String, String> fieldErrors() { return fieldErrors; }

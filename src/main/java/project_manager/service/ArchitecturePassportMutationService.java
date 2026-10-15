@@ -41,6 +41,7 @@ public class ArchitecturePassportMutationService {
         if (project.getVersion() != input.expectedVersion()) throw ArchitectureMutationException.version("PROJECT", project.getVersion());
         var passport = new ArchitecturePassportEntity();
         passport.setProject(project); passport.setProjectId(id);
+        passport.setInstanceId(java.util.UUID.randomUUID().toString());
         passport.setVersion(0L); passport.setCreatedAt(clock.instant()); passport.setUpdatedAt(passport.getCreatedAt());
         fields(passport, input.changes());
         em.persist(passport); em.flush();
@@ -60,6 +61,7 @@ public class ArchitecturePassportMutationService {
         var input = ArchitecturePassportInput.parse(body, false);
         if (!projects.existsById(id)) throw ProjectMutationException.projectNotFound();
         var passport = passports.findForUpdate(id).orElseThrow(ArchitectureMutationException::missingPassport);
+        ArchitecturePassportInstance.check(passport, input.expectedPassportInstanceId());
         if (passport.getVersion() != input.expectedVersion()) throw ArchitectureMutationException.version("PASSPORT", passport.getVersion());
         fields(passport, input.changes());
         passport.setUpdatedAt(clock.instant());

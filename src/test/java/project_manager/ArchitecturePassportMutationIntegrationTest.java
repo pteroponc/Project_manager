@@ -371,7 +371,9 @@ class ArchitecturePassportMutationIntegrationTest {
             assertThat(jdbc.queryForObject("select count(*) from " + table + " d left join project_architecture_passports a on a.project_id=d.project_id where a.project_id is null",Long.class)).isZero();
     }
     private JsonNode call(MockHttpServletRequestBuilder request, String body, int expected) throws Exception {
-        var result = mvc.perform(request.contentType(MediaType.APPLICATION_JSON).content(body)).andReturn().getResponse();
+        request.contentType(MediaType.APPLICATION_JSON).content(body);
+        ArchitectureTestTokens.supply(request,jdbc,json);
+        var result = mvc.perform(request).andReturn().getResponse();
         assertThat(result.getStatus()).as(result.getContentAsString()).isEqualTo(expected);
         return json.readTree(result.getContentAsString());
     }

@@ -8,6 +8,7 @@ import java.time.Instant;
 /** Storage only: no delete cascades, lifecycle writes or readiness calculation. */
 @Entity
 @Table(name = "project_architecture_passports",
+    uniqueConstraints = @UniqueConstraint(name = "uq_arch_passport_instance", columnNames = "instance_id"),
     indexes = {@Index(name = "idx_arch_passport_portfolio", columnList = "criticality, stage, project_id")})
 @Check(name = "ck_arch_passports_criticality", constraints = "criticality IN ('LOW', 'MEDIUM', 'HIGH', 'CRITICAL')")
 @Check(name = "ck_arch_passports_stage", constraints = "stage IN ('NOT_STARTED', 'IN_DESIGN', 'IN_REVIEW', 'APPROVED', 'CHANGES_REQUIRED')")
@@ -18,6 +19,11 @@ public class ArchitecturePassportEntity {
     @Id
     @Column(name = "project_id", nullable = false, length = 255)
     private String projectId;
+
+    @Column(name = "instance_id", nullable = false, length = 36, updatable = false)
+    private String instanceId;
+    public String getInstanceId() { return instanceId; }
+    public void setInstanceId(String value) { instanceId = value; }
 
     @Column(name = "criticality", nullable = false, length = 16)
     private String criticality;

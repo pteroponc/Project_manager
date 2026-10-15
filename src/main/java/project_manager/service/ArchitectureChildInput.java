@@ -11,7 +11,7 @@ import java.util.Set;
 import static project_manager.service.ArchitecturePassportInput.*;
 
 /** Component/integration commands reuse B3.1 text, code, set and version validation. */
-public record ArchitectureChildInput(long expectedVersion, Map<String, Object> changes) {
+public record ArchitectureChildInput(long expectedVersion, String expectedPassportInstanceId, Map<String, Object> changes) {
     private static final List<String> COMPONENT_FIELDS = List.of("name", "componentType", "purpose", "platform", "criticality", "externalComponent", "position");
     private static final List<String> INTEGRATION_FIELDS = List.of("name", "sourceSystem", "targetSystem", "direction", "interactionType",
         "authCategory", "criticality", "readiness", "responsibleParty", "comment", "dataClasses");
@@ -27,8 +27,9 @@ public record ArchitectureChildInput(long expectedVersion, Map<String, Object> c
         List<String> fields = integration ? INTEGRATION_FIELDS : COMPONENT_FIELDS;
         String versionField = create ? "expectedPassportVersion" : "expectedVersion";
         body.fieldNames().forEachRemaining(field -> {
-            if (!field.equals(versionField) && !fields.contains(field)) throw ArchitectureMutationException.badRequest();
+            if (!field.equals(versionField) && !(field.equals("expectedPassportInstanceId") && create) && !fields.contains(field)) throw ArchitectureMutationException.badRequest();
         });
+        String instance = create ? ArchitecturePassportInstance.json(body) : null;
         long expected = version(body.get(versionField), versionField);
         if (!create && body.size() == 1) throw ArchitectureMutationException.badRequest();
         Map<String, Object> changes = new LinkedHashMap<>();
@@ -65,6 +66,6 @@ public record ArchitectureChildInput(long expectedVersion, Map<String, Object> c
             };
             changes.put(field, parsed);
         }
-        return new ArchitectureChildInput(expected, Collections.unmodifiableMap(changes));
+        return new ArchitectureChildInput(expected, instance, Collections.unmodifiableMap(changes));
     }
 }

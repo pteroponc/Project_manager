@@ -17,11 +17,12 @@ public record ArchitectureCheckInput(long expectedVersion, Map<String, Object> c
     private static final List<String> FIELDS = List.of("required", "status", "owner", "plannedDate", "actualDate", "comment");
     private static final Set<String> STATUSES = Set.of("NOT_REQUIRED", "NOT_STARTED", "IN_PROGRESS", "IN_REVIEW", "PASSED", "CHANGES_REQUIRED", "BLOCKED");
 
-    public static long initializationVersion(JsonNode body) {
+    public static Initialization initializationVersion(JsonNode body) {
         object(body);
-        if (body.size() != 1 || !body.has("expectedPassportVersion")) throw ArchitectureMutationException.badRequest();
-        return version(body.get("expectedPassportVersion"), "expectedPassportVersion");
+        if (body.size() != 2 || !body.has("expectedPassportVersion") || !body.has("expectedPassportInstanceId")) throw ArchitectureMutationException.badRequest();
+        return new Initialization(version(body.get("expectedPassportVersion"), "expectedPassportVersion"), ArchitecturePassportInstance.json(body));
     }
+    public record Initialization(long version, String instanceId) { }
     public static ArchitectureCheckInput patch(JsonNode body) {
         object(body);
         body.fieldNames().forEachRemaining(field -> {

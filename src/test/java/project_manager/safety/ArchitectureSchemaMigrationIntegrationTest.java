@@ -111,7 +111,7 @@ class ArchitectureSchemaMigrationIntegrationTest {
     @Test
     void allRepositoriesPersistNullableFieldsAndSetsAndReadsDoNotWrite() throws Exception {
         String url = memoryUrl();
-        try (Connection connection = setup(url, true)) { script(connection, "V004__architecture_security.sql"); }
+        try (Connection connection = setup(url, true)) { script(connection, "V004__architecture_security.sql"); script(connection, "V005__architecture_passport_instance.sql"); }
         try (var context = new SpringApplicationBuilder(ProjectManagerApplication.class)
             .web(WebApplicationType.NONE).run("--spring.datasource.url=" + url,
                 "--spring.jpa.hibernate.ddl-auto=validate", "--spring.profiles.active=default", "--logging.level.root=ERROR")) {
@@ -130,7 +130,7 @@ class ArchitectureSchemaMigrationIntegrationTest {
             String checkId = UUID.randomUUID().toString();
             String riskId = UUID.randomUUID().toString();
             tx.executeWithoutResult(status -> {
-                ArchitecturePassportEntity passport = new ArchitecturePassportEntity();
+                ArchitecturePassportEntity passport = new ArchitecturePassportEntity(); passport.setInstanceId(UUID.randomUUID().toString());
                 passport.setProject(context.getBean(ProjectRepository.class).findById("zero").orElseThrow());
                 passport.setCriticality("HIGH"); passport.setStage("IN_DESIGN"); passport.setSolutionType("NEW_SOLUTION");
                 passport.setCreatedAt(Instant.parse("2026-10-14T10:00:00Z"));
@@ -256,7 +256,7 @@ class ArchitectureSchemaMigrationIntegrationTest {
         assertThat(allRows(jdbc)).isEqualTo(before);
     }
 
-    private static Connection setup(String url, boolean v003) throws Exception {
+    static Connection setup(String url, boolean v003) throws Exception {
         Connection connection = DriverManager.getConnection(url, "sa", "");
         ScriptUtils.executeSqlScript(connection, new ClassPathResource("pm002a-old-schema.sql"));
         JdbcTemplate jdbc = jdbc(connection);
@@ -290,22 +290,22 @@ class ArchitectureSchemaMigrationIntegrationTest {
         return connection;
     }
 
-    private static void script(Connection connection, String file) {
+    static void script(Connection connection, String file) {
         ScriptUtils.executeSqlScript(connection, new FileSystemResource("db/manual/" + file));
     }
 
-    private static Map<String, List<Map<String, Object>>> snapshot(JdbcTemplate jdbc, List<String> tables) {
+    static Map<String, List<Map<String, Object>>> snapshot(JdbcTemplate jdbc, List<String> tables) {
         Map<String, List<Map<String, Object>>> result = new LinkedHashMap<>();
         for (String table : tables) result.put(table, jdbc.queryForList("select * from " + table + " order by 1,2"));
         return result;
     }
 
-    private static Map<String, List<Map<String, Object>>> allRows(JdbcTemplate jdbc) {
+    static Map<String, List<Map<String, Object>>> allRows(JdbcTemplate jdbc) {
         List<String> tables = new ArrayList<>(OLD); tables.addAll(NEW); tables.add("pm_architecture_schema_migrations");
         return snapshot(jdbc, tables);
     }
 
-    private static List<String> schema(Connection connection) throws Exception {
+    static List<String> schema(Connection connection) throws Exception {
         List<String> lines = new ArrayList<>();
         try (var statement = connection.createStatement(); var rows = statement.executeQuery("SCRIPT NODATA")) {
             while (rows.next()) lines.add(rows.getString(1));
@@ -313,11 +313,11 @@ class ArchitectureSchemaMigrationIntegrationTest {
         return lines;
     }
 
-    private static JdbcTemplate jdbc(Connection connection) {
+    static JdbcTemplate jdbc(Connection connection) {
         return new JdbcTemplate(new SingleConnectionDataSource(connection, true));
     }
 
-    private static String memoryUrl() {
+    static String memoryUrl() {
         return "jdbc:h2:mem:pmtest_archschema_" + UUID.randomUUID().toString().replace("-", "")
             + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1";
     }

@@ -15,7 +15,7 @@ public final class ArchitectureReadDtos {
     private ArchitectureReadDtos() { }
 
     public record ProjectInfo(String id, String name, String owner, String quarter, String projectStatus, Long version) { }
-    public record Passport(String projectId, String criticality, String stage, String solutionType, String architect,
+    public record Passport(String projectId, String instanceId, String criticality, String stage, String solutionType, String architect,
         String solutionSummary, String availabilityRequirement, String recoveryRequirement, LocalDate lastReviewDate,
         Long version, Instant createdAt, Instant updatedAt) {
         /** Document edition is separate from the optimistic concurrency counter. */
