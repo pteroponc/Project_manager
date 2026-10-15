@@ -36,6 +36,9 @@ public class ArchitectureMutationException extends RuntimeException {
     public static ArchitectureMutationException missingCheck() {
         return new ArchitectureMutationException(HttpStatus.NOT_FOUND, "CHECK_NOT_FOUND", "Check not found", null, null, null);
     }
+    public static ArchitectureMutationException missingRisk() {
+        return new ArchitectureMutationException(HttpStatus.NOT_FOUND, "RISK_NOT_FOUND", "Risk not found", null, null, null);
+    }
     public static ArchitectureMutationException checksAlreadyExist() {
         return new ArchitectureMutationException(HttpStatus.CONFLICT, "CHECKS_ALREADY_EXIST", "Checks already exist", null, null, null);
     }
