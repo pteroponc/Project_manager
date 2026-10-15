@@ -17,10 +17,10 @@ import java.util.regex.Pattern;
 public record ArchitecturePassportInput(long expectedVersion, Map<String, Object> changes) {
     private static final List<String> FIELDS = List.of("criticality", "stage", "solutionType", "architect", "solutionSummary",
         "availabilityRequirement", "recoveryRequirement", "lastReviewDate", "dataClasses", "environments");
-    private static final Set<String> CRITICALITY = Set.of("LOW", "MEDIUM", "HIGH", "CRITICAL");
+    static final Set<String> CRITICALITY = Set.of("LOW", "MEDIUM", "HIGH", "CRITICAL");
     private static final Set<String> STAGE = Set.of("NOT_STARTED", "IN_DESIGN", "IN_REVIEW", "APPROVED", "CHANGES_REQUIRED");
     private static final Set<String> SOLUTION = Set.of("NEW_SOLUTION", "EXISTING_SOLUTION_CHANGE", "INTEGRATION", "MIGRATION");
-    private static final Set<String> DATA = Set.of("PUBLIC", "INTERNAL", "CONFIDENTIAL", "PERSONAL", "PAYMENT", "COMMERCIAL_SECRET");
+    static final Set<String> DATA = Set.of("PUBLIC", "INTERNAL", "CONFIDENTIAL", "PERSONAL", "PAYMENT", "COMMERCIAL_SECRET");
     private static final Set<String> ENVIRONMENTS = Set.of("DEV", "TEST", "PREPROD", "PROD", "OTHER");
     private static final Pattern UNSAFE = Pattern.compile(
         "[<>`]|\\$\\(|(?i:&(?:lt|gt);|javascript:|vbscript:|data:|\\bon[a-z]+\\s*=|\\b(?:eval|exec|fetch|alert|prompt|setTimeout)\\s*\\(|\\bfunction\\s*(?:\\w+\\s*)?\\(|\\b(?:document|window)\\.)"
@@ -38,9 +38,7 @@ public record ArchitecturePassportInput(long expectedVersion, Map<String, Object
         body.fieldNames().forEachRemaining(field -> {
             if (!field.equals(versionField) && !FIELDS.contains(field)) throw ArchitectureMutationException.badRequest();
         });
-        JsonNode version = body.get(versionField);
-        if (version == null || !version.isIntegralNumber() || !version.canConvertToLong()
-            || version.longValue() < 0 || version.longValue() == Long.MAX_VALUE) throw ArchitectureMutationException.invalid(versionField);
+        long version = version(body.get(versionField), versionField);
         if (!create && body.size() == 1) throw ArchitectureMutationException.badRequest();
         Map<String, Object> changes = new LinkedHashMap<>();
         for (String field : FIELDS) {
@@ -63,19 +61,24 @@ public record ArchitecturePassportInput(long expectedVersion, Map<String, Object
             };
             changes.put(field, parsed);
         }
-        return new ArchitecturePassportInput(version.longValue(), Collections.unmodifiableMap(changes));
+        return new ArchitecturePassportInput(version, Collections.unmodifiableMap(changes));
     }
-    private static String code(JsonNode value, String field, Set<String> allowed) {
+    static long version(JsonNode value, String field) {
+        if (value == null || !value.isIntegralNumber() || !value.canConvertToLong()
+            || value.longValue() < 0 || value.longValue() == Long.MAX_VALUE) throw ArchitectureMutationException.invalid(field);
+        return value.longValue();
+    }
+    static String code(JsonNode value, String field, Set<String> allowed) {
         if (!value.isTextual() || !allowed.contains(value.textValue())) throw ArchitectureMutationException.invalid(field);
         return value.textValue();
     }
-    private static Set<String> codes(JsonNode value, String field, Set<String> allowed) {
+    static Set<String> codes(JsonNode value, String field, Set<String> allowed) {
         if (!value.isArray() || value.size() > allowed.size()) throw ArchitectureMutationException.invalid(field);
         Set<String> result = new TreeSet<>();
         for (JsonNode item : value) if (!result.add(code(item, field, allowed))) throw ArchitectureMutationException.invalid(field);
         return Collections.unmodifiableSet(result);
     }
-    private static String text(JsonNode value, String field, int maxLength, boolean multiline) {
+    static String text(JsonNode value, String field, int maxLength, boolean multiline) {
         if (value.isNull()) return null;
         if (!value.isTextual()) throw ArchitectureMutationException.invalid(field);
         String raw = value.textValue();

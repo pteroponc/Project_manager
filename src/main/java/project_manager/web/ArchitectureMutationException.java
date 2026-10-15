@@ -27,6 +27,12 @@ public class ArchitectureMutationException extends RuntimeException {
     public static ArchitectureMutationException missingPassport() {
         return new ArchitectureMutationException(HttpStatus.NOT_FOUND, "PASSPORT_NOT_FOUND", "Passport not found", null, null, null);
     }
+    public static ArchitectureMutationException missingComponent() {
+        return new ArchitectureMutationException(HttpStatus.NOT_FOUND, "COMPONENT_NOT_FOUND", "Component not found", null, null, null);
+    }
+    public static ArchitectureMutationException missingIntegration() {
+        return new ArchitectureMutationException(HttpStatus.NOT_FOUND, "INTEGRATION_NOT_FOUND", "Integration not found", null, null, null);
+    }
     public static ArchitectureMutationException exists(long version) {
         return new ArchitectureMutationException(HttpStatus.CONFLICT, "PASSPORT_ALREADY_EXISTS", "Passport already exists", null, version, "PASSPORT");
     }

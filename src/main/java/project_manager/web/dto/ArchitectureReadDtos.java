@@ -17,7 +17,11 @@ public final class ArchitectureReadDtos {
     public record ProjectInfo(String id, String name, String owner, String quarter, String projectStatus, Long version) { }
     public record Passport(String projectId, String criticality, String stage, String solutionType, String architect,
         String solutionSummary, String availabilityRequirement, String recoveryRequirement, LocalDate lastReviewDate,
-        Long version, Instant createdAt, Instant updatedAt) { }
+        Long version, Instant createdAt, Instant updatedAt) {
+        /** Document edition is separate from the optimistic concurrency counter. */
+        @com.fasterxml.jackson.annotation.JsonProperty("documentVersion")
+        public String documentVersion() { return "1.0"; }
+    }
     public record Membership(String ownerId, String code) { }
     public record Component(String id, String projectId, String name, String componentType, String purpose,
         String platform, String criticality, boolean externalComponent, int position, Long version) { }
