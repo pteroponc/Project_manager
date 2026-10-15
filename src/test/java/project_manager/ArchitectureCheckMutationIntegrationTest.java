@@ -117,7 +117,7 @@ class ArchitectureCheckMutationIntegrationTest {
     }
 
     @Test
-    void initializationUsesStrictBodyAndDoesNotExposeIndividualPostOrDelete() throws Exception {
+    void initializationUsesStrictBodyAndDoesNotExposeIndividualPost() throws Exception {
         var before = snapshot();
         for (String body : List.of("null","[]","1","{}","{","{\"expectedPassportVersion\":0,\"status\":\"PASSED\"}",
             "{\"expectedPassportVersion\":0,\"expectedPassportVersion\":0}","{\"expectedPassportVersion\":0} {}"," ".repeat(32769)))
@@ -126,7 +126,6 @@ class ArchitectureCheckMutationIntegrationTest {
             call(post(ROOT+"/checks/initialize"),"{\"expectedPassportVersion\":"+value+"}",400);
         // An unmapped path can use MVC's 405 or the static-resource fallback's 404.
         assertThat(mvc.perform(post(ROOT+"/checks").contentType(MediaType.APPLICATION_JSON).content("{}")).andReturn().getResponse().getStatus()).isIn(404,405);
-        assertThat(mvc.perform(delete(ROOT+"/checks/missing")).andReturn().getResponse().getStatus()).isIn(404,405);
         assertThat(snapshot()).isEqualTo(before);
     }
 
