@@ -33,6 +33,12 @@ public class ArchitectureMutationException extends RuntimeException {
     public static ArchitectureMutationException missingIntegration() {
         return new ArchitectureMutationException(HttpStatus.NOT_FOUND, "INTEGRATION_NOT_FOUND", "Integration not found", null, null, null);
     }
+    public static ArchitectureMutationException missingCheck() {
+        return new ArchitectureMutationException(HttpStatus.NOT_FOUND, "CHECK_NOT_FOUND", "Check not found", null, null, null);
+    }
+    public static ArchitectureMutationException checksAlreadyExist() {
+        return new ArchitectureMutationException(HttpStatus.CONFLICT, "CHECKS_ALREADY_EXIST", "Checks already exist", null, null, null);
+    }
     public static ArchitectureMutationException exists(long version) {
         return new ArchitectureMutationException(HttpStatus.CONFLICT, "PASSPORT_ALREADY_EXISTS", "Passport already exists", null, version, "PASSPORT");
     }

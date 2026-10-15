@@ -6,7 +6,8 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import java.util.Map;
 
-@RestControllerAdvice(assignableTypes = {ArchitecturePassportMutationController.class, ArchitectureChildMutationController.class})
+@RestControllerAdvice(assignableTypes = {ArchitecturePassportMutationController.class, ArchitectureChildMutationController.class,
+    ArchitectureCheckMutationController.class})
 public class ArchitectureMutationExceptionHandler {
     @JsonInclude(JsonInclude.Include.NON_NULL)
     public record Error(String code, String error, Map<String, String> fieldErrors, Long currentVersion, String versionResource) { }

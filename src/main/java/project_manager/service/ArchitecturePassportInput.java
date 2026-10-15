@@ -93,7 +93,7 @@ public record ArchitecturePassportInput(long expectedVersion, Map<String, Object
             throw ArchitectureMutationException.invalid(field);
         return normalized;
     }
-    private static LocalDate date(JsonNode value, String field) {
+    static LocalDate date(JsonNode value, String field) {
         if (value.isNull()) return null;
         if (!value.isTextual() || !value.textValue().matches("[0-9]{4}-[0-9]{2}-[0-9]{2}")) throw ArchitectureMutationException.invalid(field);
         try { return LocalDate.parse(value.textValue()); }
