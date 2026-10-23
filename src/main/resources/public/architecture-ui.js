@@ -1,4 +1,4 @@
-/* Server architecture aggregate with explicit passport/component/integration/check editors. */
+/* Server architecture aggregate with explicit passport and child editors. */
 (() => {
   const content = document.getElementById("architecture-content");
   const panel = document.getElementById("project-architecture");
@@ -106,7 +106,7 @@
     ]));
   }
 
-  const childAdd = kind => snapshot.passport ? `<button type="button" class="btn btn-primary btn-small" data-child-kind="${kind}" data-child-create>Добавить ${kind==="components"?"компонент":"интеграцию"}</button>` : "";
+  const childAdd = kind => snapshot.passport ? `<button type="button" class="btn btn-primary btn-small" data-child-kind="${kind}" data-child-create>Добавить ${kind==="components"?"компонент":kind==="integrations"?"интеграцию":"риск"}</button>` : "";
   const childEdit = (kind,id) => `<button type="button" class="btn btn-secondary btn-small" data-child-kind="${kind}" data-child-id="${esc(id)}">Редактировать</button>`;
   function components() { return block(`Компоненты (${list(snapshot.components).length})`, childAdd("components") + (list(snapshot.components).map(c => block(text(c.name),childEdit("components",c.id)+facts([
     ["Тип",label("component",c.componentType)], ["Назначение",text(c.purpose)], ["Платформа",text(c.platform)],
@@ -122,12 +122,12 @@
     ["Обязательность",c.required === true ? "Обязательная" : c.required === false ? "Неприменимая" : "Не указано"], ["Статус",label("checkStatus",c.status)],
     ["Владелец",text(c.owner)], ["Плановая дата",date(c.plannedDate)], ["Фактическая дата",date(c.actualDate)], ["Комментарий / обоснование",text(c.comment)]
   ]))).join("") || empty("Проверки пока не созданы. Просмотр не инициализирует набор проверок."))); }
-  function risks() { return block(`Риски ИБ (${list(snapshot.risks).length})`, list(snapshot.risks).map(r => block(text(r.name),facts([
+  function risks() { return block(`Риски ИБ (${list(snapshot.risks).length})`, childAdd("risks")+(list(snapshot.risks).map(r => block(text(r.name),childEdit("risks",r.id)+facts([
     ["Описание",text(r.description)], ["Категория",label("category",r.category)], ["Вероятность",label("level",r.probability)], ["Влияние",label("level",r.impact)],
     ["Уровень (сервер)",label("level",r.level)], ["Статус",label("risk",r.status)], ["Владелец",text(r.owner)], ["Срок обработки",date(r.treatmentDueDate)],
     ["План обработки",text(r.treatmentPlan)], ["Дата закрытия",date(r.closedDate)], ["Обоснование принятия",text(r.acceptanceJustification)],
     ["Проверка согласования",r.acceptanceVerification === "UNVERIFIED" ? "Согласование принятия не проверено" : "Не указано"]
-  ]))).join("") || empty("Рисков ИБ пока нет.")); }
+  ]))).join("") || empty("Рисков ИБ пока нет."))); }
 
   function render() {
     if (!snapshot) return;
@@ -150,11 +150,11 @@
     if (tab) { activeTab = Number(tab.dataset.architectureTab); render(); content.querySelector('[aria-current="page"]')?.focus(); }
   });
   function beginChild(kind,recordId) {
-    if(!snapshot?.passport || !["components","integrations","checks"].includes(kind))return;
+    if(!snapshot?.passport || !["components","integrations","checks","risks"].includes(kind))return;
     if(kind==="checks"&&recordId===null&&list(snapshot.checks).length)return;
     if(recordId!==null && !list(snapshot[kind]).some(row=>row.id===recordId))return;
     if(window.PMPassportEditor?.allowNavigation(()=>beginChild(kind,recordId))===false)return;
-    const tab=kind==="components"?2:kind==="integrations"?3:4;
+    const tab=kind==="components"?2:kind==="integrations"?3:kind==="checks"?4:5;
     activeTab=tab;render();
     const epoch=++request,id=projectId;
     window.PMPassportEditor?.startChild(snapshot,kind,recordId,loaded=>{

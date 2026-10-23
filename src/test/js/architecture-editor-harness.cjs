@@ -32,8 +32,10 @@ function setup(){
   const context=vm.createContext({window,document:{getElementById:get},Number,JSON,encodeURIComponent,
     escapeHtml:v=>String(v??'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;'),
     fetchJson:async(url,options)=>{calls.push({url,options});throw Error('offline');}});
+  vm.runInContext(fs.readFileSync(path.join(__dirname,'../../main/resources/public/architecture-editor-validation.js'),'utf8'),context);
   vm.runInContext(fs.readFileSync(path.join(__dirname,'../../main/resources/public/architecture-child-editor.js'),'utf8'),context);
   vm.runInContext(fs.readFileSync(path.join(__dirname,'../../main/resources/public/architecture-check-editor.js'),'utf8'),context);
+  vm.runInContext(fs.readFileSync(path.join(__dirname,'../../main/resources/public/architecture-risk-editor.js'),'utf8'),context);
   vm.runInContext(source,context);
   const api=window.PMPassportEditor;
   const start=(data=architecture())=>api.start(data,result=>accepted.push(result));

@@ -4,8 +4,9 @@
 const http = require('node:http');
 const fs = require('node:fs');
 const path = require('node:path');
-const {architecture,missingArchitecture,childArchitecture,checkArchitecture,checkTypes} = require('./fixtures/architecture.cjs');
-const checkMode=process.argv.includes('--check-editor');
+const {architecture,missingArchitecture,childArchitecture,checkArchitecture,riskArchitecture,checkTypes} = require('./fixtures/architecture.cjs');
+const riskMode=process.argv.includes('--risk-editor');
+const checkMode=riskMode||process.argv.includes('--check-editor');
 const childMode=checkMode||process.argv.includes('--child-editor');
 const writeMode=childMode||process.argv.includes('--passport-editor');
 const stored=new Map(), writes=new Map();
@@ -13,15 +14,18 @@ const root = path.resolve(__dirname,'../../main/resources/public');
 const assets = {'/':'index.html','/index.html':'index.html','/app.js':'app.js','/projects-ui.js':'projects-ui.js','/architecture-ui.js':'architecture-ui.js','/passport-editor.js':'passport-editor.js','/styles.css':'styles.css'};
 assets['/architecture-child-editor.js']='architecture-child-editor.js';
 assets['/architecture-check-editor.js']='architecture-check-editor.js';
+assets['/architecture-editor-validation.js']='architecture-editor-validation.js';
+assets['/architecture-risk-editor.js']='architecture-risk-editor.js';
 const names = {'review-full':'Тестовый проект «Приём заявок»','review-empty':'Тестовый пустой паспорт','review-missing':'Тестовый проект без паспорта','review-error':'Тестовый повтор загрузки','review-slow':'Тестовый медленный ответ'};
 if(writeMode) Object.assign(names,{'write-create':'Тестовый новый паспорт','write-validation':'Тестовая ошибка поля','write-version':'Тестовый конфликт версии','write-recreate':'Тестовый новый экземпляр','write-unknown':'Тестовый неопределённый результат'});
 if(childMode) Object.assign(names,{'child-full':'Тестовые компоненты и интеграции','child-validation':'Тестовая ошибка компонента','child-version':'Тестовый конфликт записи','child-passport':'Тестовый конфликт паспорта','child-deleted':'Тестовая удалённая запись','child-recreate':'Тестовый пересозданный паспорт','child-unknown':'Тестовая неопределённая запись'});
 if(checkMode)Object.assign(names,{'check-empty':'Тестовый пустой набор проверок','check-full':'Тестовые проверки архитектуры и ИБ','check-partial':'Тестовый неполный набор','check-version':'Тестовый конфликт проверки','check-passport-version':'Тестовый конфликт инициализации','check-exists':'Тестовый уже созданный набор','check-recreate':'Тестовый новый экземпляр паспорта','check-deleted':'Тестовая удалённая проверка','check-validation':'Тестовая ошибка владельца','check-unknown':'Тестовый неизвестный результат'});
+if(riskMode)Object.assign(names,{'risk-full':'Тестовые риски ИБ','risk-empty':'Тестовое добавление риска','risk-version':'Тестовый конфликт риска','risk-passport-version':'Тестовый конфликт паспорта','risk-deleted':'Тестовый удалённый риск','risk-recreate':'Тестовый пересозданный паспорт','risk-validation':'Тестовая ошибка поля риска','risk-unknown':'Тестовый неизвестный результат записи риска'});
 const projects = Object.entries(names).map(([id,name])=>({id,name,owner:'Тестовая команда',quarter:'Q4 2026',status:'active',health:'green',progress:0,deadline:'2026-12-15',startDate:null,summary:'Изолированные тестовые данные C.2',deliveryModel:'kanban',assessment:{requiresAttention:false,attentionReasons:[],dataQualityIssues:[]}}));
 const attempts = new Map();
 function send(response,status,data) {response.writeHead(status,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store'});response.end(JSON.stringify(data));}
 http.createServer((req,res)=>{
-  const writePath=childMode?/^\/api\/projects\/[^/]+\/architecture(?:\/(components|integrations|checks)(?:\/[^/]+)?)?$/:/^\/api\/projects\/[^/]+\/architecture$/;
+  const writePath=childMode?/^\/api\/projects\/[^/]+\/architecture(?:\/(components|integrations|checks|risks)(?:\/[^/]+)?)?$/:/^\/api\/projects\/[^/]+\/architecture$/;
   if(req.method!=='GET' && !(writeMode && ['POST','PATCH'].includes(req.method) && writePath.test(new URL(req.url,'http://127.0.0.1').pathname))) return send(res,405,{error:'Read-only fixture server'});
   const url=new URL(req.url,'http://127.0.0.1');
   if(Object.hasOwn(assets,url.pathname)) {
@@ -35,13 +39,16 @@ http.createServer((req,res)=>{
   if(url.pathname==='/api/portfolio/overview') return send(res,200,{calculationDate:'2026-10-23',totalProjectCount:5,projectCount:5,activeCount:5,attentionCount:0,averageProgress:0,progressCoverage:5,quarters:['Q4 2026'],statuses:['active'],healthValues:['green'],statusCounts:{active:5},healthCounts:{green:5},attentionProjects:[],milestones:[],dueSoonCount:0,dataQualityProjects:[]});
   if(url.pathname==='/api/release-trains/snapshot') return send(res,200,{trains:[],projects:[]});
   if(url.pathname==='/api/release-checks') return send(res,200,{available:false,message:'Изолированный сервер: GitHub не подключён',checks:[]});
-  const match=url.pathname.match(/^\/api\/projects\/([^/]+)\/(card|architecture)(?:\/(components|integrations|checks)(?:\/([^/]+))?)?$/);
+  const match=url.pathname.match(/^\/api\/projects\/([^/]+)\/(card|architecture)(?:\/(components|integrations|checks|risks)(?:\/([^/]+))?)?$/);
   if(match) {
     const [,id,resource,kind,recordId]=match;
     if(!Object.hasOwn(names,id)) return send(res,404,{code:'PROJECT_NOT_FOUND',error:'Project not found'});
     const project=projects.find(p=>p.id===id);
     if(resource==='card') return send(res,200,{...project,version:0,board:{viewAvailable:true,taskCount:0},milestoneCount:0,milestones:[]});
-    const data=stored.get(id) ?? (id==='review-missing'||id==='write-create'?missingArchitecture(id):checkMode?checkArchitecture(id):childMode?childArchitecture(id):architecture(id));
+    const data=stored.get(id) ?? (id==='review-missing'||id==='write-create'?missingArchitecture(id):riskMode?riskArchitecture(id):checkMode?checkArchitecture(id):childMode?childArchitecture(id):architecture(id));
+    if(riskMode&&!stored.has(id)&&id==='risk-empty'){
+      data.risks=[];data.assessment.acceptedHighRisks=[];data.assessment.reasons=data.assessment.reasons.filter(r=>r.entityType!=='RISK');
+    }
     if(checkMode&&!stored.has(id)){
       if(['check-empty','check-passport-version','check-exists','check-recreate'].includes(id))data.checks=[];
       if(id==='check-partial')data.checks=data.checks.slice(0,1);
@@ -49,6 +56,36 @@ http.createServer((req,res)=>{
     data.project.name=project.name;
     if(id==='review-empty') Object.assign(data,{components:[],integrations:[],checks:[],risks:[],dataClasses:[],environments:[],passport:{...data.passport,stage:'IN_DESIGN',architect:null,solutionSummary:null,availabilityRequirement:null,recoveryRequirement:null,lastReviewDate:null},assessment:{...data.assessment,status:'NOT_ASSESSED',statusLabel:'Оценка не завершена',reasons:[{status:'NOT_ASSESSED',entityType:'PASSPORT',entityId:id,code:'REQUIRED_INFORMATION_INCOMPLETE',message:'Сведения паспорта неполны'},{status:'NOT_ASSESSED',entityType:'PASSPORT',entityId:id,code:'ARCHITECTURE_NOT_APPROVED',message:'Архитектура не утверждена'},{status:'NOT_ASSESSED',entityType:'PASSPORT',entityId:id,code:'CHECKS_INCOMPLETE',message:'Проверки не завершены'}],upcomingChecks:[],acceptedHighRisks:[]}});
     if(writeMode) stored.set(id,data);
+    if(kind==='risks'){
+      if(!riskMode||!['POST','PATCH'].includes(req.method))return send(res,405,{code:'BAD_REQUEST'});
+      let raw='';req.on('data',chunk=>{raw+=chunk;});return req.on('end',()=>{
+        let body;try{body=JSON.parse(raw);}catch{return send(res,400,{code:'BAD_REQUEST'});}
+        if(!data.passport)return send(res,404,{code:'PASSPORT_NOT_FOUND'});
+        const attempt=(writes.get(id)||0)+1;writes.set(id,attempt);const record=data.risks.find(row=>row.id===recordId);
+        if(id==='risk-validation'&&attempt===1)return send(res,400,{code:'VALIDATION_ERROR',fieldErrors:{owner:'Invalid value'}});
+        if(id==='risk-recreate'&&attempt===1){data.passport={...data.passport,instanceId:require('node:crypto').randomUUID(),version:0};data.risks=[];return send(res,req.method==='POST'?409:404,{code:req.method==='POST'?'PASSPORT_INSTANCE_CONFLICT':'RISK_NOT_FOUND'});}
+        if(id==='risk-deleted'&&attempt===1&&record){data.risks=data.risks.filter(row=>row.id!==recordId);return send(res,404,{code:'RISK_NOT_FOUND'});}
+        if((id==='risk-version'||id==='risk-passport-version')&&attempt===1){if(record){record.version++;record.owner='Другой тестовый владелец';}else data.passport.version++;return send(res,409,{code:record?'RISK_VERSION_CONFLICT':'PASSPORT_VERSION_CONFLICT',currentVersion:record?record.version:data.passport.version,versionResource:record?'RISK':'PASSPORT'});}
+        if(req.method==='POST'){
+          if(body.expectedPassportInstanceId!==data.passport.instanceId)return send(res,409,{code:'PASSPORT_INSTANCE_CONFLICT'});
+          if(body.expectedPassportVersion!==data.passport.version)return send(res,409,{code:'PASSPORT_VERSION_CONFLICT'});
+        }else if(!record)return send(res,404,{code:'RISK_NOT_FOUND'});
+        else if(body.expectedVersion!==record.version)return send(res,409,{code:'RISK_VERSION_CONFLICT'});
+        const next={...(record??{}),...body};const required=['name','category','probability','impact','status'];
+        const invalid=required.find(name=>!next[name])??(next.status==='ACCEPTED'&&!next.acceptanceJustification?.trim()?'acceptanceJustification':next.status==='CLOSED'?!next.closedDate?'closedDate':null:next.closedDate?'closedDate':null);
+        if(invalid)return send(res,400,{code:'VALIDATION_ERROR',fieldErrors:{[invalid]:'Invalid value'}});
+        const target=record??{id:require('node:crypto').randomUUID(),projectId:id,version:0,level:'HIGH'};
+        for(const name of [...required,'description','owner','treatmentDueDate','treatmentPlan','closedDate','acceptanceJustification'])if(Object.hasOwn(body,name))target[name]=body[name];else if(!record&&!required.includes(name))target[name]=null;
+        target.acceptanceVerification=target.status==='ACCEPTED'?'UNVERIFIED':null;
+        if(record)target.version++;else{data.risks.push(target);data.passport.version++;}
+        // Fixed HIGH level for new HTTP fixture rows; no probability/impact matrix is implemented here.
+        const accepted=data.risks.filter(row=>row.status==='ACCEPTED'&&['HIGH','CRITICAL'].includes(row.level));
+        data.assessment.acceptedHighRisks=accepted.map(row=>({id:row.id,level:row.level,justification:row.acceptanceJustification,acceptanceVerification:'UNVERIFIED'}));
+        data.assessment.reasons=[...data.assessment.reasons.filter(row=>row.entityType!=='RISK'),...accepted.map(row=>({status:'ATTENTION_REQUIRED',code:'ACCEPTED_HIGH_RISK',entityType:'RISK',entityId:row.id,message:'Высокий риск отмечен как принятый; полномочия не проверены'}))];
+        if(id==='risk-unknown')return send(res,503,{code:'DATABASE_ERROR'});
+        return send(res,record?200:201,data);
+      });
+    }
     if(kind==='checks') {
       const initialize=recordId==='initialize'&&req.method==='POST';
       if(!checkMode||(!initialize&&req.method!=='PATCH'))return send(res,405,{code:'BAD_REQUEST'});
@@ -147,4 +184,4 @@ http.createServer((req,res)=>{
     return send(res,200,data);
   }
   return send(res,404,{error:'Not found'});
-}).listen(checkMode?4178:childMode?4177:writeMode?4176:4175,'127.0.0.1',()=>console.log(`Isolated frontend fixtures: http://127.0.0.1:${checkMode?4178:childMode?4177:writeMode?4176:4175} (no database; ${checkMode?'checks memory writes':childMode?'child memory writes':writeMode?'passport memory writes':'read-only'})`));
+}).listen(riskMode?4179:checkMode?4178:childMode?4177:writeMode?4176:4175,'127.0.0.1',()=>console.log(`Isolated frontend fixtures: http://127.0.0.1:${riskMode?4179:checkMode?4178:childMode?4177:writeMode?4176:4175} (no database; ${riskMode?'risks memory writes':checkMode?'checks memory writes':childMode?'child memory writes':writeMode?'passport memory writes':'read-only'})`));

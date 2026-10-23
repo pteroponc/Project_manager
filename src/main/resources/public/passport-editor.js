@@ -1,4 +1,4 @@
-/* Shared C.3a-C.3c version-bound editor and navigation guard. No automatic mutation retries. */
+/* Shared C.3a-C.3d version-bound editor and navigation guard. No automatic mutation retries. */
 (() => {
   const shell = document.getElementById("passport-editor"), form = document.getElementById("passport-form");
   const message = document.getElementById("passport-write-message"), compare = document.getElementById("passport-comparison");
@@ -131,7 +131,7 @@
           : error.code==="CHECKS_ALREADY_EXIST" ? "Набор проверок уже не пуст. Инициализация не выполнена и не повторяется. Загрузите актуальные сведения для сверки."
           : current.model ? "Конфликт: запись или паспорт изменены другим участником. Ввод сохранён. Исходные токены не заменяются, запись не повторяется."
           : "Конфликт: проект или паспорт изменён другим участником. Ввод сохранён. Ожидаемые версии не заменяются, запись не повторяется."
-          : error.status===404 ? current.model && ["COMPONENT_NOT_FOUND","INTEGRATION_NOT_FOUND","CHECK_NOT_FOUND"].includes(error.code) ? "Выбранная запись удалена. Ввод сохранён. Загрузите актуальные сведения для сверки." : "Проект или паспорт больше не существует. Ввод сохранён. Загрузите актуальные сведения."
+          : error.status===404 ? current.model && ["COMPONENT_NOT_FOUND","INTEGRATION_NOT_FOUND","CHECK_NOT_FOUND","RISK_NOT_FOUND"].includes(error.code) ? "Выбранная запись удалена. Ввод сохранён. Загрузите актуальные сведения для сверки." : "Проект или паспорт больше не существует. Ввод сохранён. Загрузите актуальные сведения."
           : "Не удалось подтвердить результат записи. Сервер мог сохранить данные. Ввод сохранён; запрос автоматически не повторяется. Сначала загрузите актуальные сведения для сверки.";
         document.getElementById("passport-conflict-actions").classList.remove("hidden");
       }
@@ -179,7 +179,7 @@
   document.getElementById("passport-discard").addEventListener("click",()=>{const action=pendingNavigation;pendingNavigation=null;leave.close();discard();action?.();});
   window.addEventListener("beforeunload",event=>{if(needsWarning()) {event.preventDefault();event.returnValue="";}});
   function startChild(card,kind,recordId,accept) {
-    const model=kind==="checks"?window.PMArchitectureCheckModel?.model(card,recordId):window.PMArchitectureChildModel?.model(kind,card,recordId);
+    const model=kind==="risks"?window.PMArchitectureRiskModel?.model(card,recordId):kind==="checks"?window.PMArchitectureCheckModel?.model(card,recordId):window.PMArchitectureChildModel?.model(kind,card,recordId);
     if(model) start(card,accept,model);
   }
   window.PMPassportEditor={start,startChild,allowNavigation,needsWarning};

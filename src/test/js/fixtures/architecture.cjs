@@ -39,4 +39,12 @@ function checkArchitecture(id='p1') {
   card.assessment.upcomingChecks=card.assessment.upcomingChecks.map(row=>({...row,id:ids.get(row.id)??row.id}));
   return card;
 }
-module.exports = {architecture,missingArchitecture,childArchitecture,checkArchitecture,checkTypes};
+function riskArchitecture(id='p1') {
+  const card=checkArchitecture(id),firstId='5cb0974b-4a83-43c7-9e4b-1788f11f9afd';
+  card.risks=[{...card.risks[0],id:firstId},
+    {...card.risks[0],id:'b3b00498-e908-4216-a65b-65b4b665ae28',version:17,name:'Резервный канал обмена',category:'INTEGRATION',probability:'LOW',impact:'HIGH',level:'MEDIUM',status:'CLOSED',closedDate:'2026-10-21',acceptanceJustification:null}];
+  card.assessment.reasons=card.assessment.reasons.map(row=>({...row,entityId:row.entityId==='risk-test'?firstId:row.entityId}));
+  card.assessment.acceptedHighRisks=card.assessment.acceptedHighRisks.map(row=>({...row,id:firstId}));
+  return card;
+}
+module.exports = {architecture,missingArchitecture,childArchitecture,checkArchitecture,riskArchitecture,checkTypes};

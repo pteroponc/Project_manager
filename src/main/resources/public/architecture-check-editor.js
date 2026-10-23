@@ -4,16 +4,10 @@
   const statuses={NOT_REQUIRED:"Не требуется",NOT_STARTED:"Не начата",IN_PROGRESS:"В работе",IN_REVIEW:"На рассмотрении",PASSED:"Пройдена",CHANGES_REQUIRED:"Требуются изменения",BLOCKED:"Заблокирована"};
   const fields={required:{title:"Обязательная проверка"},status:{title:"Статус"},owner:{title:"Владелец"},plannedDate:{title:"Плановая дата"},actualDate:{title:"Фактическая дата"},comment:{title:"Комментарий / обоснование"}};
   const esc=v=>escapeHtml(String(v??""));
-  const normalize=v=>String(v??"").replace(/\r\n?/g,"\n").normalize("NFC").trim()||null;
+  const {normalize,validDate}=window.PMArchitectureEditorValidation;
   const error=name=>`<small class="field-error" id="passport-error-${name}"></small>`;
   const attrs=name=>`name="${name}" aria-describedby="passport-error-${name}"`;
   const actions=title=>`<div class="form-actions"><button type="submit" class="btn btn-primary btn-small">${title}</button><button type="button" class="btn btn-ghost btn-small" data-passport-cancel>Отмена</button></div>`;
-  function validDate(value) {
-    if(value===null)return true;
-    if(!/^\d{4}-\d{2}-\d{2}$/.test(value))return false;
-    const [y,m,d]=value.split('-').map(Number),leap=y%4===0&&(y%100!==0||y%400===0);
-    return m>=1&&m<=12&&d>=1&&d<=[31,leap?29:28,31,30,31,30,31,31,30,31,30,31][m-1];
-  }
   function model(card,recordId) {
     if(!card.passport)return null;
     if(recordId===null) {

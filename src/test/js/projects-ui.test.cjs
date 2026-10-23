@@ -346,7 +346,7 @@ test('architecture renders the server assessment, all reasons, upcoming and acce
   assert.match(output,/Компоненты<\/dt><dd>1/);
 });
 
-test('all six architecture sections render DTO fields, hide technical metadata and keep risks read-only', async()=>{
+test('all six architecture sections render DTO fields and hide technical metadata', async()=>{
   const h=harness(); const data=architecture();
   data.risks[0].probability='LOW'; data.risks[0].impact='LOW'; data.risks[0].level='CRITICAL'; // Renderer must use level as supplied.
   h.context.fetchJson=async()=>data; await h.architecture.open('p1');
@@ -360,6 +360,23 @@ test('all six architecture sections render DTO fields, hide technical metadata a
   for(const output of outputs) {
     assert.doesNotMatch(output.replace(/data-child-id="[^"]*"/g,''),/98123[7-9]|98124[0-2]|f071002a|cmp-test|risk-test|instanceId|expectedVersion|technical-version/);
     assert.doesNotMatch(output,/<form|data-edit|data-delete|Создать паспорт|Инициализировать|Сохранить/);
+  }
+});
+
+test('risk actions select UUID after reorder and apply full response without GET; absent passport hides creation',async()=>{
+  const {riskArchitecture}=require('./fixtures/architecture.cjs');const h=harness(),data=riskArchitecture(),calls=[],opened=[];data.risks.reverse();let accept;
+  h.window.PMPassportEditor={allowNavigation:()=>true,startChild:(_card,kind,id,callback)=>{opened.push({kind,id});accept=callback;}};
+  h.context.fetchJson=async(url,options)=>{calls.push({url,options});return data;};await h.architecture.open('p1');architectureTab(h,5);
+  for(const row of data.risks){h.get('architecture-content').listeners.click({target:{closest:s=>s==='[data-child-kind]'?{dataset:{childKind:'risks',childId:row.id}}:null}});assert.deepEqual(opened.at(-1),{kind:'risks',id:row.id});}
+  const result=riskArchitecture();result.risks[0].name='Ответ записи риска';accept(result);assert.match(h.get('architecture-content').innerHTML,/Ответ записи риска/);assert.equal(calls.length,1);
+  h.context.fetchJson=async()=>missingArchitecture('p1');await h.architecture.open('p1');assert.doesNotMatch(architectureTab(h,5),/Добавить риск|data-child-kind/);
+});
+
+test('accepted HIGH/CRITICAL uses server level, justification, UNVERIFIED and all server reasons without recalculation',async()=>{
+  const {riskArchitecture}=require('./fixtures/architecture.cjs');
+  for(const level of ['HIGH','CRITICAL']){const h=harness(),data=riskArchitecture();Object.assign(data.risks[0],{probability:'LOW',impact:'LOW',level});Object.assign(data.assessment,{status:'ATTENTION_REQUIRED',statusLabel:'Оценка только сервера'});data.assessment.acceptedHighRisks[0].level=level;
+    h.context.fetchJson=async()=>data;await h.architecture.open('p1');const summary=h.get('architecture-content').innerHTML;assert.match(summary,/Оценка только сервера/);assert.match(summary,/Согласование принятия не проверено/);assert.ok(summary.includes(data.risks[0].acceptanceJustification));for(const reason of data.assessment.reasons)assert.ok(summary.includes(reason.message));assert.match(summary,/не является официальным допуском/);
+    const html=architectureTab(h,5);assert.match(html,new RegExp('Уровень \\(сервер\\)<\\/dt><dd>'+(level==='HIGH'?'Высокий':'Критический')));assert.match(html,/Согласование принятия не проверено/);assert.ok(html.includes(data.risks[0].acceptanceJustification));
   }
 });
 
