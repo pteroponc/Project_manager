@@ -50,8 +50,11 @@ public class ApiExceptionHandler {
 
     @ExceptionHandler(ProjectConflictException.class)
     @ResponseStatus(HttpStatus.CONFLICT)
-    public Map<String, String> handleConflict(ProjectConflictException exception) {
-        return Map.of("code", exception.getCode(), "error", exception.getMessage());
+    public Map<String, Object> handleConflict(ProjectConflictException exception) {
+        Map<String,Object> result=new java.util.LinkedHashMap<>();
+        result.put("code",exception.getCode()); result.put("error",exception.getMessage());
+        if (exception.getImpact()!=null) result.put("impact",exception.getImpact());
+        return result;
     }
 
     @ExceptionHandler(ObjectOptimisticLockingFailureException.class)

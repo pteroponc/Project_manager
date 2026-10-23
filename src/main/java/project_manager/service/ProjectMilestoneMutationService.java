@@ -19,10 +19,12 @@ public class ProjectMilestoneMutationService {
         "completedDate", "position");
     private final ProjectRepository projects;
     private final ProjectMilestoneRepository milestones;
+    private final ProjectWriteLock projectLock;
 
-    public ProjectMilestoneMutationService(ProjectRepository projects, ProjectMilestoneRepository milestones) {
+    public ProjectMilestoneMutationService(ProjectRepository projects, ProjectMilestoneRepository milestones, ProjectWriteLock projectLock) {
         this.projects = projects;
         this.milestones = milestones;
+        this.projectLock=projectLock;
     }
 
     @Transactional
@@ -72,7 +74,7 @@ public class ProjectMilestoneMutationService {
     }
 
     private ProjectEntity project(String id) {
-        return projects.findById(id).orElseThrow(ProjectMutationException::projectNotFound);
+        return projectLock.require(id);
     }
 
     private ProjectMilestoneEntity owned(String projectId, String milestoneId) {

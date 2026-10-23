@@ -260,7 +260,7 @@ class ArchitectureReadApiIntegrationTest {
         assertThat(legacy.path("name").asText()).isEqualTo("Full");
         assertThat(legacy.path("taskCount").asLong()).isEqualTo(1); assertThat(legacy.path("milestoneCount").asLong()).isEqualTo(1);
         assertThat(legacy.path("architecturePassportCount").asLong()).isEqualTo(1);
-        assertThat(legacy.path("architectureImpactPreliminary").asBoolean()).isTrue();
+        assertThat(legacy.path("architectureImpactPreliminary").asBoolean()).isFalse();
         for (String field : List.of("componentCount", "integrationCount", "checkCount", "securityRiskCount"))
             assertThat(legacy.path(field)).isEqualTo(impact.path(field));
         project("bare", "Bare", "Owner", "Q1", "active"); passport("bare", "LOW", "NOT_STARTED", false);

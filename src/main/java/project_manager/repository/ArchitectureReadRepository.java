@@ -34,6 +34,14 @@ public class ArchitectureReadRepository {
         return em.createQuery("select count(r) from " + entity + " r where r." + owner + "=:id", Long.class)
             .setParameter("id", id).getSingleResult();
     }
+    /** Only project deletion dependencies: no full aggregate or unused membership collections. */
+    public Counts projectDeletionCounts(String id) {
+        return new Counts(count("ArchitecturePassportEntity","projectId",id),
+            count("ArchitectureComponentEntity","passport.projectId",id),
+            count("ArchitectureIntegrationEntity","passport.projectId",id),
+            count("ArchitectureCheckEntity","passport.projectId",id),
+            count("SecurityRiskEntity","passport.projectId",id),0,0);
+    }
     public List<String> quarters() {
         return em.createQuery("select distinct lower(trim(p.quarter)) from ProjectEntity p", String.class).getResultList();
     }
