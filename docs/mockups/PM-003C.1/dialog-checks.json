@@ -1,0 +1,74 @@
+[
+  {
+    "dialogFits": true,
+    "noHorizontalOverflow": true,
+    "scenario": "edit",
+    "width": 1440
+  },
+  {
+    "dialogFits": true,
+    "noHorizontalOverflow": true,
+    "scenario": "conflict",
+    "width": 1440
+  },
+  {
+    "dialogFits": true,
+    "noHorizontalOverflow": true,
+    "scenario": "blocked",
+    "width": 1440
+  },
+  {
+    "dialogFits": true,
+    "noHorizontalOverflow": true,
+    "scenario": "delete",
+    "width": 1440
+  },
+  {
+    "dialogFits": true,
+    "noHorizontalOverflow": true,
+    "scenario": "edit",
+    "width": 768
+  },
+  {
+    "dialogFits": true,
+    "noHorizontalOverflow": true,
+    "scenario": "conflict",
+    "width": 768
+  },
+  {
+    "dialogFits": true,
+    "noHorizontalOverflow": true,
+    "scenario": "blocked",
+    "width": 768
+  },
+  {
+    "dialogFits": true,
+    "noHorizontalOverflow": true,
+    "scenario": "delete",
+    "width": 768
+  },
+  {
+    "dialogFits": true,
+    "noHorizontalOverflow": true,
+    "scenario": "edit",
+    "width": 390
+  },
+  {
+    "dialogFits": true,
+    "noHorizontalOverflow": true,
+    "scenario": "conflict",
+    "width": 390
+  },
+  {
+    "dialogFits": true,
+    "noHorizontalOverflow": true,
+    "scenario": "blocked",
+    "width": 390
+  },
+  {
+    "dialogFits": true,
+    "noHorizontalOverflow": true,
+    "scenario": "delete",
+    "width": 390
+  }
+]

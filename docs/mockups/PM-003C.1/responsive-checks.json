@@ -1,0 +1,128 @@
+[
+  {
+    "client": 1425,
+    "noOverflow": true,
+    "scroll": 1425,
+    "section": "Сводка",
+    "width": 1440
+  },
+  {
+    "client": 1425,
+    "noOverflow": true,
+    "scroll": 1425,
+    "section": "Паспорт",
+    "width": 1440
+  },
+  {
+    "client": 1425,
+    "noOverflow": true,
+    "scroll": 1425,
+    "section": "Компоненты",
+    "width": 1440
+  },
+  {
+    "client": 1425,
+    "noOverflow": true,
+    "scroll": 1425,
+    "section": "Интеграции",
+    "width": 1440
+  },
+  {
+    "client": 1425,
+    "noOverflow": true,
+    "scroll": 1425,
+    "section": "Проверки",
+    "width": 1440
+  },
+  {
+    "client": 1425,
+    "noOverflow": true,
+    "scroll": 1425,
+    "section": "Риски ИБ",
+    "width": 1440
+  },
+  {
+    "client": 753,
+    "noOverflow": true,
+    "scroll": 753,
+    "section": "Сводка",
+    "width": 768
+  },
+  {
+    "client": 753,
+    "noOverflow": true,
+    "scroll": 753,
+    "section": "Паспорт",
+    "width": 768
+  },
+  {
+    "client": 768,
+    "noOverflow": true,
+    "scroll": 768,
+    "section": "Компоненты",
+    "width": 768
+  },
+  {
+    "client": 768,
+    "noOverflow": true,
+    "scroll": 768,
+    "section": "Интеграции",
+    "width": 768
+  },
+  {
+    "client": 753,
+    "noOverflow": true,
+    "scroll": 753,
+    "section": "Проверки",
+    "width": 768
+  },
+  {
+    "client": 753,
+    "noOverflow": true,
+    "scroll": 753,
+    "section": "Риски ИБ",
+    "width": 768
+  },
+  {
+    "client": 375,
+    "noOverflow": true,
+    "scroll": 375,
+    "section": "Сводка",
+    "width": 390
+  },
+  {
+    "client": 375,
+    "noOverflow": true,
+    "scroll": 375,
+    "section": "Паспорт",
+    "width": 390
+  },
+  {
+    "client": 375,
+    "noOverflow": true,
+    "scroll": 375,
+    "section": "Компоненты",
+    "width": 390
+  },
+  {
+    "client": 375,
+    "noOverflow": true,
+    "scroll": 375,
+    "section": "Интеграции",
+    "width": 390
+  },
+  {
+    "client": 375,
+    "noOverflow": true,
+    "scroll": 375,
+    "section": "Проверки",
+    "width": 390
+  },
+  {
+    "client": 375,
+    "noOverflow": true,
+    "scroll": 375,
+    "section": "Риски ИБ",
+    "width": 390
+  }
+]

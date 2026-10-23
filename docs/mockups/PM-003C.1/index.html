@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'none'; img-src 'self' data:; style-src 'self'; script-src 'self'; base-uri 'none'; form-action 'none'">
+  <title>Архитектура и ИБ · макет PM-003C.1</title>
+  <link rel="stylesheet" href="mockup.css">
+  <script src="mockup.js" defer></script>
+</head>
+<body>
+  <a class="skip" href="#content">К содержимому</a>
+  <div class="demo-bar"><strong>PM-003C.1 · Макет</strong><span>Демонстрационные данные. Нет подключения к API.</span><label>Сценарий
+    <select id="scenario">
+      <option value="entry">Вход из карточки проекта</option>
+      <option value="full">Заполненный проект</option>
+      <option value="ready">Проверки завершены</option>
+      <option value="attention">Требует внимания</option>
+      <option value="missing">Паспорт отсутствует</option>
+      <option value="empty">Пустые списки</option>
+      <option value="edit">Редактирование и ошибки</option>
+      <option value="conflict">Конфликт 409</option>
+      <option value="delete">Подтверждение удаления</option>
+      <option value="blocked">Удаление запрещено</option>
+      <option value="loading">Загрузка</option>
+      <option value="error">Ошибка загрузки</option>
+    </select></label>
+  </div>
+  <div class="shell">
+    <aside class="sidebar" aria-label="Основная навигация">
+      <div class="brand"><span class="brand-mark">PM</span><strong>Менеджер<br>проектов</strong></div>
+      <nav><span class="nav-item">⌂　Обзор</span><span class="nav-item active">＋　Проекты</span><span class="nav-item">▦　Дашборды</span><span class="nav-item">▤　Доски</span><span class="nav-item">→　Релизы</span><span class="nav-item">□　Документы</span></nav>
+      <p class="sidebar-note">Прототип карточки<br>Архитектура и безопасность</p>
+    </aside>
+    <main id="content" tabindex="-1">
+      <div class="breadcrumb"><button class="text-button" id="back">Проекты</button><span>/</span><span>Единое окно заявок</span><span id="crumb-tail">/ Архитектура и ИБ</span></div>
+      <header class="page-header"><div><p class="eyebrow" id="kicker">Архитектура и безопасность</p><h1 id="page-title">Единое окно заявок</h1><p class="muted">Владелец: Анна Смирнова <span aria-hidden="true">·</span> IV квартал 2026</p></div><span class="demo-tag">Демо-проект</span></header>
+      <div id="screen"></div>
+      <footer>Статический макет · Все имена и сведения вымышлены · Изменения живут только до перезагрузки страницы</footer>
+    </main>
+  </div>
+  <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+  <dialog id="editor" aria-labelledby="editor-title"><form id="edit-form" novalidate>
+    <div class="dialog-head"><div><p class="eyebrow">Демонстрация формы</p><h2 id="editor-title">Редактировать паспорт</h2></div><button type="button" class="icon-button" data-close aria-label="Закрыть форму">×</button></div>
+    <div id="conflict" class="notice danger" role="alert" hidden><strong>Изменения не сохранены · конфликт 409</strong><p>Паспорт изменён другим участником или создан заново. Ваш ввод сохранён в этой форме. Автоматической перезаписи нет.</p><button type="button" class="text-button" id="compare">Сравнить с актуальными сведениями</button><div id="comparison" hidden><hr><p><strong>Сейчас в паспорте:</strong> архитектор — Елена Волкова.</p><p><strong>Ваша правка:</strong> остаётся в поле ниже. Перенесите её вручную после сверки.</p></div></div>
+    <p id="dirty" class="dirty" role="status">Нет несохранённых изменений</p>
+    <div id="editor-fields" class="form-grid"></div>
+    <p class="muted helper">Не указывайте секреты, адреса систем и эксплуатационные настройки.</p>
+    <div id="form-error" class="field-error" role="alert"></div>
+    <div class="dialog-actions"><button type="button" class="btn" data-close>Отмена</button><button type="submit" class="btn primary" id="save">Сохранить</button></div>
+  </form></dialog>
+  <dialog id="confirmation" aria-labelledby="confirm-title"><div class="dialog-head"><h2 id="confirm-title">Подтверждение</h2><button class="icon-button" data-close aria-label="Закрыть подтверждение">×</button></div><div id="confirm-body"></div><div class="dialog-actions" id="confirm-actions"></div></dialog>
+</body>
+</html>
