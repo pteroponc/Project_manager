@@ -48,6 +48,14 @@ function snapshot(overrides = {}) {
     statusCounts: { active: 1 }, healthCounts: { green: 1 }, attentionProjects: [], milestones: [], dueSoonCount: 0, dataQualityProjects: [], ...overrides };
 }
 
+test('view navigation waits for passport discard confirmation before changing the screen',()=>{
+  const h=setup();let continuation,blocked=true;
+  h.context.window.PMPassportEditor={allowNavigation:action=>{continuation=action;return !blocked;}};
+  h.state.activeView='project-architecture';
+  assert.equal(h.context.showView('projects'),false);assert.equal(h.state.activeView,'project-architecture');
+  blocked=false;continuation();assert.equal(h.state.activeView,'projects');
+});
+
 test('KPI distinguishes unknown from real zero and uses attentionCount', () => {
   const { context, elements } = setup();
   context.renderStats(snapshot({ attentionCount: 2, averageProgress: null, totalBudget: null }));

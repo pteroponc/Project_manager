@@ -1,0 +1,65 @@
+{
+  "environment": "Isolated HTTP fixtures; state only in Node process memory; no Spring, H2 or database files",
+  "responsive": [
+    {
+      "noFormOverflow": true,
+      "noPageOverflow": true,
+      "sets": [
+        {
+          "noOverflow": true,
+          "noOverlap": true,
+          "title": "Классы данных"
+        },
+        {
+          "noOverflow": true,
+          "noOverlap": true,
+          "title": "Целевые среды"
+        }
+      ],
+      "width": 1440
+    },
+    {
+      "noFormOverflow": true,
+      "noPageOverflow": true,
+      "sets": [
+        {
+          "noOverflow": true,
+          "noOverlap": true,
+          "title": "Классы данных"
+        },
+        {
+          "noOverflow": true,
+          "noOverlap": true,
+          "title": "Целевые среды"
+        }
+      ],
+      "width": 768
+    },
+    {
+      "noFormOverflow": true,
+      "noPageOverflow": true,
+      "sets": [
+        {
+          "noOverflow": true,
+          "noOverlap": true,
+          "title": "Классы данных"
+        },
+        {
+          "noOverflow": true,
+          "noOverlap": true,
+          "title": "Целевые среды"
+        }
+      ],
+      "width": 390
+    }
+  ],
+  "minimalDraftWithoutArchitect": true,
+  "nullableAndSetClearing": true,
+  "validationPreservesInput": true,
+  "versionConflict": true,
+  "recreatedPassportConflict": true,
+  "unknownResultDoesNotRetry": true,
+  "sidebarNavigationCancelKeepsInput": true,
+  "browserBackCancelKeepsInput": true,
+  "browserBackConfirmedAndForward": true
+}

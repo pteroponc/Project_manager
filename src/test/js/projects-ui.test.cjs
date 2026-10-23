@@ -56,8 +56,10 @@ function harness(search = '') {
   get('project-dialog').querySelectorAll = () => [get('project-dialog-cancel'), get('project-dialog-confirm')];
   const location = { pathname: '/', search };
   const history = {
-    pushState(_data, _title, url) { location.search = url.includes('?') ? '?' + url.split('?')[1] : ''; },
-    replaceState(_data, _title, url) { location.search = url.includes('?') ? '?' + url.split('?')[1] : ''; }
+    state:null, movements:[],
+    pushState(data, _title, url) { this.state=data;location.search = url.includes('?') ? '?' + url.split('?')[1] : ''; },
+    replaceState(data, _title, url) { this.state=data;location.search = url.includes('?') ? '?' + url.split('?')[1] : ''; },
+    go(delta) { this.movements.push(delta); }
   };
   const window = { location, history, scrollY: 0, scrollTo() {}, events: {}, addEventListener(type, callback) { this.events[type] = callback; } };
   const state = { activeView: 'overview', deliveryModels: [], selectedProjectId: null };
@@ -370,7 +372,8 @@ test('architecture loading clears previous content and distinguishes missing pas
   resolve(architecture('p1',{passport:null,dataClasses:[],environments:[],components:[],integrations:[],checks:[],risks:[]})); await pending;
   assert.match(h.get('architecture-content').innerHTML,/Паспорт отсутствует/);
   assert.match(architectureTab(h,1),/ещё не создан/);
-  assert.doesNotMatch(h.get('architecture-content').innerHTML,/Создать паспорт|data-architecture-write/);
+  assert.match(h.get('architecture-content').innerHTML,/Создать паспорт/);
+  assert.doesNotMatch(h.get('architecture-content').innerHTML,/data-delete|Инициализировать/);
   h.context.fetchJson=async()=>{throw Object.assign(Error('SQL hidden'),{status:404});};
   await h.architecture.open('missing');
   assert.match(h.get('architecture-content').innerHTML,/Проект не найден/);
@@ -459,4 +462,30 @@ test('wrong-project architecture payload is rejected with a generic error',async
   const h=harness(); h.context.fetchJson=async()=>architecture('other'); await h.architecture.open('p1');
   assert.match(h.get('architecture-content').innerHTML,/Не удалось загрузить/);
   assert.doesNotMatch(h.get('architecture-content').innerHTML,/Приём заявок|Invalid architecture/);
+});
+
+test('history rollback preserves a dirty passport and waits for explicit discard even before rollback completes',async()=>{
+  const h=harness();h.context.fetchJson=async url=>url.endsWith('/architecture')?architecture():card();
+  await h.ui.openCard('p1');await h.architecture.open('p1');
+  let continuation,blocked=true;
+  h.window.PMPassportEditor={needsWarning:()=>blocked,allowNavigation:action=>{if(!blocked)return true;continuation=()=>{blocked=false;action();};return false;}};
+  h.window.location.search='?view=project-card&project=p1';h.window.events.popstate({state:{pmRouteIndex:1}});
+  assert.deepEqual(h.window.history.movements,[1]);assert.equal(h.state.activeView,'project-architecture');
+  continuation();assert.deepEqual(h.window.history.movements,[1]);
+  h.window.events.popstate({state:{pmRouteIndex:2}});assert.deepEqual(h.window.history.movements,[1,-1]);
+  h.window.events.popstate({state:{pmRouteIndex:1}});await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(h.state.activeView,'project-card');
+});
+
+test('old editor response cannot replace another project or a newer read of the same project',async()=>{
+  for(const nextId of ['p1','p2']) {
+    const h=harness();let accept;
+    h.window.PMPassportEditor={allowNavigation:()=>true,start:(_card,callback)=>{accept=callback;}};
+    h.context.fetchJson=async()=>architecture();await h.architecture.open('p1');
+    h.get('architecture-content').listeners.click({target:{closest:selector=>selector==='[data-passport-edit]'?{}:null}});
+    h.context.fetchJson=async()=>architecture(nextId,{project:{id:nextId,name:'Новейший снимок'}});
+    await h.architecture.open(nextId);const expected=h.get('architecture-content').innerHTML;
+    accept(architecture('p1',{project:{id:'p1',name:'Устаревшая запись'}}));
+    assert.equal(h.get('architecture-content').innerHTML,expected);
+  }
 });

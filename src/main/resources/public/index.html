@@ -154,7 +154,20 @@
         <section class="panel project-detail view-section" data-view-section="project-architecture" id="project-architecture" aria-busy="false">
           <button class="text-link" type="button" id="back-from-architecture">← Назад к карточке проекта</button>
           <div id="architecture-content" aria-live="polite"></div>
+          <section class="project-milestones hidden" id="passport-editor" aria-labelledby="passport-editor-title">
+            <div class="section-head"><h2 id="passport-editor-title"></h2><button type="button" class="text-link" id="passport-close">Закрыть форму</button></div>
+            <p>Разрешён неполный черновик. Не указывайте секреты, адреса систем и эксплуатационные настройки.</p>
+            <p id="passport-dirty" role="status"></p>
+            <form id="passport-form" novalidate></form>
+            <div id="passport-write-message" role="alert"></div>
+            <div class="project-detail-actions hidden" id="passport-conflict-actions"><button type="button" class="btn btn-secondary btn-small" id="passport-compare">Загрузить актуальные сведения для сверки</button></div>
+            <section class="project-milestones hidden" id="passport-comparison" aria-live="polite"></section>
+          </section>
         </section>
+        <dialog class="project-dialog-panel" id="passport-leave-dialog" aria-labelledby="passport-leave-title">
+          <h2 id="passport-leave-title">Закрыть форму?</h2><p id="passport-leave-message"></p>
+          <div class="project-dialog-actions"><button class="btn btn-secondary" type="button" id="passport-stay">Продолжить редактирование</button><button class="btn btn-primary" type="button" id="passport-discard">Закрыть и перейти</button></div>
+        </dialog>
 
 
         <section class="panel release-train-panel view-section" id="release-train-panel" data-view-section="release">
@@ -546,8 +559,9 @@
       </section>
     </div>
 
-    <script src="/app.js?v=pm002c" defer></script>
-    <script src="/architecture-ui.js?v=pm003c2" defer></script>
-    <script src="/projects-ui.js?v=pm003c2" defer></script>
+    <script src="/app.js?v=pm003c3a" defer></script>
+    <script src="/passport-editor.js?v=pm003c3a" defer></script>
+    <script src="/architecture-ui.js?v=pm003c3a" defer></script>
+    <script src="/projects-ui.js?v=pm003c3a" defer></script>
   </body>
 </html>

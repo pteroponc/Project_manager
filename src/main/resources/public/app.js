@@ -245,7 +245,7 @@ scrollButtons.forEach((button) => {
 
 elements.viewButtons.forEach((button) => {
   button.addEventListener("click", () => {
-    showView(button.dataset.view);
+    if (showView(button.dataset.view) === false) return;
     if (button.dataset.openProjectForm === "true") {
       resetFormMode();
       openProjectForm();
@@ -344,6 +344,7 @@ async function loadDeliveryModels() {
 }
 
 function showView(view) {
+  if (window.PMPassportEditor?.allowNavigation(() => showView(view)) === false) return false;
   const nextView = view || "overview";
   state.activeView = nextView;
 
@@ -358,6 +359,7 @@ function showView(view) {
   window.PMProjectsUI?.onView?.(nextView);
 
   window.scrollTo({ top: 0, behavior: "smooth" });
+  return true;
 }
 
 async function loadDashboard() {

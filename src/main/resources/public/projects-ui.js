@@ -23,6 +23,10 @@
   let dialogOpener = null;
   let dialogAction = null;
   let navigatingHistory = false;
+  let routeIndex = window.history.state?.pmRouteIndex ?? 0;
+  let rollingBackHistory = false;
+  let pendingHistoryNavigation = null;
+  window.history.replaceState({ ...window.history.state, pmRouteIndex: routeIndex }, "", window.location.pathname + window.location.search);
 
   function readFilters(search) {
     const params = new URLSearchParams(search);
@@ -56,7 +60,8 @@
     if (navigatingHistory) return;
     const url = browserUrl(view, projectId);
     if (url !== window.location.pathname + window.location.search) {
-      window.history[replace ? "replaceState" : "pushState"]({}, "", url);
+      if (!replace) ++routeIndex;
+      window.history[replace ? "replaceState" : "pushState"]({ pmRouteIndex: routeIndex }, "", url);
     }
   }
 
@@ -171,8 +176,9 @@
 
   async function openCard(id, origin = "registry") {
     if (origin === "registry") registryScroll = window.scrollY;
+    if (window.PMPassportEditor?.allowNavigation(() => openCard(id, origin)) === false) return;
     closeProjectForm();
-    showView("project-card");
+    if (showView("project-card") === false) return;
     updateUrl("project-card", id);
     const request = ++cardRequest;
     const sameCard = card?.id === id;
@@ -533,7 +539,20 @@
     if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
     else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
   });
-  window.addEventListener("popstate", () => {
+  window.addEventListener("popstate", event => {
+    if (rollingBackHistory) { rollingBackHistory = false; const resume = pendingHistoryNavigation; pendingHistoryNavigation = null; resume?.(); return; }
+    const targetIndex = event?.state?.pmRouteIndex ?? routeIndex;
+    const delta = targetIndex - routeIndex;
+    if (delta && window.PMPassportEditor?.needsWarning()) {
+      rollingBackHistory = true;
+      window.history.go(-delta);
+      window.PMPassportEditor.allowNavigation(() => {
+        if (rollingBackHistory) pendingHistoryNavigation = () => window.history.go(delta);
+        else window.history.go(delta);
+      });
+      return;
+    }
+    routeIndex = targetIndex;
     navigatingHistory = true;
     try { restoreRoute(); } finally { navigatingHistory = false; }
   });

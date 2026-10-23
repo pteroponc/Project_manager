@@ -2085,6 +2085,12 @@ body { background: #f4f7f6; }
 .milestone-form .check-field input { width: auto; height: auto; }
 .technical-version { display: block; margin-top: 18px; color: #718079; }
 #project-architecture { overflow-wrap: anywhere; }
+#passport-form fieldset { min-width: 0; margin: 0; border: 1px solid var(--line); border-radius: var(--radius-md); }
+#passport-form .passport-set { grid-column: 1 / -1; }
+#passport-form .check-field { min-width: 0; overflow-wrap: anywhere; }
+#passport-form textarea { min-height: 100px; }
+#passport-form .passport-wide { grid-column: 1 / -1; }
+#passport-comparison { overflow-wrap: anywhere; }
 .field-error { display: block; color: #a7342e; font-weight: 600; }
 [aria-invalid="true"] { border-color: #b43e37 !important; }
 .project-dialog-panel { width: min(460px, calc(100vw - 28px)); max-height: calc(100vh - 32px); overflow: auto; padding: 22px; }

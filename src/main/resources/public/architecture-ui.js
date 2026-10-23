@@ -1,4 +1,4 @@
-/* PM-003C.2: read-only rendering of the server architecture aggregate. */
+/* Server architecture aggregate and the explicit C.3a passport editor entry. */
 (() => {
   const content = document.getElementById("architecture-content");
   const panel = document.getElementById("project-architecture");
@@ -45,10 +45,11 @@
   }
 
   async function open(id, {keepTab = false} = {}) {
+    if (window.PMPassportEditor?.allowNavigation(() => open(id,{keepTab})) === false) return;
     projectId = id;
     if (!keepTab) activeTab = 0;
     snapshot = null;
-    showView("project-architecture");
+    if (showView("project-architecture") === false) return;
     window.PMProjectsUI?.architectureRoute(id);
     const current = ++request;
     panel.setAttribute("aria-busy", "true");
@@ -95,8 +96,8 @@
 
   function passport() {
     const p = snapshot.passport;
-    if (!p) return block("Паспорт отсутствует", empty("Архитектурный паспорт ещё не создан. Просмотр ничего не создаёт."));
-    return block("Паспорт решения", facts([
+    if (!p) return block("Паспорт отсутствует", empty("Архитектурный паспорт ещё не создан. Просмотр ничего не создаёт.") + '<button type="button" class="btn btn-primary btn-small" data-passport-edit>Создать паспорт</button>');
+    return block("Паспорт решения", '<div class="project-detail-actions"><button type="button" class="btn btn-secondary btn-small" data-passport-edit>Редактировать паспорт</button></div>' + facts([
       ["Версия документа",text(p.documentVersion)], ["Критичность",label("level",p.criticality)], ["Стадия",label("stage",p.stage)],
       ["Тип решения",label("solution",p.solutionType)], ["Ответственный архитектор",text(p.architect)], ["Краткое описание",text(p.solutionSummary)],
       ["Классы данных",codes(snapshot.dataClasses,"data")], ["Среды",codes(snapshot.environments,"environment")],
@@ -129,17 +130,31 @@
   function render() {
     if (!snapshot) return;
     content.innerHTML = `<div class="project-detail-head"><div><p class="section-kicker">Архитектура и ИБ</p><h1>${text(snapshot.project.name)}</h1><p>${text(snapshot.project.owner)} · ${text(snapshot.project.quarter)}</p></div><button type="button" class="btn btn-ghost btn-small" data-architecture-retry>Обновить</button></div>
-      <p>Только просмотр. Готовность архитектуры и ИБ оценивается отдельно от состояния проекта.</p>
+      <p>Готовность архитектуры и ИБ оценивается отдельно от состояния проекта.</p>
       <nav class="project-detail-actions" aria-label="Разделы архитектуры">${tabs.map((name,i) => `<button type="button" class="btn ${activeTab === i ? "btn-primary" : "btn-secondary"} btn-small" data-architecture-tab="${i}" ${activeTab === i ? 'aria-current="page"' : ""}>${name}</button>`).join("")}</nav>
-      ${!snapshot.passport ? '<p class="empty-state compact">Паспорт отсутствует. Данные не создаются автоматически.</p>' : ""}
+      ${!snapshot.passport && activeTab !== 1 ? '<p class="empty-state compact">Паспорт отсутствует. Данные не создаются автоматически.</p><button type="button" class="btn btn-primary btn-small" data-passport-edit>Создать паспорт</button>' : ""}
       <div id="architecture-section-content">${[summary,passport,components,integrations,checks,risks][activeTab]()}</div>`;
   }
   content.addEventListener("click", event => {
+    if(event.target.closest("[data-passport-edit]")) {
+      if(window.PMPassportEditor?.allowNavigation(() => beginPassport()) === false) return;
+      return beginPassport();
+    }
     const retry = event.target.closest("[data-architecture-retry]");
     if (retry) return open(projectId,{keepTab:true});
     const tab = event.target.closest("[data-architecture-tab]");
     if (tab) { activeTab = Number(tab.dataset.architectureTab); render(); content.querySelector('[aria-current="page"]')?.focus(); }
   });
+  function beginPassport() {
+    if (!snapshot) return;
+    if (window.PMPassportEditor?.allowNavigation(() => beginPassport()) === false) return;
+    activeTab = 1; render();
+    const epoch = ++request, id = projectId;
+    window.PMPassportEditor?.start(snapshot, loaded => {
+      if (epoch !== request || projectId !== id || state.activeView !== "project-architecture") return;
+      snapshot = loaded; activeTab = 1; render();
+    });
+  }
   document.getElementById("back-from-architecture").addEventListener("click", () => window.PMProjectsUI?.openCard(projectId,"architecture"));
   window.PMArchitectureUI = {open,onView};
 })();
