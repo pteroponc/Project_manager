@@ -205,6 +205,7 @@
       <p>${text(project.summary, "Описание не указано")}</p></div><button class="btn btn-ghost btn-small" type="button" data-refresh-card>Обновить</button></div>
       <p id="project-card-notice" role="status" aria-live="polite"></p>
       <div class="project-detail-actions"><button class="btn btn-primary btn-small" type="button" data-card-action="edit">Редактировать</button>
+        <button class="btn btn-secondary btn-small" type="button" data-card-action="architecture">Архитектура и ИБ</button>
         <button class="btn btn-secondary btn-small" type="button" data-card-action="board">Открыть доску</button>
         <button class="btn btn-ghost btn-small" type="button" data-card-action="delete">Удалить проект</button></div>
       <dl class="project-detail-facts">
@@ -425,11 +426,13 @@
   }
 
   function onView(view) {
+    if (view !== "project-card") ++cardRequest;
+    window.PMArchitectureUI?.onView(view);
     if (view === "projects") {
       updateUrl("projects", null);
       syncForm();
       loadRegistry({ preserveScroll: registryScroll > 0 });
-    } else if (view !== "project-card") {
+    } else if (view !== "project-card" && view !== "project-architecture") {
       updateUrl(view);
     }
   }
@@ -441,6 +444,7 @@
     const view = params.get("view");
     if (view === "projects") showView("projects");
     else if (view === "project-card" && params.get("project")) openCard(params.get("project"), "history");
+    else if (view === "project-architecture" && params.get("project")) window.PMArchitectureUI?.open(params.get("project"));
     else if (navigatingHistory) showView("overview");
   }
 
@@ -484,6 +488,7 @@
       return;
     }
     if (target.dataset.cardAction === "edit") return startEditProject();
+    if (target.dataset.cardAction === "architecture") return window.PMArchitectureUI?.open(card.id);
     if (target.dataset.cardAction === "delete") return deleteProject(card, target);
     if (target.dataset.cardAction === "board") {
       state.selectedProjectId = card.id;
@@ -534,6 +539,7 @@
   });
 
   window.PMProjectsUI = { onView, renderRegistry, openCard, startEditProject, openProjectForm, closeProjectForm,
-    submitProject, deleteProject, resetFormMode, registryUrl, readFilters, sortItems, changedFields, progress };
+    submitProject, deleteProject, resetFormMode, registryUrl, readFilters, sortItems, changedFields, progress,
+    architectureRoute: id => updateUrl("project-architecture", id) };
   restoreRoute();
 })();

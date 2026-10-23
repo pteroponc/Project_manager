@@ -5,6 +5,8 @@ const path = require('node:path');
 const vm = require('node:vm');
 
 const script = fs.readFileSync(path.join(__dirname, '../../main/resources/public/projects-ui.js'), 'utf8');
+const architectureScript = fs.readFileSync(path.join(__dirname, '../../main/resources/public/architecture-ui.js'), 'utf8');
+const { architecture } = require('./fixtures/architecture.cjs');
 const html = fs.readFileSync(path.join(__dirname, '../../main/resources/public/index.html'), 'utf8');
 
 function node() {
@@ -15,6 +17,7 @@ function node() {
       toggle: (x, on) => on ? classes.add(x) : classes.delete(x), contains: x => classes.has(x) },
     addEventListener(type, callback) { this.listeners[type] = callback; },
     setAttribute(key, value) { this.attrs[key] = value; },
+    hasAttribute(key) { return Object.hasOwn(this.attrs, key); },
     removeAttribute(key) { delete this.attrs[key]; },
     focus() { this.focused = true; },
     querySelectorAll() { return []; },
@@ -56,7 +59,7 @@ function harness(search = '') {
     pushState(_data, _title, url) { location.search = url.includes('?') ? '?' + url.split('?')[1] : ''; },
     replaceState(_data, _title, url) { location.search = url.includes('?') ? '?' + url.split('?')[1] : ''; }
   };
-  const window = { location, history, scrollY: 0, scrollTo() {}, addEventListener() {} };
+  const window = { location, history, scrollY: 0, scrollTo() {}, events: {}, addEventListener(type, callback) { this.events[type] = callback; } };
   const state = { activeView: 'overview', deliveryModels: [], selectedProjectId: null };
   const elements = new Proxy({}, { get: (_target, key) => get(String(key)) });
   const document = { getElementById: get, createElement: node, activeElement: null };
@@ -77,8 +80,9 @@ function harness(search = '') {
     async loadBoard() {},
     async fetchJson(url, options) { calls.push({ url, options }); throw Error('offline'); }
   });
+  vm.runInContext(architectureScript, context);
   vm.runInContext(script, context);
-  return { ui: window.PMProjectsUI, context, state, window, get, calls, editor, editorFields,
+  return { ui: window.PMProjectsUI, architecture: window.PMArchitectureUI, context, state, window, get, calls, editor, editorFields,
     registryForm, registryFields, milestoneForm, milestoneFields };
 }
 
@@ -297,4 +301,162 @@ test('late registry response cannot replace newer filter result', async () => {
   await new Promise(resolve => setImmediate(resolve));
   assert.match(h.get('projects-list').innerHTML, /Новый/);
   assert.doesNotMatch(h.get('projects-list').innerHTML, /Старый/);
+});
+
+function architectureTab(h, index) {
+  h.get('architecture-content').listeners.click({target:{closest: selector => selector === '[data-architecture-tab]' ? {dataset:{architectureTab:String(index)}} : null}});
+  return h.get('architecture-content').innerHTML;
+}
+
+test('architecture entry and return preserve every registry filter and use GET only', async () => {
+  const h = harness('?view=projects&query=crm&quarter=Q3&status=active&health=red&attention=only&sort=progress&direction=desc');
+  const calls = [];
+  h.context.fetchJson = async (url, options) => { calls.push({url,options}); return url.endsWith('/architecture') ? architecture() : card(); };
+  await h.ui.openCard('p1');
+  assert.match(h.get('project-detail-content').innerHTML,/data-card-action="architecture"/);
+  const target = node(); target.dataset.cardAction = 'architecture';
+  await h.get('project-detail-content').listeners.click({target:{closest:()=>target}});
+  assert.equal(h.state.activeView,'project-architecture');
+  assert.match(h.window.location.search,/view=project-architecture/);
+  await h.get('back-from-architecture').listeners.click();
+  assert.equal(h.state.activeView,'project-card');
+  for (const value of ['query=crm','quarter=Q3','status=active','health=red','attention=only','sort=progress','direction=desc']) assert.ok(h.window.location.search.includes(value));
+  assert.equal(calls.filter(c=>c.url.endsWith('/architecture')).length,1);
+  assert.ok(calls.every(c=>!c.options?.method || c.options.method==='GET'));
+});
+
+test('architecture renders the server assessment, all reasons, upcoming and accepted risks without recomputation', async () => {
+  const h = harness();
+  const data = architecture();
+  data.assessment.status='READY'; data.assessment.statusLabel='Подпись, возвращённая сервером';
+  h.context.fetchJson = async()=>data;
+  await h.architecture.open('p1');
+  const output=h.get('architecture-content').innerHTML;
+  assert.match(output,/Подпись, возвращённая сервером/);
+  for (const reason of data.assessment.reasons) assert.ok(output.includes(reason.message));
+  assert.match(output,/Принятые высокие риски \(1\)/);
+  assert.match(output,/Временный процесс до завершения пилота/);
+  assert.match(output,/Согласование принятия не проверено/);
+  assert.match(output,/27\.10\.2026/);
+  assert.match(output,/23\.10\.2026/);
+  assert.match(output,/Europe\/Moscow/);
+  assert.match(output,/не является официальным допуском/);
+  assert.match(output,/Компоненты<\/dt><dd>1/);
+});
+
+test('all six architecture sections render actual DTO fields and omit technical metadata and write actions', async()=>{
+  const h=harness(); const data=architecture();
+  data.risks[0].probability='LOW'; data.risks[0].impact='LOW'; data.risks[0].level='CRITICAL'; // Renderer must use level as supplied.
+  h.context.fetchJson=async()=>data; await h.architecture.open('p1');
+  const outputs=Array.from({length:6},(_,i)=>architectureTab(h,i));
+  assert.match(outputs[1],/1\.0/); assert.match(outputs[1],/Управленческое описание решения\.<br>Вторая строка/);
+  assert.match(outputs[1],/Промышленная/); assert.match(outputs[1],/Персональные/); assert.match(outputs[1],/UTC/);
+  assert.match(outputs[2],/Java/); assert.match(outputs[2],/Серверное приложение/); assert.match(outputs[2],/Порядок<\/dt><dd>0/);
+  assert.match(outputs[3],/OAuth 2\.0/); assert.match(outputs[3],/Команда каталога/);
+  assert.match(outputs[4],/Согласование архитектуры/); assert.match(outputs[4],/Допуск к промышленной эксплуатации/);
+  assert.match(outputs[5],/Уровень \(сервер\)<\/dt><dd>Критический/);
+  for(const output of outputs) {
+    assert.doesNotMatch(output,/98123[7-9]|98124[0-2]|f071002a|cmp-test|risk-test|instanceId|expectedVersion|technical-version/);
+    assert.doesNotMatch(output,/<form|data-edit|data-delete|Создать паспорт|Инициализировать|Сохранить/);
+  }
+});
+
+test('architecture loading clears previous content and distinguishes missing passport from a missing project',async()=>{
+  const h=harness(); let resolve;
+  h.context.fetchJson=()=>new Promise(r=>{resolve=r;});
+  const pending=h.architecture.open('p1');
+  assert.match(h.get('architecture-content').innerHTML,/Загружаем/);
+  assert.equal(h.get('project-architecture').attrs['aria-busy'],'true');
+  resolve(architecture('p1',{passport:null,dataClasses:[],environments:[],components:[],integrations:[],checks:[],risks:[]})); await pending;
+  assert.match(h.get('architecture-content').innerHTML,/Паспорт отсутствует/);
+  assert.match(architectureTab(h,1),/ещё не создан/);
+  assert.doesNotMatch(h.get('architecture-content').innerHTML,/Создать паспорт|data-architecture-write/);
+  h.context.fetchJson=async()=>{throw Object.assign(Error('SQL hidden'),{status:404});};
+  await h.architecture.open('missing');
+  assert.match(h.get('architecture-content').innerHTML,/Проект не найден/);
+  assert.doesNotMatch(h.get('architecture-content').innerHTML,/SQL|Паспорт отсутствует/);
+});
+
+test('empty architecture lists do not initialize or create records',async()=>{
+  const h=harness(); const calls=[];
+  h.context.fetchJson=async(url,options)=>{calls.push({url,options}); return architecture('p1',{components:[],integrations:[],checks:[],risks:[]});};
+  await h.architecture.open('p1');
+  for (const [tabIndex,message] of [[2,'Компонентов пока нет'],[3,'Интеграций пока нет'],[4,'не инициализирует'],[5,'Рисков ИБ пока нет']]) assert.ok(architectureTab(h,tabIndex).includes(message));
+  assert.equal(calls.length,1); assert.equal(calls[0].options,undefined);
+});
+
+test('architecture error is safe and retry fetches the same project without stale content',async()=>{
+  const h=harness(); let calls=0;
+  h.context.fetchJson=async url=>{assert.equal(url,'/api/projects/p1/architecture'); if(++calls===1) throw Object.assign(Error('<sql> C:/private JavaClass'),{status:500}); return architecture();};
+  await h.architecture.open('p1');
+  assert.match(h.get('architecture-content').innerHTML,/Не удалось загрузить/);
+  assert.doesNotMatch(h.get('architecture-content').innerHTML,/private|JavaClass|<sql>/);
+  await h.get('architecture-content').listeners.click({target:{closest:s=>s==='[data-architecture-retry]'?{}:null}});
+  assert.match(h.get('architecture-content').innerHTML,/Приём заявок/);
+  assert.equal(calls,2); assert.equal(h.get('project-architecture').attrs['aria-busy'],'false');
+});
+
+test('late architecture success, failure and finally cannot replace a newer project',async()=>{
+  for(const rejectOld of [false,true]) {
+    const h=harness(); const pending=[];
+    h.context.fetchJson=()=>new Promise((resolve,reject)=>pending.push({resolve,reject}));
+    const first=h.architecture.open('old'); const second=h.architecture.open('new');
+    pending[1].resolve(architecture('new',{project:{id:'new',name:'Новый проект'}})); await second;
+    const expected=h.get('architecture-content').innerHTML;
+    if(rejectOld) pending[0].reject(Error('late')); else pending[0].resolve(architecture('old',{project:{id:'old',name:'Старый проект'}}));
+    await first;
+    assert.equal(h.get('architecture-content').innerHTML,expected);
+    assert.equal(h.get('project-architecture').attrs['aria-busy'],'false');
+  }
+});
+
+test('leaving architecture invalidates requests, including reopen of the same project',async()=>{
+  const h=harness(); const pending=[];
+  h.context.fetchJson=()=>new Promise(resolve=>pending.push(resolve));
+  const first=h.architecture.open('p1');
+  h.context.showView('overview');
+  const second=h.architecture.open('p1');
+  pending[0](architecture('p1',{project:{id:'p1',name:'Устаревший'}})); await first;
+  assert.match(h.get('architecture-content').innerHTML,/Загружаем/);
+  assert.equal(h.get('project-architecture').attrs['aria-busy'],'true');
+  pending[1](architecture('p1',{project:{id:'p1',name:'Актуальный'}})); await second;
+  assert.match(h.get('architecture-content').innerHTML,/Актуальный/);
+});
+
+test('late project card failures do not replace architecture navigation',async()=>{
+  const h=harness(); let reject;
+  h.context.fetchJson=url=>url.endsWith('/card')?new Promise((_r,j)=>{reject=j;}):Promise.resolve(architecture('p2'));
+  const old=h.ui.openCard('p1'); await h.architecture.open('p2'); reject(Object.assign(Error('late'),{status:404})); await old;
+  assert.equal(h.state.activeView,'project-architecture');
+  assert.doesNotMatch(h.get('project-detail-content').innerHTML,/Проект не найден/);
+});
+
+test('architecture deep route and browser history preserve registry filters',async()=>{
+  const h=harness('?query=crm&quarter=Q3');
+  h.context.fetchJson=async()=>architecture('p2');
+  h.window.location.search='?view=project-architecture&project=p2&query=crm&quarter=Q3';
+  h.window.events.popstate(); await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(h.state.activeView,'project-architecture');
+  assert.match(h.window.location.search,/query=crm/);
+  assert.match(h.get('architecture-content').innerHTML,/Приём заявок/);
+  h.window.location.search='?view=overview&query=crm'; h.window.events.popstate();
+  assert.equal(h.state.activeView,'overview');
+});
+
+test('architecture escapes every free text surface, keeps dates date-only and never mutates the DTO',async()=>{
+  const h=harness(); const data=architecture(); const attack='<img src=x onerror="attack()">&<script>attack()</script>';
+  data.project.name=attack; data.project.owner=attack; data.passport.architect=attack; data.passport.solutionSummary=attack;
+  data.components[0].name=attack; data.components[0].purpose=attack; data.integrations[0].name=attack; data.integrations[0].comment=attack;
+  data.checks[0].owner=attack; data.checks[0].comment=attack; data.risks[0].name=attack; data.risks[0].acceptanceJustification=attack;
+  data.assessment.statusLabel=attack; data.assessment.reasons[0].message=attack; data.assessment.acceptedHighRisks[0].justification=attack;
+  const before=JSON.stringify(data); h.context.fetchJson=async()=>data; await h.architecture.open('p1');
+  for(let i=0;i<6;i++) {const output=architectureTab(h,i); assert.doesNotMatch(output,/<img|<script/); assert.match(output,/&lt;img/);}
+  assert.equal(JSON.stringify(data),before);
+  assert.match(architectureTab(h,4),/20\.10\.2026/);
+});
+
+test('wrong-project architecture payload is rejected with a generic error',async()=>{
+  const h=harness(); h.context.fetchJson=async()=>architecture('other'); await h.architecture.open('p1');
+  assert.match(h.get('architecture-content').innerHTML,/Не удалось загрузить/);
+  assert.doesNotMatch(h.get('architecture-content').innerHTML,/Приём заявок|Invalid architecture/);
 });

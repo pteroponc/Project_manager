@@ -1,0 +1,124 @@
+{
+  "environment": "Isolated static server and contract fixtures; no database",
+  "responsive": [
+    {
+      "hasWriteControls": false,
+      "noOverflow": true,
+      "section": "Сводка",
+      "width": 1440
+    },
+    {
+      "hasWriteControls": false,
+      "noOverflow": true,
+      "section": "Паспорт",
+      "width": 1440
+    },
+    {
+      "hasWriteControls": false,
+      "noOverflow": true,
+      "section": "Компоненты",
+      "width": 1440
+    },
+    {
+      "hasWriteControls": false,
+      "noOverflow": true,
+      "section": "Интеграции",
+      "width": 1440
+    },
+    {
+      "hasWriteControls": false,
+      "noOverflow": true,
+      "section": "Проверки",
+      "width": 1440
+    },
+    {
+      "hasWriteControls": false,
+      "noOverflow": true,
+      "section": "Риски ИБ",
+      "width": 1440
+    },
+    {
+      "hasWriteControls": false,
+      "noOverflow": true,
+      "section": "Сводка",
+      "width": 768
+    },
+    {
+      "hasWriteControls": false,
+      "noOverflow": true,
+      "section": "Паспорт",
+      "width": 768
+    },
+    {
+      "hasWriteControls": false,
+      "noOverflow": true,
+      "section": "Компоненты",
+      "width": 768
+    },
+    {
+      "hasWriteControls": false,
+      "noOverflow": true,
+      "section": "Интеграции",
+      "width": 768
+    },
+    {
+      "hasWriteControls": false,
+      "noOverflow": true,
+      "section": "Проверки",
+      "width": 768
+    },
+    {
+      "hasWriteControls": false,
+      "noOverflow": true,
+      "section": "Риски ИБ",
+      "width": 768
+    },
+    {
+      "hasWriteControls": false,
+      "noOverflow": true,
+      "section": "Сводка",
+      "width": 390
+    },
+    {
+      "hasWriteControls": false,
+      "noOverflow": true,
+      "section": "Паспорт",
+      "width": 390
+    },
+    {
+      "hasWriteControls": false,
+      "noOverflow": true,
+      "section": "Компоненты",
+      "width": 390
+    },
+    {
+      "hasWriteControls": false,
+      "noOverflow": true,
+      "section": "Интеграции",
+      "width": 390
+    },
+    {
+      "hasWriteControls": false,
+      "noOverflow": true,
+      "section": "Проверки",
+      "width": 390
+    },
+    {
+      "hasWriteControls": false,
+      "noOverflow": true,
+      "section": "Риски ИБ",
+      "width": 390
+    }
+  ],
+  "filterReturn": {
+    "query": "crm",
+    "quarter": "Q4 2026",
+    "sort": "progress",
+    "direction": "desc"
+  },
+  "errorRetry": true,
+  "projectNotFound": true,
+  "missingPassport": true,
+  "emptyChecks": true,
+  "loading": true
+}

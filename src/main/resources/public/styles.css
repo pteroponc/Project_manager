@@ -2084,6 +2084,7 @@ body { background: #f4f7f6; }
 .milestone-form .check-field { align-self: end; display: flex; align-items: center; min-height: 38px; }
 .milestone-form .check-field input { width: auto; height: auto; }
 .technical-version { display: block; margin-top: 18px; color: #718079; }
+#project-architecture { overflow-wrap: anywhere; }
 .field-error { display: block; color: #a7342e; font-weight: 600; }
 [aria-invalid="true"] { border-color: #b43e37 !important; }
 .project-dialog-panel { width: min(460px, calc(100vw - 28px)); max-height: calc(100vh - 32px); overflow: auto; padding: 22px; }
