@@ -346,7 +346,7 @@ test('architecture renders the server assessment, all reasons, upcoming and acce
   assert.match(output,/Компоненты<\/dt><dd>1/);
 });
 
-test('all six architecture sections render DTO fields, hide technical metadata and keep checks/risks read-only', async()=>{
+test('all six architecture sections render DTO fields, hide technical metadata and keep risks read-only', async()=>{
   const h=harness(); const data=architecture();
   data.risks[0].probability='LOW'; data.risks[0].impact='LOW'; data.risks[0].level='CRITICAL'; // Renderer must use level as supplied.
   h.context.fetchJson=async()=>data; await h.architecture.open('p1');
@@ -361,6 +361,19 @@ test('all six architecture sections render DTO fields, hide technical metadata a
     assert.doesNotMatch(output.replace(/data-child-id="[^"]*"/g,''),/98123[7-9]|98124[0-2]|f071002a|cmp-test|risk-test|instanceId|expectedVersion|technical-version/);
     assert.doesNotMatch(output,/<form|data-edit|data-delete|Создать паспорт|Инициализировать|Сохранить/);
   }
+});
+
+test('initialize is explicit only for passport with an empty set; partial sets cannot be completed',async()=>{
+  for(const count of [0,1,9,10]){
+    const h=harness(),calls=[],opened=[];const data=architecture();data.checks=data.checks.slice(0,count);
+    h.window.PMPassportEditor={allowNavigation:()=>true,startChild:(_card,kind,id,accept)=>opened.push({kind,id,accept})};
+    h.context.fetchJson=async(url,options)=>{calls.push({url,options});return data;};await h.architecture.open('p1');
+    const html=architectureTab(h,4);assert.equal(html.includes('Создать набор проверок'),count===0);assert.equal(calls.length,1);assert.equal(calls[0].options,undefined);
+    h.get('architecture-content').listeners.click({target:{closest:s=>s==='[data-child-kind]'?{dataset:{childKind:'checks'}}:null}});
+    assert.equal(opened.length,count===0?1:0);assert.equal(calls.length,1);
+    if(!count){const saved=architecture();opened[0].accept(saved);assert.doesNotMatch(h.get('architecture-content').innerHTML,/Создать набор проверок/);assert.match(h.get('architecture-content').innerHTML,/проверки \(10\)/);assert.equal(calls.length,1);}
+  }
+  const h=harness();h.context.fetchJson=async()=>missingArchitecture('p1');await h.architecture.open('p1');assert.doesNotMatch(architectureTab(h,4),/Создать набор проверок|data-child-kind/);
 });
 
 test('child editor entries select UUID after reordering, require a passport and consume a full response without GET',async()=>{

@@ -32,4 +32,11 @@ function childArchitecture(id='p1') {
   card.assessment.reasons.find(r=>r.entityType==='INTEGRATION').entityId=card.integrations[0].id;
   return card;
 }
-module.exports = {architecture,missingArchitecture,childArchitecture};
+function checkArchitecture(id='p1') {
+  const card=childArchitecture(id), ids=new Map();
+  card.checks=card.checks.map((row,i)=>{const uuid=`674d7f85-9083-4c9d-a53c-${String(i+1).padStart(12,'0')}`;ids.set(row.id,uuid);return {...row,id:uuid};});
+  card.assessment.reasons=card.assessment.reasons.map(row=>({...row,entityId:ids.get(row.entityId)??row.entityId}));
+  card.assessment.upcomingChecks=card.assessment.upcomingChecks.map(row=>({...row,id:ids.get(row.id)??row.id}));
+  return card;
+}
+module.exports = {architecture,missingArchitecture,childArchitecture,checkArchitecture,checkTypes};

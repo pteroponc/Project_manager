@@ -1,4 +1,4 @@
-/* Server architecture aggregate with explicit passport/component/integration editors. */
+/* Server architecture aggregate with explicit passport/component/integration/check editors. */
 (() => {
   const content = document.getElementById("architecture-content");
   const panel = document.getElementById("project-architecture");
@@ -118,10 +118,10 @@
     ["Готовность",label("integration",i.readiness)], ["Передаваемые классы данных",codes(i.dataClasses,"data")],
     ["Ответственная сторона",text(i.responsibleParty)], ["Комментарий",text(i.comment)]
   ]))).join("") || empty("Интеграций пока нет."))); }
-  function checks() { return block(`Архитектурные и ИБ-проверки (${list(snapshot.checks).length})`, list(snapshot.checks).map(c => block(label("check",c.checkType),facts([
+  function checks() { return block(`Архитектурные и ИБ-проверки (${list(snapshot.checks).length})`, (snapshot.passport&&!list(snapshot.checks).length?'<button type="button" class="btn btn-primary btn-small" data-child-kind="checks">Создать набор проверок</button>':"") + (list(snapshot.checks).map(c => block(label("check",c.checkType),childEdit("checks",c.id)+facts([
     ["Обязательность",c.required === true ? "Обязательная" : c.required === false ? "Неприменимая" : "Не указано"], ["Статус",label("checkStatus",c.status)],
     ["Владелец",text(c.owner)], ["Плановая дата",date(c.plannedDate)], ["Фактическая дата",date(c.actualDate)], ["Комментарий / обоснование",text(c.comment)]
-  ]))).join("") || empty("Проверки пока не созданы. Просмотр не инициализирует набор проверок.")); }
+  ]))).join("") || empty("Проверки пока не созданы. Просмотр не инициализирует набор проверок."))); }
   function risks() { return block(`Риски ИБ (${list(snapshot.risks).length})`, list(snapshot.risks).map(r => block(text(r.name),facts([
     ["Описание",text(r.description)], ["Категория",label("category",r.category)], ["Вероятность",label("level",r.probability)], ["Влияние",label("level",r.impact)],
     ["Уровень (сервер)",label("level",r.level)], ["Статус",label("risk",r.status)], ["Владелец",text(r.owner)], ["Срок обработки",date(r.treatmentDueDate)],
@@ -150,10 +150,11 @@
     if (tab) { activeTab = Number(tab.dataset.architectureTab); render(); content.querySelector('[aria-current="page"]')?.focus(); }
   });
   function beginChild(kind,recordId) {
-    if(!snapshot?.passport || !["components","integrations"].includes(kind))return;
+    if(!snapshot?.passport || !["components","integrations","checks"].includes(kind))return;
+    if(kind==="checks"&&recordId===null&&list(snapshot.checks).length)return;
     if(recordId!==null && !list(snapshot[kind]).some(row=>row.id===recordId))return;
     if(window.PMPassportEditor?.allowNavigation(()=>beginChild(kind,recordId))===false)return;
-    const tab=kind==="components"?2:3;
+    const tab=kind==="components"?2:kind==="integrations"?3:4;
     activeTab=tab;render();
     const epoch=++request,id=projectId;
     window.PMPassportEditor?.startChild(snapshot,kind,recordId,loaded=>{

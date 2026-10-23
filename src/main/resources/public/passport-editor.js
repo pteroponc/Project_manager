@@ -1,4 +1,4 @@
-/* Shared C.3a/C.3b version-bound editor and navigation guard. No automatic mutation retries. */
+/* Shared C.3a-C.3c version-bound editor and navigation guard. No automatic mutation retries. */
 (() => {
   const shell = document.getElementById("passport-editor"), form = document.getElementById("passport-form");
   const message = document.getElementById("passport-write-message"), compare = document.getElementById("passport-comparison");
@@ -74,7 +74,7 @@
     if (!allowNavigation(()=>start(card,accept,model))) return;
     const original = model ? model.snapshot(card) : snapshotValues(card), create = model ? model.create : !card.passport;
     const version=model ? create ? card.passport.version : model.record.version : create ? card.project.version : card.passport.version;
-    draft = {card,original,create,model,version,instanceId:card.passport?.instanceId,accept,busy:false,locked:false,uncertain:false,comparing:false};
+    draft = {card,projectId:card.project.id,original,create,model,version,instanceId:card.passport?.instanceId,accept,busy:false,locked:false,uncertain:false,comparing:false};
     document.getElementById("passport-editor-title").textContent = model ? model.title : create ? "Создать архитектурный паспорт" : "Редактировать архитектурный паспорт";
     document.getElementById("architecture-editor-help").textContent = (model ? "Заполните обязательные поля. " : "Разрешён неполный черновик. ") + "Не указывайте секреты, адреса систем и эксплуатационные настройки.";
     document.getElementById("passport-conflict-actions").classList.add("hidden");
@@ -90,7 +90,7 @@
       '<p class="passport-wide">Необязательное пустое поле будет очищено. Пустой набор разрешён для черновика.</p><div class="form-actions"><button type="submit" class="btn btn-primary btn-small">Сохранить паспорт</button><button type="button" class="btn btn-ghost btn-small" data-passport-cancel>Отмена</button></div>';
     }
     shell.classList.remove("hidden");
-    updateState(); form.elements.namedItem(model?"name":"criticality").focus();
+    updateState(); form.elements.namedItem(model?model.focus??"name":"criticality").focus();
   }
   async function submit(event) {
     event.preventDefault();
@@ -105,7 +105,7 @@
     if (!safeVersion(version)) { message.textContent="Невозможно безопасно передать версию записи. Сохранение не отправлено."; return; }
     const changed = changes(current.original,currentValues);
     if (!current.create && !Object.keys(changed).length) {message.textContent="Изменений нет. Запрос не отправлен.";return;}
-    const body = current.model ? current.create
+    const body = current.model?.initialize ? {expectedPassportVersion:version,expectedPassportInstanceId:current.instanceId} : current.model ? current.create
       ? {expectedPassportVersion:version,expectedPassportInstanceId:current.instanceId,...Object.fromEntries(Object.entries(currentValues).filter(([,value])=>value!==null))}
       : {expectedVersion:version,...changed} : current.create
       ? {expectedProjectVersion:version,...Object.fromEntries(Object.entries(currentValues).filter(([,value])=>value!==null))}
@@ -113,10 +113,10 @@
     if ((current.model ? current.create : !current.create) && typeof body.expectedPassportInstanceId !== "string") { message.textContent="Сведения экземпляра паспорта недоступны. Загрузите актуальные данные.";return; }
     current.busy=true; updateState();
     try {
-      const suffix=current.model?`/${current.model.kind}${current.create?"":"/"+encodeURIComponent(current.model.record.id)}`:"";
-      const result = await fetchJson(`/api/projects/${encodeURIComponent(current.card.project.id)}/architecture${suffix}`,{method:current.create?"POST":"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
+      const suffix=current.model?.initialize?"/checks/initialize":current.model?`/${current.model.kind}${current.create?"":"/"+encodeURIComponent(current.model.record.id)}`:"";
+      const result = await fetchJson(`/api/projects/${encodeURIComponent(current.projectId)}/architecture${suffix}`,{method:current.create?"POST":"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
       if (draft !== current) return;
-      if(result?.project?.id!==current.card.project.id || !result.passport || !result.assessment) throw new Error("Unknown write result");
+      if(result?.project?.id!==current.projectId || !result.passport || !result.assessment) throw new Error("Unknown write result");
       discard(); current.accept(result);
     } catch(error) {
       if(draft!==current) return;
@@ -128,9 +128,10 @@
         current.uncertain=error.status!==409 && error.status!==404;
         message.textContent=error.status===409 ? error.code==="PASSPORT_INSTANCE_CONFLICT"
           ? "Паспорт удалён и создан заново. Ввод сохранён; эта форма относится к прежнему экземпляру. Запись не повторяется."
+          : error.code==="CHECKS_ALREADY_EXIST" ? "Набор проверок уже не пуст. Инициализация не выполнена и не повторяется. Загрузите актуальные сведения для сверки."
           : current.model ? "Конфликт: запись или паспорт изменены другим участником. Ввод сохранён. Исходные токены не заменяются, запись не повторяется."
           : "Конфликт: проект или паспорт изменён другим участником. Ввод сохранён. Ожидаемые версии не заменяются, запись не повторяется."
-          : error.status===404 ? current.model && ["COMPONENT_NOT_FOUND","INTEGRATION_NOT_FOUND"].includes(error.code) ? "Выбранная запись удалена. Ввод сохранён. Загрузите актуальные сведения для сверки." : "Проект или паспорт больше не существует. Ввод сохранён. Загрузите актуальные сведения."
+          : error.status===404 ? current.model && ["COMPONENT_NOT_FOUND","INTEGRATION_NOT_FOUND","CHECK_NOT_FOUND"].includes(error.code) ? "Выбранная запись удалена. Ввод сохранён. Загрузите актуальные сведения для сверки." : "Проект или паспорт больше не существует. Ввод сохранён. Загрузите актуальные сведения."
           : "Не удалось подтвердить результат записи. Сервер мог сохранить данные. Ввод сохранён; запрос автоматически не повторяется. Сначала загрузите актуальные сведения для сверки.";
         document.getElementById("passport-conflict-actions").classList.remove("hidden");
       }
@@ -148,7 +149,7 @@
     const latest=current.model?current.model.snapshot(loaded):snapshotValues(loaded), entered=values();
     const names=current.model?Object.keys(current.model.fields):Object.keys(titles);
     const show=current.model?current.model.display:display;
-    compare.innerHTML=`<h3>Сверка с актуальными сведениями</h3><p>${description}</p><dl class="project-details">${names.map(name=>`<div><dt>${current.model?current.model.fields[name].title:titles[name]}</dt><dd>Сейчас: ${removed||!loaded.passport?"Запись отсутствует":current.model?.create?"Для новой записи нет выбранного аналога":show(name,latest[name])}<br>Ваш ввод: ${show(name,entered[name])}</dd></div>`).join("")}</dl><p>Для новой записи сначала закройте эту форму и явно откройте актуальные сведения. Автоматического переноса правок нет.</p><button type="button" class="btn btn-secondary btn-small" id="passport-use-latest">Закрыть форму и открыть актуальные сведения</button>`;
+    compare.innerHTML=`<h3>Сверка с актуальными сведениями</h3><p>${description}</p>${current.model?.comparisonNote?`<p>${esc(current.model.comparisonNote(loaded))}</p>`:""}<dl class="project-details">${names.map(name=>`<div><dt>${current.model?current.model.fields[name].title:titles[name]}</dt><dd>Сейчас: ${removed||!loaded.passport?"Запись отсутствует":current.model?.create?"Для новой записи нет выбранного аналога":show(name,latest[name])}<br>Ваш ввод: ${show(name,entered[name])}</dd></div>`).join("")}</dl><p>Для новой записи сначала закройте эту форму и явно откройте актуальные сведения. Автоматического переноса правок нет.</p><button type="button" class="btn btn-secondary btn-small" id="passport-use-latest">Закрыть форму и открыть актуальные сведения</button>`;
     document.getElementById("passport-use-latest").addEventListener("click",()=>{
       if(draft!==current || !allowNavigation(()=>current.accept(loaded))) return;
       current.accept(loaded);
@@ -159,9 +160,9 @@
     if(!current || current.busy || current.comparing) return;
     current.comparing=true;current.latest=null;updateState();compare.classList.remove("hidden");compare.textContent="Загружаем актуальные сведения для сверки…";
     try {
-      const loaded=await fetchJson(`/api/projects/${encodeURIComponent(current.card.project.id)}/architecture`);
+      const loaded=await fetchJson(`/api/projects/${encodeURIComponent(current.projectId)}/architecture`);
       if(draft!==current) return;
-      if(loaded?.project?.id!==current.card.project.id || !loaded.assessment) throw new Error("Wrong project");
+      if(loaded?.project?.id!==current.projectId || !loaded.assessment) throw new Error("Wrong project");
       current.latest=loaded;
       renderComparison(current,loaded);
     } catch(error) { if(draft===current) compare.textContent=error.status===404?"Проект не найден. Ввод формы сохранён.":"Не удалось загрузить актуальные сведения. Ввод формы сохранён; запись не повторялась."; }
@@ -178,7 +179,7 @@
   document.getElementById("passport-discard").addEventListener("click",()=>{const action=pendingNavigation;pendingNavigation=null;leave.close();discard();action?.();});
   window.addEventListener("beforeunload",event=>{if(needsWarning()) {event.preventDefault();event.returnValue="";}});
   function startChild(card,kind,recordId,accept) {
-    const model=window.PMArchitectureChildModel?.model(kind,card,recordId);
+    const model=kind==="checks"?window.PMArchitectureCheckModel?.model(card,recordId):window.PMArchitectureChildModel?.model(kind,card,recordId);
     if(model) start(card,accept,model);
   }
   window.PMPassportEditor={start,startChild,allowNavigation,needsWarning};
