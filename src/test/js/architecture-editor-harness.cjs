@@ -36,6 +36,7 @@ function setup(){
   vm.runInContext(fs.readFileSync(path.join(__dirname,'../../main/resources/public/architecture-child-editor.js'),'utf8'),context);
   vm.runInContext(fs.readFileSync(path.join(__dirname,'../../main/resources/public/architecture-check-editor.js'),'utf8'),context);
   vm.runInContext(fs.readFileSync(path.join(__dirname,'../../main/resources/public/architecture-risk-editor.js'),'utf8'),context);
+  vm.runInContext(fs.readFileSync(path.join(__dirname,'../../main/resources/public/architecture-deletion.js'),'utf8'),context);
   vm.runInContext(source,context);
   const api=window.PMPassportEditor;
   const start=(data=architecture())=>api.start(data,result=>accepted.push(result));

@@ -372,6 +372,20 @@ test('risk actions select UUID after reorder and apply full response without GET
   h.context.fetchJson=async()=>missingArchitecture('p1');await h.architecture.open('p1');assert.doesNotMatch(architectureTab(h,5),/Добавить риск|data-child-kind/);
 });
 
+test('deletion selects every child UUID after reorder and uses full response, including absent passport, without GET',async()=>{
+  const {riskArchitecture}=require('./fixtures/architecture.cjs');const h=harness(),data=riskArchitecture(),opened=[],calls=[];let accept;
+  for(const kind of ['components','integrations','checks','risks'])data[kind].reverse();
+  h.window.PMPassportEditor={allowNavigation:()=>true,startDeletion:(_card,kind,id,callback)=>{opened.push({kind,id});accept=callback;}};
+  h.context.fetchJson=async(url,options)=>{calls.push({url,options});return data;};await h.architecture.open('p1');
+  for(const kind of ['components','integrations','checks','risks'])for(const row of [data[kind][0],data[kind].at(-1)]){h.get('architecture-content').listeners.click({target:{closest:s=>s==='[data-architecture-remove]'?{dataset:{architectureRemove:kind,childId:row.id}}:null}});assert.deepEqual(opened.at(-1),{kind,id:row.id});}
+  const response=riskArchitecture();response.components[0].name='Ответ DELETE';accept(response);assert.equal(calls.length,1);
+  h.get('architecture-content').listeners.click({target:{closest:s=>s==='[data-architecture-remove]'?{dataset:{architectureRemove:'passport'}}:null}});assert.deepEqual(opened.at(-1),{kind:'passport',id:null});accept(missingArchitecture('p1'));assert.match(h.get('architecture-content').innerHTML,/Создать паспорт/);assert.doesNotMatch(h.get('architecture-content').innerHTML,/data-architecture-remove/);assert.equal(calls.length,1);
+});
+
+test('old deletion response cannot replace a new snapshot of the same or another project',async()=>{
+  for(const nextId of ['p1','p2']){const h=harness();let accept;h.window.PMPassportEditor={allowNavigation:()=>true,startDeletion:(_d,_k,_i,callback)=>{accept=callback;}};h.context.fetchJson=async()=>architecture();await h.architecture.open('p1');h.get('architecture-content').listeners.click({target:{closest:s=>s==='[data-architecture-remove]'?{dataset:{architectureRemove:'components',childId:'cmp-test'}}:null}});h.context.fetchJson=async()=>architecture(nextId);await h.architecture.open(nextId);const before=h.get('architecture-content').innerHTML;accept(missingArchitecture('p1'));assert.equal(h.get('architecture-content').innerHTML,before);}
+});
+
 test('accepted HIGH/CRITICAL uses server level, justification, UNVERIFIED and all server reasons without recalculation',async()=>{
   const {riskArchitecture}=require('./fixtures/architecture.cjs');
   for(const level of ['HIGH','CRITICAL']){const h=harness(),data=riskArchitecture();Object.assign(data.risks[0],{probability:'LOW',impact:'LOW',level});Object.assign(data.assessment,{status:'ATTENTION_REQUIRED',statusLabel:'Оценка только сервера'});data.assessment.acceptedHighRisks[0].level=level;

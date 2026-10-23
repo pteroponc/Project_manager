@@ -1,4 +1,4 @@
-/* Server architecture aggregate with explicit passport and child editors. */
+/* Server aggregate with explicit editors and version-bound deletion confirmations. */
 (() => {
   const content = document.getElementById("architecture-content");
   const panel = document.getElementById("project-architecture");
@@ -97,7 +97,7 @@
   function passport() {
     const p = snapshot.passport;
     if (!p) return block("Паспорт отсутствует", empty("Архитектурный паспорт ещё не создан. Просмотр ничего не создаёт.") + '<button type="button" class="btn btn-primary btn-small" data-passport-edit>Создать паспорт</button>');
-    return block("Паспорт решения", '<div class="project-detail-actions"><button type="button" class="btn btn-secondary btn-small" data-passport-edit>Редактировать паспорт</button></div>' + facts([
+    return block("Паспорт решения", '<div class="project-detail-actions"><button type="button" class="btn btn-secondary btn-small" data-passport-edit>Редактировать паспорт</button><button type="button" class="btn btn-danger btn-small" data-architecture-remove="passport">Удалить паспорт</button></div>' + facts([
       ["Версия документа",text(p.documentVersion)], ["Критичность",label("level",p.criticality)], ["Стадия",label("stage",p.stage)],
       ["Тип решения",label("solution",p.solutionType)], ["Ответственный архитектор",text(p.architect)], ["Краткое описание",text(p.solutionSummary)],
       ["Классы данных",codes(snapshot.dataClasses,"data")], ["Среды",codes(snapshot.environments,"environment")],
@@ -107,7 +107,7 @@
   }
 
   const childAdd = kind => snapshot.passport ? `<button type="button" class="btn btn-primary btn-small" data-child-kind="${kind}" data-child-create>Добавить ${kind==="components"?"компонент":kind==="integrations"?"интеграцию":"риск"}</button>` : "";
-  const childEdit = (kind,id) => `<button type="button" class="btn btn-secondary btn-small" data-child-kind="${kind}" data-child-id="${esc(id)}">Редактировать</button>`;
+  const childEdit = (kind,id) => `<div class="project-detail-actions"><button type="button" class="btn btn-secondary btn-small" data-child-kind="${kind}" data-child-id="${esc(id)}">Редактировать</button>${snapshot.passport?`<button type="button" class="btn btn-danger btn-small" data-architecture-remove="${kind}" data-child-id="${esc(id)}">Удалить</button>`:''}</div>`;
   function components() { return block(`Компоненты (${list(snapshot.components).length})`, childAdd("components") + (list(snapshot.components).map(c => block(text(c.name),childEdit("components",c.id)+facts([
     ["Тип",label("component",c.componentType)], ["Назначение",text(c.purpose)], ["Платформа",text(c.platform)],
     ["Критичность",label("level",c.criticality)], ["Внешний компонент",c.externalComponent === true ? "Да" : c.externalComponent === false ? "Нет" : "Не указано"], ["Порядок",text(c.position)]
@@ -138,6 +138,8 @@
       <div id="architecture-section-content">${[summary,passport,components,integrations,checks,risks][activeTab]()}</div>`;
   }
   content.addEventListener("click", event => {
+    const removal=event.target.closest('[data-architecture-remove]');
+    if(removal)return beginDeletion(removal.dataset.architectureRemove,removal.dataset.childId??null);
     const child=event.target.closest("[data-child-kind]");
     if(child) return beginChild(child.dataset.childKind,child.dataset.childId??null);
     if(event.target.closest("[data-passport-edit]")) {
@@ -149,6 +151,17 @@
     const tab = event.target.closest("[data-architecture-tab]");
     if (tab) { activeTab = Number(tab.dataset.architectureTab); render(); content.querySelector('[aria-current="page"]')?.focus(); }
   });
+  function beginDeletion(kind,recordId) {
+    if(!snapshot?.passport||!['passport','components','integrations','checks','risks'].includes(kind))return;
+    if(kind!=='passport'&&!list(snapshot[kind]).some(row=>row.id===recordId))return;
+    if(window.PMPassportEditor?.allowNavigation(()=>beginDeletion(kind,recordId))===false)return;
+    const tab={passport:1,components:2,integrations:3,checks:4,risks:5}[kind];
+    activeTab=tab;render();const epoch=++request,id=projectId;
+    window.PMPassportEditor?.startDeletion(snapshot,kind,recordId,loaded=>{
+      if(epoch!==request||id!==projectId||state.activeView!=='project-architecture')return;
+      snapshot=loaded;activeTab=tab;render();
+    });
+  }
   function beginChild(kind,recordId) {
     if(!snapshot?.passport || !["components","integrations","checks","risks"].includes(kind))return;
     if(kind==="checks"&&recordId===null&&list(snapshot.checks).length)return;

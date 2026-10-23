@@ -47,4 +47,11 @@ function riskArchitecture(id='p1') {
   card.assessment.acceptedHighRisks=card.assessment.acceptedHighRisks.map(row=>({...row,id:firstId}));
   return card;
 }
-module.exports = {architecture,missingArchitecture,childArchitecture,checkArchitecture,riskArchitecture,checkTypes};
+function emptyPassport(id='p1') {return {...riskArchitecture(id),components:[],integrations:[],checks:[],risks:[],dataClasses:[],environments:[]};}
+function passportImpact(card) {
+  const counts={componentCount:card.components.length,integrationCount:card.integrations.length,checkCount:card.checks.length,securityRiskCount:card.risks.length,dataClassCount:card.dataClasses.length,environmentCount:card.environments.length};
+  const labels={componentCount:'Компоненты',integrationCount:'Интеграции',checkCount:'Проверки',securityRiskCount:'Риски ИБ',dataClassCount:'Классы данных паспорта',environmentCount:'Среды'};
+  const blockers=[...(!card.passport?['Паспорт отсутствует']:[]),...Object.entries(counts).filter(([,value])=>value>0).map(([name,value])=>`${labels[name]}: ${value}`)];
+  return {projectId:card.project.id,passportPresent:!!card.passport,...counts,deletionAllowed:blockers.length===0,blockers};
+}
+module.exports = {architecture,missingArchitecture,childArchitecture,checkArchitecture,riskArchitecture,emptyPassport,passportImpact,checkTypes};

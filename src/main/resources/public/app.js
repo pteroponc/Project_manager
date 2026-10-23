@@ -1530,6 +1530,7 @@ async function fetchJson(url, options) {
     error.code = details?.code;
     error.fieldErrors = details?.fieldErrors;
     error.currentVersion = details?.currentVersion;
+    error.impact = details?.impact;
     throw error;
   }
   return response.json();
