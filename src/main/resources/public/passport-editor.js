@@ -1,4 +1,4 @@
-/* PM-003C.3a: version-bound passport form. No automatic mutation retries. */
+/* Shared C.3a/C.3b version-bound editor and navigation guard. No automatic mutation retries. */
 (() => {
   const shell = document.getElementById("passport-editor"), form = document.getElementById("passport-form");
   const message = document.getElementById("passport-write-message"), compare = document.getElementById("passport-comparison");
@@ -25,6 +25,7 @@
       dataClasses:sorted(card.dataClasses ?? []),environments:sorted(card.environments ?? [])};
   }
   function values() {
+    if(draft?.model) return draft.model.values(form);
     const result = {};
     for (const name of ["criticality","stage","solutionType"]) result[name] = form.elements.namedItem(name).value;
     for (const name of [...Object.keys(optional),"lastReviewDate"]) result[name] = normalized(form.elements.namedItem(name).value);
@@ -69,22 +70,27 @@
     form.querySelectorAll("input,select,textarea").forEach(input=>{input.disabled=draft.busy;});
     document.getElementById("passport-compare").disabled = draft.busy || draft.comparing;
   }
-  function start(card, accept) {
-    if (!allowNavigation(()=>start(card,accept))) return;
-    const original = snapshotValues(card), create = !card.passport;
-    draft = {card,original,create,accept,busy:false,locked:false,uncertain:false,comparing:false};
-    document.getElementById("passport-editor-title").textContent = create ? "Создать архитектурный паспорт" : "Редактировать архитектурный паспорт";
+  function start(card, accept, model = null) {
+    if (!allowNavigation(()=>start(card,accept,model))) return;
+    const original = model ? model.snapshot(card) : snapshotValues(card), create = model ? model.create : !card.passport;
+    const version=model ? create ? card.passport.version : model.record.version : create ? card.project.version : card.passport.version;
+    draft = {card,original,create,model,version,instanceId:card.passport?.instanceId,accept,busy:false,locked:false,uncertain:false,comparing:false};
+    document.getElementById("passport-editor-title").textContent = model ? model.title : create ? "Создать архитектурный паспорт" : "Редактировать архитектурный паспорт";
+    document.getElementById("architecture-editor-help").textContent = (model ? "Заполните обязательные поля. " : "Разрешён неполный черновик. ") + "Не указывайте секреты, адреса систем и эксплуатационные настройки.";
     document.getElementById("passport-conflict-actions").classList.add("hidden");
     compare.classList.add("hidden"); compare.innerHTML = ""; message.textContent = "";
+    form.className = "milestone-form";
+    if(model) form.innerHTML=model.markup(original);
+    else {
     const error = name => `<small class="field-error" id="passport-error-${name}"></small>`;
     const selects = ["criticality","stage","solutionType"].map(name=>`<label>${titles[name]} *<select name="${name}" required aria-describedby="passport-error-${name}"><option value="">Выберите значение</option>${Object.entries(catalogs[name]).map(([code,title])=>`<option value="${code}" ${original[name]===code?"selected":""}>${title}</option>`).join("")}</select>${error(name)}</label>`).join("");
     const texts = Object.entries(optional).map(([name,[title,max]])=>`<label class="${name==='architect'?'':'passport-wide'}">${title}${name==='architect'?`<input name="${name}" maxlength="${max}" value="${esc(original[name])}" aria-describedby="passport-error-${name}">`:`<textarea name="${name}" maxlength="${max}" aria-describedby="passport-error-${name}">${esc(original[name])}</textarea>`}${error(name)}</label>`).join("");
     const sets = ["dataClasses","environments"].map(name=>`<fieldset class="passport-set"><legend>${titles[name]}</legend>${Object.entries(catalogs[name]).map(([code,title])=>`<label class="check-field"><input type="checkbox" name="${name}" value="${code}" ${original[name].includes(code)?"checked":""} aria-describedby="passport-error-${name}">${title}</label>`).join("")}${error(name)}</fieldset>`).join("");
-    form.className = "milestone-form";
     form.innerHTML = selects + texts + `<label>Дата пересмотра<input type="date" name="lastReviewDate" value="${esc(original.lastReviewDate)}" aria-describedby="passport-error-lastReviewDate">${error("lastReviewDate")}</label>` + sets +
       '<p class="passport-wide">Необязательное пустое поле будет очищено. Пустой набор разрешён для черновика.</p><div class="form-actions"><button type="submit" class="btn btn-primary btn-small">Сохранить паспорт</button><button type="button" class="btn btn-ghost btn-small" data-passport-cancel>Отмена</button></div>';
+    }
     shell.classList.remove("hidden");
-    updateState(); form.elements.namedItem("criticality").focus();
+    updateState(); form.elements.namedItem(model?"name":"criticality").focus();
   }
   async function submit(event) {
     event.preventDefault();
@@ -92,19 +98,23 @@
     if (!current || current.busy || current.locked) return;
     clearErrors(); message.textContent = "";
     const currentValues = values(); let invalid = false;
-    for (const name of ["criticality","stage","solutionType"]) if (!Object.hasOwn(catalogs[name],currentValues[name])) {fieldError(name,"Выберите значение.");invalid=true;}
+    if(current.model) invalid=!current.model.validate(currentValues,fieldError);
+    else for (const name of ["criticality","stage","solutionType"]) if (!Object.hasOwn(catalogs[name],currentValues[name])) {fieldError(name,"Выберите значение.");invalid=true;}
     if (invalid || !form.reportValidity()) return;
-    const version = current.create ? current.card.project.version : current.card.passport.version;
+    const version = current.version;
     if (!safeVersion(version)) { message.textContent="Невозможно безопасно передать версию записи. Сохранение не отправлено."; return; }
     const changed = changes(current.original,currentValues);
     if (!current.create && !Object.keys(changed).length) {message.textContent="Изменений нет. Запрос не отправлен.";return;}
-    const body = current.create
+    const body = current.model ? current.create
+      ? {expectedPassportVersion:version,expectedPassportInstanceId:current.instanceId,...Object.fromEntries(Object.entries(currentValues).filter(([,value])=>value!==null))}
+      : {expectedVersion:version,...changed} : current.create
       ? {expectedProjectVersion:version,...Object.fromEntries(Object.entries(currentValues).filter(([,value])=>value!==null))}
-      : {expectedVersion:version,expectedPassportInstanceId:current.card.passport.instanceId,...changed};
-    if (!current.create && typeof body.expectedPassportInstanceId !== "string") { message.textContent="Сведения экземпляра паспорта недоступны. Загрузите актуальные данные.";return; }
+      : {expectedVersion:version,expectedPassportInstanceId:current.instanceId,...changed};
+    if ((current.model ? current.create : !current.create) && typeof body.expectedPassportInstanceId !== "string") { message.textContent="Сведения экземпляра паспорта недоступны. Загрузите актуальные данные.";return; }
     current.busy=true; updateState();
     try {
-      const result = await fetchJson(`/api/projects/${encodeURIComponent(current.card.project.id)}/architecture`,{method:current.create?"POST":"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
+      const suffix=current.model?`/${current.model.kind}${current.create?"":"/"+encodeURIComponent(current.model.record.id)}`:"";
+      const result = await fetchJson(`/api/projects/${encodeURIComponent(current.card.project.id)}/architecture${suffix}`,{method:current.create?"POST":"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
       if (draft !== current) return;
       if(result?.project?.id!==current.card.project.id || !result.passport || !result.assessment) throw new Error("Unknown write result");
       discard(); current.accept(result);
@@ -118,8 +128,9 @@
         current.uncertain=error.status!==409 && error.status!==404;
         message.textContent=error.status===409 ? error.code==="PASSPORT_INSTANCE_CONFLICT"
           ? "Паспорт удалён и создан заново. Ввод сохранён; эта форма относится к прежнему экземпляру. Запись не повторяется."
+          : current.model ? "Конфликт: запись или паспорт изменены другим участником. Ввод сохранён. Исходные токены не заменяются, запись не повторяется."
           : "Конфликт: проект или паспорт изменён другим участником. Ввод сохранён. Ожидаемые версии не заменяются, запись не повторяется."
-          : error.status===404 ? "Проект или паспорт больше не существует. Ввод сохранён. Загрузите актуальные сведения."
+          : error.status===404 ? current.model && ["COMPONENT_NOT_FOUND","INTEGRATION_NOT_FOUND"].includes(error.code) ? "Выбранная запись удалена. Ввод сохранён. Загрузите актуальные сведения для сверки." : "Проект или паспорт больше не существует. Ввод сохранён. Загрузите актуальные сведения."
           : "Не удалось подтвердить результат записи. Сервер мог сохранить данные. Ввод сохранён; запрос автоматически не повторяется. Сначала загрузите актуальные сведения для сверки.";
         document.getElementById("passport-conflict-actions").classList.remove("hidden");
       }
@@ -131,10 +142,13 @@
     return esc(catalogs[name]?.[value] ?? value).replace(/\n/g,"<br>");
   }
   function renderComparison(current,loaded) {
-    const instanceChanged=!!current.card.passport && !!loaded.passport && current.card.passport.instanceId!==loaded.passport.instanceId;
-    const description=!loaded.passport?"Сейчас паспорта нет.":instanceChanged?"Это новый экземпляр паспорта после удаления и повторного создания.":"Актуальные сведения загружены. Исходные токены формы не изменены.";
-    const latest=snapshotValues(loaded), entered=values();
-    compare.innerHTML=`<h3>Сверка с актуальными сведениями</h3><p>${description}</p><dl class="project-details">${Object.keys(titles).map(name=>`<div><dt>${titles[name]}</dt><dd>Сейчас: ${display(name,latest[name])}<br>Ваш ввод: ${display(name,entered[name])}</dd></div>`).join("")}</dl><p>Для новой записи сначала закройте эту форму и явно откройте актуальные сведения. Автоматического переноса правок нет.</p><button type="button" class="btn btn-secondary btn-small" id="passport-use-latest">Закрыть форму и открыть актуальные сведения</button>`;
+    const instanceChanged=!!current.card.passport && !!loaded.passport && current.instanceId!==loaded.passport.instanceId;
+    const removed=current.model?.record && !(loaded[current.model.kind]??[]).some(row=>row.id===current.model.record.id);
+    const description=!loaded.passport?"Сейчас паспорта нет.":instanceChanged?"Это новый экземпляр паспорта после удаления и повторного создания.":removed?"Выбранная запись удалена. Сведения ниже не относятся к существующей записи.":"Актуальные сведения загружены. Исходные токены формы не изменены.";
+    const latest=current.model?current.model.snapshot(loaded):snapshotValues(loaded), entered=values();
+    const names=current.model?Object.keys(current.model.fields):Object.keys(titles);
+    const show=current.model?current.model.display:display;
+    compare.innerHTML=`<h3>Сверка с актуальными сведениями</h3><p>${description}</p><dl class="project-details">${names.map(name=>`<div><dt>${current.model?current.model.fields[name].title:titles[name]}</dt><dd>Сейчас: ${removed||!loaded.passport?"Запись отсутствует":current.model?.create?"Для новой записи нет выбранного аналога":show(name,latest[name])}<br>Ваш ввод: ${show(name,entered[name])}</dd></div>`).join("")}</dl><p>Для новой записи сначала закройте эту форму и явно откройте актуальные сведения. Автоматического переноса правок нет.</p><button type="button" class="btn btn-secondary btn-small" id="passport-use-latest">Закрыть форму и открыть актуальные сведения</button>`;
     document.getElementById("passport-use-latest").addEventListener("click",()=>{
       if(draft!==current || !allowNavigation(()=>current.accept(loaded))) return;
       current.accept(loaded);
@@ -163,5 +177,9 @@
   leave.addEventListener("cancel",()=>{pendingNavigation=null;});
   document.getElementById("passport-discard").addEventListener("click",()=>{const action=pendingNavigation;pendingNavigation=null;leave.close();discard();action?.();});
   window.addEventListener("beforeunload",event=>{if(needsWarning()) {event.preventDefault();event.returnValue="";}});
-  window.PMPassportEditor={start,allowNavigation,needsWarning};
+  function startChild(card,kind,recordId,accept) {
+    const model=window.PMArchitectureChildModel?.model(kind,card,recordId);
+    if(model) start(card,accept,model);
+  }
+  window.PMPassportEditor={start,startChild,allowNavigation,needsWarning};
 })();

@@ -23,4 +23,13 @@ function architecture(id = 'p1', overrides = {}) {
 function missingArchitecture(id = 'review-missing') {
   return architecture(id,{passport:null,dataClasses:[],environments:[],components:[],integrations:[],checks:[],risks:[],assessment:{status:'NOT_ASSESSED',statusLabel:'Оценка не завершена',calculationDate:'2026-10-23',timeZone:'Europe/Moscow',officialGoLiveApproval:false,reasons:[{status:'NOT_ASSESSED',code:'PASSPORT_MISSING',entityType:'PASSPORT',entityId:id,message:'Архитектурный паспорт отсутствует'}],upcomingChecks:[],acceptedHighRisks:[]}});
 }
-module.exports = {architecture,missingArchitecture};
+function childArchitecture(id='p1') {
+  const card=architecture(id);
+  card.components=[{...card.components[0],id:'b315e3c4-71ef-4b21-9c47-3bda3b184cf0'},
+    {...card.components[0],id:'154a9379-5422-425f-bc35-d276f05b98c5',name:'Портал заявителя',componentType:'FRONTEND',platform:'Браузер',externalComponent:true,position:5,version:12}];
+  card.integrations=[{...card.integrations[0],id:'bd9634ab-a4a4-464c-8a3a-9728547c0913'},
+    {...card.integrations[0],id:'100abf04-f772-478e-85b8-f0b4c9d5c4a1',name:'События обращений',sourceSystem:'Шина событий',targetSystem:'Приём заявок',direction:'INBOUND',interactionType:'EVENT',authCategory:'MTLS',dataClasses:['INTERNAL','PERSONAL'],version:17}];
+  card.assessment.reasons.find(r=>r.entityType==='INTEGRATION').entityId=card.integrations[0].id;
+  return card;
+}
+module.exports = {architecture,missingArchitecture,childArchitecture};

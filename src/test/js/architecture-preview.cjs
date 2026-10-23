@@ -4,18 +4,22 @@
 const http = require('node:http');
 const fs = require('node:fs');
 const path = require('node:path');
-const {architecture,missingArchitecture} = require('./fixtures/architecture.cjs');
-const writeMode=process.argv.includes('--passport-editor');
+const {architecture,missingArchitecture,childArchitecture} = require('./fixtures/architecture.cjs');
+const childMode=process.argv.includes('--child-editor');
+const writeMode=childMode||process.argv.includes('--passport-editor');
 const stored=new Map(), writes=new Map();
 const root = path.resolve(__dirname,'../../main/resources/public');
 const assets = {'/':'index.html','/index.html':'index.html','/app.js':'app.js','/projects-ui.js':'projects-ui.js','/architecture-ui.js':'architecture-ui.js','/passport-editor.js':'passport-editor.js','/styles.css':'styles.css'};
+assets['/architecture-child-editor.js']='architecture-child-editor.js';
 const names = {'review-full':'Тестовый проект «Приём заявок»','review-empty':'Тестовый пустой паспорт','review-missing':'Тестовый проект без паспорта','review-error':'Тестовый повтор загрузки','review-slow':'Тестовый медленный ответ'};
 if(writeMode) Object.assign(names,{'write-create':'Тестовый новый паспорт','write-validation':'Тестовая ошибка поля','write-version':'Тестовый конфликт версии','write-recreate':'Тестовый новый экземпляр','write-unknown':'Тестовый неопределённый результат'});
+if(childMode) Object.assign(names,{'child-full':'Тестовые компоненты и интеграции','child-validation':'Тестовая ошибка компонента','child-version':'Тестовый конфликт записи','child-passport':'Тестовый конфликт паспорта','child-deleted':'Тестовая удалённая запись','child-recreate':'Тестовый пересозданный паспорт','child-unknown':'Тестовая неопределённая запись'});
 const projects = Object.entries(names).map(([id,name])=>({id,name,owner:'Тестовая команда',quarter:'Q4 2026',status:'active',health:'green',progress:0,deadline:'2026-12-15',startDate:null,summary:'Изолированные тестовые данные C.2',deliveryModel:'kanban',assessment:{requiresAttention:false,attentionReasons:[],dataQualityIssues:[]}}));
 const attempts = new Map();
 function send(response,status,data) {response.writeHead(status,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store'});response.end(JSON.stringify(data));}
 http.createServer((req,res)=>{
-  if(req.method!=='GET' && !(writeMode && ['POST','PATCH'].includes(req.method) && /^\/api\/projects\/[^/]+\/architecture$/.test(new URL(req.url,'http://127.0.0.1').pathname))) return send(res,405,{error:'Read-only fixture server'});
+  const writePath=childMode?/^\/api\/projects\/[^/]+\/architecture(?:\/(components|integrations)(?:\/[^/]+)?)?$/:/^\/api\/projects\/[^/]+\/architecture$/;
+  if(req.method!=='GET' && !(writeMode && ['POST','PATCH'].includes(req.method) && writePath.test(new URL(req.url,'http://127.0.0.1').pathname))) return send(res,405,{error:'Read-only fixture server'});
   const url=new URL(req.url,'http://127.0.0.1');
   if(Object.hasOwn(assets,url.pathname)) {
     const file=assets[url.pathname];
@@ -28,16 +32,46 @@ http.createServer((req,res)=>{
   if(url.pathname==='/api/portfolio/overview') return send(res,200,{calculationDate:'2026-10-23',totalProjectCount:5,projectCount:5,activeCount:5,attentionCount:0,averageProgress:0,progressCoverage:5,quarters:['Q4 2026'],statuses:['active'],healthValues:['green'],statusCounts:{active:5},healthCounts:{green:5},attentionProjects:[],milestones:[],dueSoonCount:0,dataQualityProjects:[]});
   if(url.pathname==='/api/release-trains/snapshot') return send(res,200,{trains:[],projects:[]});
   if(url.pathname==='/api/release-checks') return send(res,200,{available:false,message:'Изолированный сервер: GitHub не подключён',checks:[]});
-  const match=url.pathname.match(/^\/api\/projects\/([^/]+)\/(card|architecture)$/);
+  const match=url.pathname.match(/^\/api\/projects\/([^/]+)\/(card|architecture)(?:\/(components|integrations)(?:\/([^/]+))?)?$/);
   if(match) {
-    const [,id,resource]=match;
+    const [,id,resource,kind,recordId]=match;
     if(!Object.hasOwn(names,id)) return send(res,404,{code:'PROJECT_NOT_FOUND',error:'Project not found'});
     const project=projects.find(p=>p.id===id);
     if(resource==='card') return send(res,200,{...project,version:0,board:{viewAvailable:true,taskCount:0},milestoneCount:0,milestones:[]});
-    const data=stored.get(id) ?? (id==='review-missing'||id==='write-create'?missingArchitecture(id):architecture(id));
+    const data=stored.get(id) ?? (id==='review-missing'||id==='write-create'?missingArchitecture(id):childMode?childArchitecture(id):architecture(id));
     data.project.name=project.name;
     if(id==='review-empty') Object.assign(data,{components:[],integrations:[],checks:[],risks:[],dataClasses:[],environments:[],passport:{...data.passport,stage:'IN_DESIGN',architect:null,solutionSummary:null,availabilityRequirement:null,recoveryRequirement:null,lastReviewDate:null},assessment:{...data.assessment,status:'NOT_ASSESSED',statusLabel:'Оценка не завершена',reasons:[{status:'NOT_ASSESSED',entityType:'PASSPORT',entityId:id,code:'REQUIRED_INFORMATION_INCOMPLETE',message:'Сведения паспорта неполны'},{status:'NOT_ASSESSED',entityType:'PASSPORT',entityId:id,code:'ARCHITECTURE_NOT_APPROVED',message:'Архитектура не утверждена'},{status:'NOT_ASSESSED',entityType:'PASSPORT',entityId:id,code:'CHECKS_INCOMPLETE',message:'Проверки не завершены'}],upcomingChecks:[],acceptedHighRisks:[]}});
     if(writeMode) stored.set(id,data);
+    if(kind) {
+      if(!childMode || req.method==='GET')return send(res,405,{code:'BAD_REQUEST'});
+      let raw='';req.on('data',chunk=>{raw+=chunk;});return req.on('end',()=>{
+        let body;try{body=JSON.parse(raw);}catch{return send(res,400,{code:'BAD_REQUEST'});}
+        const attempt=(writes.get(id)||0)+1;writes.set(id,attempt);
+        const record=data[kind].find(row=>row.id===recordId);
+        if(id==='child-validation'&&attempt===1)return send(res,400,{code:'VALIDATION_ERROR',fieldErrors:{name:'Invalid value'}});
+        if(id==='child-recreate'&&attempt===1){data.passport={...data.passport,instanceId:require('node:crypto').randomUUID(),version:0};data.components=[];data.integrations=[];return send(res,req.method==='POST'?409:404,{code:req.method==='POST'?'PASSPORT_INSTANCE_CONFLICT':kind==='components'?'COMPONENT_NOT_FOUND':'INTEGRATION_NOT_FOUND'});}
+        if(id==='child-deleted'&&attempt===1&&record){data[kind]=data[kind].filter(r=>r.id!==recordId);return send(res,404,{code:kind==='components'?'COMPONENT_NOT_FOUND':'INTEGRATION_NOT_FOUND'});}
+        if((id==='child-version'||id==='child-passport')&&attempt===1){
+          if(record){record.version++;record.name='Запись изменена другим участником';}else data.passport.version++;
+          return send(res,409,{code:record?kind==='components'?'COMPONENT_VERSION_CONFLICT':'INTEGRATION_VERSION_CONFLICT':'PASSPORT_VERSION_CONFLICT',currentVersion:record?record.version:data.passport.version,versionResource:record?kind==='components'?'COMPONENT':'INTEGRATION':'PASSPORT'});
+        }
+        if(req.method==='POST') {
+          if(body.expectedPassportInstanceId!==data.passport.instanceId)return send(res,409,{code:'PASSPORT_INSTANCE_CONFLICT'});
+          if(body.expectedPassportVersion!==data.passport.version)return send(res,409,{code:'PASSPORT_VERSION_CONFLICT'});
+        }else if(!record)return send(res,404,{code:kind==='components'?'COMPONENT_NOT_FOUND':'INTEGRATION_NOT_FOUND'});
+        else if(body.expectedVersion!==record.version)return send(res,409,{code:kind==='components'?'COMPONENT_VERSION_CONFLICT':'INTEGRATION_VERSION_CONFLICT'});
+        const required=kind==='components'?['name','componentType','criticality','externalComponent','position']:['name','sourceSystem','targetSystem','direction','interactionType','authCategory','criticality','readiness','dataClasses'];
+        const next={...(record??{}),...body};
+        const invalid=required.find(key=>next[key]==null||next[key]===''||(key==='dataClasses'&&!next[key].length));
+        if(invalid)return send(res,400,{code:'VALIDATION_ERROR',fieldErrors:{[invalid]:'Invalid value'}});
+        const fields=kind==='components'?[...required,'purpose','platform']:[...required,'responsibleParty','comment'];
+        const target=record??{id:require('node:crypto').randomUUID(),projectId:id,version:0};
+        for(const field of fields) if(Object.hasOwn(body,field))target[field]=body[field];else if(!record&&!required.includes(field))target[field]=null;
+        if(record)target.version++;else{data[kind].push(target);data.passport.version++;}
+        if(id==='child-unknown')return send(res,503,{code:'DATABASE_ERROR'});
+        return send(res,record?200:201,data);
+      });
+    }
     if(req.method!=='GET') {
       let raw=''; req.on('data',chunk=>{raw+=chunk;});
       return req.on('end',()=>{
@@ -73,4 +107,4 @@ http.createServer((req,res)=>{
     return send(res,200,data);
   }
   return send(res,404,{error:'Not found'});
-}).listen(writeMode?4176:4175,'127.0.0.1',()=>console.log(`Isolated frontend fixtures: http://127.0.0.1:${writeMode?4176:4175} (no database; ${writeMode?'passport memory writes':'read-only'})`));
+}).listen(childMode?4177:writeMode?4176:4175,'127.0.0.1',()=>console.log(`Isolated frontend fixtures: http://127.0.0.1:${childMode?4177:writeMode?4176:4175} (no database; ${childMode?'child memory writes':writeMode?'passport memory writes':'read-only'})`));

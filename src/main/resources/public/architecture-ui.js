@@ -1,4 +1,4 @@
-/* Server architecture aggregate and the explicit C.3a passport editor entry. */
+/* Server architecture aggregate with explicit passport/component/integration editors. */
 (() => {
   const content = document.getElementById("architecture-content");
   const panel = document.getElementById("project-architecture");
@@ -106,16 +106,18 @@
     ]));
   }
 
-  function components() { return block(`Компоненты (${list(snapshot.components).length})`, list(snapshot.components).map(c => block(text(c.name),facts([
+  const childAdd = kind => snapshot.passport ? `<button type="button" class="btn btn-primary btn-small" data-child-kind="${kind}" data-child-create>Добавить ${kind==="components"?"компонент":"интеграцию"}</button>` : "";
+  const childEdit = (kind,id) => `<button type="button" class="btn btn-secondary btn-small" data-child-kind="${kind}" data-child-id="${esc(id)}">Редактировать</button>`;
+  function components() { return block(`Компоненты (${list(snapshot.components).length})`, childAdd("components") + (list(snapshot.components).map(c => block(text(c.name),childEdit("components",c.id)+facts([
     ["Тип",label("component",c.componentType)], ["Назначение",text(c.purpose)], ["Платформа",text(c.platform)],
     ["Критичность",label("level",c.criticality)], ["Внешний компонент",c.externalComponent === true ? "Да" : c.externalComponent === false ? "Нет" : "Не указано"], ["Порядок",text(c.position)]
-  ]))).join("") || empty("Компонентов пока нет.")); }
-  function integrations() { return block(`Интеграции (${list(snapshot.integrations).length})`, list(snapshot.integrations).map(i => block(text(i.name),facts([
+  ]))).join("") || empty("Компонентов пока нет."))); }
+  function integrations() { return block(`Интеграции (${list(snapshot.integrations).length})`, childAdd("integrations") + (list(snapshot.integrations).map(i => block(text(i.name),childEdit("integrations",i.id)+facts([
     ["Система-источник",text(i.sourceSystem)], ["Система-получатель",text(i.targetSystem)], ["Направление",label("direction",i.direction)],
     ["Взаимодействие",label("interaction",i.interactionType)], ["Аутентификация",label("auth",i.authCategory)], ["Критичность",label("level",i.criticality)],
     ["Готовность",label("integration",i.readiness)], ["Передаваемые классы данных",codes(i.dataClasses,"data")],
     ["Ответственная сторона",text(i.responsibleParty)], ["Комментарий",text(i.comment)]
-  ]))).join("") || empty("Интеграций пока нет.")); }
+  ]))).join("") || empty("Интеграций пока нет."))); }
   function checks() { return block(`Архитектурные и ИБ-проверки (${list(snapshot.checks).length})`, list(snapshot.checks).map(c => block(label("check",c.checkType),facts([
     ["Обязательность",c.required === true ? "Обязательная" : c.required === false ? "Неприменимая" : "Не указано"], ["Статус",label("checkStatus",c.status)],
     ["Владелец",text(c.owner)], ["Плановая дата",date(c.plannedDate)], ["Фактическая дата",date(c.actualDate)], ["Комментарий / обоснование",text(c.comment)]
@@ -136,6 +138,8 @@
       <div id="architecture-section-content">${[summary,passport,components,integrations,checks,risks][activeTab]()}</div>`;
   }
   content.addEventListener("click", event => {
+    const child=event.target.closest("[data-child-kind]");
+    if(child) return beginChild(child.dataset.childKind,child.dataset.childId??null);
     if(event.target.closest("[data-passport-edit]")) {
       if(window.PMPassportEditor?.allowNavigation(() => beginPassport()) === false) return;
       return beginPassport();
@@ -145,6 +149,18 @@
     const tab = event.target.closest("[data-architecture-tab]");
     if (tab) { activeTab = Number(tab.dataset.architectureTab); render(); content.querySelector('[aria-current="page"]')?.focus(); }
   });
+  function beginChild(kind,recordId) {
+    if(!snapshot?.passport || !["components","integrations"].includes(kind))return;
+    if(recordId!==null && !list(snapshot[kind]).some(row=>row.id===recordId))return;
+    if(window.PMPassportEditor?.allowNavigation(()=>beginChild(kind,recordId))===false)return;
+    const tab=kind==="components"?2:3;
+    activeTab=tab;render();
+    const epoch=++request,id=projectId;
+    window.PMPassportEditor?.startChild(snapshot,kind,recordId,loaded=>{
+      if(epoch!==request || id!==projectId || state.activeView!=="project-architecture")return;
+      snapshot=loaded;activeTab=tab;render();
+    });
+  }
   function beginPassport() {
     if (!snapshot) return;
     if (window.PMPassportEditor?.allowNavigation(() => beginPassport()) === false) return;

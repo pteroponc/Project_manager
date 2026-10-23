@@ -6,7 +6,7 @@ const vm = require('node:vm');
 
 const script = fs.readFileSync(path.join(__dirname, '../../main/resources/public/projects-ui.js'), 'utf8');
 const architectureScript = fs.readFileSync(path.join(__dirname, '../../main/resources/public/architecture-ui.js'), 'utf8');
-const { architecture } = require('./fixtures/architecture.cjs');
+const { architecture, missingArchitecture } = require('./fixtures/architecture.cjs');
 const html = fs.readFileSync(path.join(__dirname, '../../main/resources/public/index.html'), 'utf8');
 
 function node() {
@@ -346,7 +346,7 @@ test('architecture renders the server assessment, all reasons, upcoming and acce
   assert.match(output,/Компоненты<\/dt><dd>1/);
 });
 
-test('all six architecture sections render actual DTO fields and omit technical metadata and write actions', async()=>{
+test('all six architecture sections render DTO fields, hide technical metadata and keep checks/risks read-only', async()=>{
   const h=harness(); const data=architecture();
   data.risks[0].probability='LOW'; data.risks[0].impact='LOW'; data.risks[0].level='CRITICAL'; // Renderer must use level as supplied.
   h.context.fetchJson=async()=>data; await h.architecture.open('p1');
@@ -358,8 +358,38 @@ test('all six architecture sections render actual DTO fields and omit technical 
   assert.match(outputs[4],/Согласование архитектуры/); assert.match(outputs[4],/Допуск к промышленной эксплуатации/);
   assert.match(outputs[5],/Уровень \(сервер\)<\/dt><dd>Критический/);
   for(const output of outputs) {
-    assert.doesNotMatch(output,/98123[7-9]|98124[0-2]|f071002a|cmp-test|risk-test|instanceId|expectedVersion|technical-version/);
+    assert.doesNotMatch(output.replace(/data-child-id="[^"]*"/g,''),/98123[7-9]|98124[0-2]|f071002a|cmp-test|risk-test|instanceId|expectedVersion|technical-version/);
     assert.doesNotMatch(output,/<form|data-edit|data-delete|Создать паспорт|Инициализировать|Сохранить/);
+  }
+});
+
+test('child editor entries select UUID after reordering, require a passport and consume a full response without GET',async()=>{
+  const {childArchitecture}=require('./fixtures/architecture.cjs');
+  const h=harness(),calls=[],opened=[];let accept;
+  h.window.PMPassportEditor={allowNavigation:()=>true,startChild:(data,kind,id,callback)=>{opened.push({data,kind,id});accept=callback;}};
+  const data=childArchitecture();data.components.reverse();data.integrations.reverse();
+  h.context.fetchJson=async(url,options)=>{calls.push({url,options});return data;};await h.architecture.open('p1');
+  for(const kind of ['components','integrations']) {
+    const id=data[kind][1].id;
+    h.get('architecture-content').listeners.click({target:{closest:s=>s==='[data-child-kind]'?{dataset:{childKind:kind,childId:id}}:null}});
+    assert.equal(opened.at(-1).id,id);assert.equal(opened.at(-1).kind,kind);
+    const response=childArchitecture();response[kind][0].name='Сохранённый полный ответ';accept(response);
+    assert.match(h.get('architecture-content').innerHTML,/Сохранённый полный ответ/);
+  }
+  assert.equal(calls.length,1);
+  h.context.fetchJson=async()=>missingArchitecture('p1');await h.architecture.open('p1');
+  for(const tab of [2,3])assert.doesNotMatch(architectureTab(h,tab),/data-child-kind/);
+  const count=opened.length;h.get('architecture-content').listeners.click({target:{closest:s=>s==='[data-child-kind]'?{dataset:{childKind:'components'}}:null}});assert.equal(opened.length,count);
+});
+
+test('late child response is ignored after a fresh read or a different project',async()=>{
+  const {childArchitecture}=require('./fixtures/architecture.cjs');
+  for(const nextId of ['p1','p2']) {
+    const h=harness();let accept;h.window.PMPassportEditor={allowNavigation:()=>true,startChild:(_d,_k,_i,callback)=>{accept=callback;}};
+    h.context.fetchJson=async()=>childArchitecture();await h.architecture.open('p1');
+    h.get('architecture-content').listeners.click({target:{closest:s=>s==='[data-child-kind]'?{dataset:{childKind:'components'}}:null}});
+    h.context.fetchJson=async()=>childArchitecture(nextId);await h.architecture.open(nextId);const before=h.get('architecture-content').innerHTML;
+    accept(childArchitecture());assert.equal(h.get('architecture-content').innerHTML,before);
   }
 });
 
