@@ -4,14 +4,19 @@ import jakarta.persistence.EntityManager;
 import org.springframework.stereotype.Repository;
 import project_manager.web.ProjectMutationException;
 import project_manager.web.dto.ArchitecturePortfolioQuery;
+import project_manager.web.dto.ArchitecturePortfolioSummaryQuery;
 import project_manager.web.dto.ArchitectureReadDtos.*;
 import java.util.ArrayList;
 import java.util.List;
 
-/** Fixed scalar queries; never traverses lazy entities. IN lists are bounded to 500 IDs. */
+/** Fixed scalar queries; never traverses lazy entities. Card/legacy IN lists are bounded to 500 IDs;
+ * the D1 summary uses filtered subqueries with a constant number of SELECTs. */
 @Repository
 public class ArchitectureReadRepository {
     public static final int BATCH_SIZE = 500;
+    private static final String SUMMARY_FILTERS = "(:quarter='all' or lower(p.quarter)=:quarter) "
+        + "and (:status='all' or lower(p.status)=:status) "
+        + "and (:query='' or locate(:query,lower(p.name))>0 or locate(:query,lower(p.summary))>0)";
     private final EntityManager em;
     public ArchitectureReadRepository(EntityManager em) { this.em = em; }
 
@@ -51,6 +56,44 @@ public class ArchitectureReadRepository {
             + "and (:query='' or locate(:query,lower(p.name))>0 or locate(:query,lower(p.owner))>0)", ProjectInfo.class)
             .setParameter("quarter", q.quarter()).setParameter("status", q.projectStatus())
             .setParameter("query", q.query()).getResultList();
+    }
+    public List<PortfolioSummaryProject> summaryProjects(ArchitecturePortfolioSummaryQuery q) {
+        // Same literal substring search (name OR summary) and exact case-insensitive filters as the registry.
+        return em.createQuery("select new " + PortfolioSummaryProject.class.getName()
+            + "(p.id,p.name,p.owner,p.quarter,p.status,p.health,p.deadline) from ProjectEntity p where "
+            + SUMMARY_FILTERS, PortfolioSummaryProject.class)
+            .setParameter("quarter", q.quarter()).setParameter("status", q.status())
+            .setParameter("query", q.query()).getResultList();
+    }
+    /** Six narrow scalar result sets; no detail text unused by the readiness formula is selected. */
+    public SummaryBatch loadSummary(ArchitecturePortfolioSummaryQuery q) {
+        return new SummaryBatch(
+            summaryRows(SummaryPassport.class, "p.projectId,p.criticality,p.stage,p.solutionType,p.architect,p.solutionSummary,"
+                + "p.availabilityRequirement,p.recoveryRequirement,p.lastReviewDate", "ArchitecturePassportEntity p", "p.projectId", q),
+            summaryRows(Membership.class,"d.id.projectId,d.id.classCode","ArchitectureDataClassEntity d","d.id.projectId",q),
+            summaryRows(Membership.class,"e.id.projectId,e.id.environmentCode","ArchitectureEnvironmentEntity e","e.id.projectId",q),
+            summaryRows(SummaryIntegration.class,"i.passport.projectId,i.id,i.criticality,i.readiness",
+                "ArchitectureIntegrationEntity i","i.passport.projectId",q),
+            summaryRows(SummaryCheck.class,"c.passport.projectId,c.id,c.checkType,c.required,c.status,"
+                + "c.plannedDate,c.actualDate,c.comment","ArchitectureCheckEntity c","c.passport.projectId",q),
+            summaryRows(SummaryRisk.class,"r.passport.projectId,r.id,r.probability,r.impact,r.status,r.acceptanceJustification",
+                "SecurityRiskEntity r","r.passport.projectId",q));
+    }
+    /** One scalar GROUP BY, never per-project COUNTs or component text loading. */
+    public List<ComponentCount> summaryComponentCounts(ArchitecturePortfolioSummaryQuery q) {
+        return em.createQuery("select new " + ComponentCount.class.getName()
+            + "(c.passport.projectId,count(c)) from ArchitectureComponentEntity c "
+            + "where " + summaryOwners("c.passport.projectId") + " group by c.passport.projectId", ComponentCount.class)
+            .setParameter("quarter",q.quarter()).setParameter("status",q.status()).setParameter("query",q.query()).getResultList();
+    }
+    private <T> List<T> summaryRows(Class<T> type, String fields, String from, String owner, ArchitecturePortfolioSummaryQuery q) {
+        return em.createQuery("select new " + type.getName() + "(" + fields + ") from " + from + " where " + summaryOwners(owner),type)
+            .setParameter("quarter",q.quarter()).setParameter("status",q.status()).setParameter("query",q.query()).getResultList();
+    }
+    private static String summaryOwners(String owner) {
+        // Inner alias deliberately differs from outer passport alias p; only trusted query fragments enter here.
+        return owner + " in (select p_summary.id from ProjectEntity p_summary where "
+            + SUMMARY_FILTERS.replace("p.","p_summary.") + ")";
     }
     private static String projectSelect() {
         return "select new " + ProjectInfo.class.getName() + "(p.id,p.name,p.owner,p.quarter,p.status,p.version) from ProjectEntity p";
@@ -93,4 +136,7 @@ public class ArchitectureReadRepository {
     public record Batch(List<Passport> passports, List<Membership> dataClasses, List<Membership> environments,
         List<Component> components, List<IntegrationData> integrations, List<Membership> integrationDataClasses,
         List<Check> checks, List<RiskData> risks) { }
+    public record SummaryBatch(List<SummaryPassport> passports, List<Membership> dataClasses,
+        List<Membership> environments, List<SummaryIntegration> integrations,
+        List<SummaryCheck> checks, List<SummaryRisk> risks) { }
 }

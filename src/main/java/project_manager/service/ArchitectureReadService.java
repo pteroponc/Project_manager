@@ -11,9 +11,13 @@ import project_manager.domain.ArchitectureReadinessSnapshot;
 import project_manager.repository.ArchitectureReadRepository;
 import project_manager.repository.ArchitectureReadRepository.Batch;
 import project_manager.web.dto.ArchitecturePortfolioQuery;
+import project_manager.web.dto.ArchitecturePortfolioSummaryQuery;
+import project_manager.web.dto.ArchitectureReadDtos;
 import project_manager.web.dto.ArchitectureReadDtos.*;
 
 import java.util.ArrayList;
+import java.time.LocalDate;
+import java.time.format.DateTimeParseException;
 import java.util.Comparator;
 import java.util.EnumMap;
 import java.util.List;
@@ -81,6 +85,56 @@ public class ArchitectureReadService {
         return new Portfolio(context.calculationDate(), context.timeZone(), filtered.size(), query.page(), query.size(),
             (filtered.size() + (long) query.size() - 1) / query.size(),
             new Summary(counts, accepted, present, filtered.size() - present), items);
+    }
+
+    @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
+    public PortfolioSummary portfolioSummary(Map<String, String> parameters) {
+        var query = ArchitecturePortfolioSummaryQuery.parse(parameters);
+        var context = assessments.newContext();
+        var projects = repository.summaryProjects(query);
+        Map<Status, Long> counts = new EnumMap<>(Status.class);
+        for (Status status : Status.values()) counts.put(status, 0L);
+        if (projects.isEmpty()) return new PortfolioSummary(context.calculationDate(), context.timeZone(),
+            0, 0, query.page(), query.size(), 0, 0, counts, List.of());
+        var grouped = new SummaryGrouped(repository.loadSummary(query));
+        var components = repository.summaryComponentCounts(query).stream()
+            .collect(Collectors.toMap(ComponentCount::projectId, ComponentCount::count));
+        var assessed = projects.stream().map(project -> {
+            String id = project.id();
+            SummaryPassport passport = grouped.passports.get(id);
+            List<SummaryIntegration> integrations = grouped.integrations.getOrDefault(id, List.of());
+            List<SummaryCheck> checks = grouped.checks.getOrDefault(id, List.of());
+            List<SummaryRisk> risks = grouped.risks.getOrDefault(id, List.of());
+            var snapshot = new ArchitectureReadinessSnapshot(id,
+                passport == null ? null : new ArchitectureReadinessSnapshot.Passport(passport.criticality(),
+                    passport.stage(), passport.solutionType(), passport.architect(), passport.solutionSummary(),
+                    passport.availabilityRequirement(), passport.recoveryRequirement(), passport.lastReviewDate()),
+                Set.copyOf(grouped.data.getOrDefault(id, List.of())),
+                Set.copyOf(grouped.environments.getOrDefault(id, List.of())),
+                checks.stream().map(c -> new ArchitectureReadinessSnapshot.Check(c.id(), c.checkType(), c.required(),
+                    c.status(), c.plannedDate(), c.actualDate(), c.comment())).toList(),
+                integrations.stream().map(i -> new ArchitectureReadinessSnapshot.Integration(i.id(), i.criticality(), i.readiness())).toList(),
+                risks.stream().map(r -> new ArchitectureReadinessSnapshot.Risk(r.id(), r.probability(), r.impact(),
+                    r.status(), r.acceptanceJustification())).toList());
+            var assessment = assessments.assess(snapshot, context);
+            var readiness = new PortfolioReadiness(assessment.status(), assessment.statusLabel(),
+                assessment.reasons().size(), assessment.upcomingChecks().size(),
+                assessment.acceptedHighRisks().size(), assessment.officialGoLiveApproval());
+            return new PortfolioSummaryItem(project, passport != null,
+                passport == null ? null : passport.architect(), passport == null ? null : ArchitectureReadDtos.DOCUMENT_VERSION,
+                components.getOrDefault(id, 0L), integrations.size(), checks.size(), risks.size(), readiness);
+        }).toList();
+        for (var item : assessed) counts.merge(item.assessment().status(), 1L, Long::sum);
+        var filtered = assessed.stream()
+            .filter(item -> "all".equals(query.readiness()) || item.assessment().status().name().equalsIgnoreCase(query.readiness()))
+            .sorted(summaryComparator(query))
+            .toList();
+        long from = (long) query.page() * query.size();
+        List<PortfolioSummaryItem> items = from >= filtered.size() ? List.of()
+            : filtered.subList((int) from, (int) Math.min(from + query.size(), filtered.size()));
+        long totalPages = filtered.isEmpty() ? 0 : 1 + (filtered.size() - 1L) / query.size();
+        return new PortfolioSummary(context.calculationDate(), context.timeZone(), assessed.size(), filtered.size(),
+            query.page(), query.size(), totalPages, items.size(), counts, items);
     }
 
     @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
@@ -164,6 +218,35 @@ public class ArchitectureReadService {
         };
         return key.thenComparing(item -> item.project().id());
     }
+    private static Comparator<PortfolioSummaryItem> summaryComparator(ArchitecturePortfolioSummaryQuery query) {
+        boolean descending = "desc".equals(query.direction());
+        Comparator<PortfolioSummaryItem> key = switch (query.sort()) {
+            case "deadline" -> summaryKey(item -> deadline(item.project().deadline()), descending);
+            case "health" -> summaryKey(item -> healthRank(item.project().health()), descending);
+            case "owner" -> summaryKey(item -> normalized(item.project().owner()), descending);
+            case "quarter" -> summaryKey(item -> normalized(item.project().quarter()), descending);
+            case "projectstatus" -> summaryKey(item -> normalized(item.project().projectStatus()), descending);
+            case "readiness" -> summaryKey(item -> item.assessment().status().ordinal(), descending);
+            default -> summaryKey(item -> normalized(item.project().name()), descending);
+        };
+        return key.thenComparing(item -> item.project().id());
+    }
+    private static LocalDate deadline(String value) {
+        if (value == null || !value.matches("\\d{4}-\\d{2}-\\d{2}")) return null;
+        try { return LocalDate.parse(value); }
+        catch (DateTimeParseException invalid) { return null; }
+    }
+    private static Integer healthRank(String value) {
+        // Registry assessment preserves legacy edge spaces when deciding whether health is known.
+        return switch (value == null ? "" : value.toLowerCase(Locale.ROOT)) {
+            case "red" -> 0; case "yellow" -> 1; case "green" -> 2; default -> null;
+        };
+    }
+    private static <T extends Comparable<? super T>> Comparator<PortfolioSummaryItem> summaryKey(
+        Function<PortfolioSummaryItem, T> value, boolean descending) {
+        Comparator<T> values = descending ? Comparator.reverseOrder() : Comparator.naturalOrder();
+        return Comparator.comparing(value, Comparator.nullsLast(values));
+    }
     private static <T extends Comparable<? super T>> Comparator<PortfolioItem> key(Function<PortfolioItem, T> value, boolean descending) {
         Comparator<T> values = descending ? Comparator.reverseOrder() : Comparator.naturalOrder();
         return Comparator.comparing(value, Comparator.nullsLast(values));
@@ -191,6 +274,23 @@ public class ArchitectureReadService {
         }
         private static <T> Map<String, List<T>> group(List<T> rows, Function<T, String> owner, Comparator<T> order) {
             return rows.stream().sorted(order).collect(Collectors.groupingBy(owner));
+        }
+    }
+
+    private static final class SummaryGrouped {
+        final Map<String, SummaryPassport> passports;
+        final Map<String, List<String>> data, environments;
+        final Map<String, List<SummaryIntegration>> integrations;
+        final Map<String, List<SummaryCheck>> checks;
+        final Map<String, List<SummaryRisk>> risks;
+
+        SummaryGrouped(ArchitectureReadRepository.SummaryBatch batch) {
+            passports = batch.passports().stream().collect(Collectors.toMap(SummaryPassport::projectId, Function.identity()));
+            data = Grouped.memberships(batch.dataClasses());
+            environments = Grouped.memberships(batch.environments());
+            integrations = batch.integrations().stream().collect(Collectors.groupingBy(SummaryIntegration::projectId));
+            checks = batch.checks().stream().collect(Collectors.groupingBy(SummaryCheck::projectId));
+            risks = batch.risks().stream().collect(Collectors.groupingBy(SummaryRisk::projectId));
         }
     }
 }

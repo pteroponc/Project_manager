@@ -20,8 +20,9 @@ public final class ArchitectureReadDtos {
         Long version, Instant createdAt, Instant updatedAt) {
         /** Document edition is separate from the optimistic concurrency counter. */
         @com.fasterxml.jackson.annotation.JsonProperty("documentVersion")
-        public String documentVersion() { return "1.0"; }
+        public String documentVersion() { return DOCUMENT_VERSION; }
     }
+    public static final String DOCUMENT_VERSION = "1.0";
     public record Membership(String ownerId, String code) { }
     public record Component(String id, String projectId, String name, String componentType, String purpose,
         String platform, String criticality, boolean externalComponent, int position, Long version) { }
@@ -53,6 +54,32 @@ public final class ArchitectureReadDtos {
     }
     public record PortfolioItem(ProjectInfo project, boolean passportPresent, String criticality,
         ArchitectureReadinessAssessment assessment) { }
+    public record PortfolioSummaryProject(String id, String name, String owner, String quarter,
+        String projectStatus, String health, String deadline) { }
+    public record PortfolioReadiness(Status status, String statusLabel, long reasonCount,
+        long upcomingCheckCount, long acceptedHighRiskCount, boolean officialGoLiveApproval) { }
+    public record PortfolioSummaryItem(PortfolioSummaryProject project, boolean passportPresent, String architect,
+        String documentVersion, long componentCount, long integrationCount, long checkCount,
+        long securityRiskCount, PortfolioReadiness assessment) { }
+    /** Counts are after common filters; readiness facets precede readiness filtering; items are one page. */
+    public record PortfolioSummary(LocalDate calculationDate, String timeZone, long totalCount,
+        long filteredCount, int page, int size, long totalPages, int pageItemCount,
+        Map<Status, Long> readinessCounts, List<PortfolioSummaryItem> items) {
+        public PortfolioSummary {
+            readinessCounts = Collections.unmodifiableMap(new EnumMap<>(readinessCounts));
+            items = List.copyOf(items);
+        }
+    }
+    public record ComponentCount(String projectId, long count) { }
+    /** Private-to-service scalar projections: only fields used by the readiness formula. */
+    public record SummaryPassport(String projectId, String criticality, String stage, String solutionType,
+        String architect, String solutionSummary, String availabilityRequirement, String recoveryRequirement,
+        LocalDate lastReviewDate) { }
+    public record SummaryIntegration(String projectId, String id, String criticality, String readiness) { }
+    public record SummaryCheck(String projectId, String id, String checkType, Boolean required, String status,
+        LocalDate plannedDate, LocalDate actualDate, String comment) { }
+    public record SummaryRisk(String projectId, String id, String probability, String impact, String status,
+        String acceptanceJustification) { }
     public record Summary(Map<Status, Long> readinessCounts, long acceptedHighRiskCount,
         long passportPresentCount, long passportMissingCount) {
         public Summary { readinessCounts = Collections.unmodifiableMap(new EnumMap<>(readinessCounts)); }
