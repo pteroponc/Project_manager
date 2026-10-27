@@ -22,12 +22,23 @@
   let snapshot = null;
   let request = 0;
   let loaded = false;
+  let loading = false;
+  let paginationReady = false;
   let debounce;
   const field = key => form.elements.namedItem(key);
   const esc = value => escapeHtml(value ?? "");
 
   function syncForm() {
     for (const key of keys) field(key).value = filters[key];
+  }
+
+  function syncTextFilters() {
+    let changed = false;
+    for (const key of ["query", "quarter", "status"]) {
+      if (filters[key] !== field(key).value) changed = true;
+      filters[key] = field(key).value;
+    }
+    return changed;
   }
 
   function url() {
@@ -37,6 +48,11 @@
       sort:filters.sort, direction:filters.direction, page:String(filters.page), size:filters.size
     });
     return "/api/architecture/portfolio/summary?" + params;
+  }
+
+  function syncPagination() {
+    previous.disabled = loading || !paginationReady || !snapshot || snapshot.page === 0;
+    next.disabled = loading || !paginationReady || !snapshot || snapshot.page + 1 >= snapshot.totalPages;
   }
 
   function render(data) {
@@ -70,13 +86,15 @@
         </article>`;
       }).join("");
     }
-    previous.disabled = data.page === 0;
-    next.disabled = data.page + 1 >= data.totalPages;
+    syncPagination();
     pageLabel.textContent = data.totalPages ? `Страница ${data.page + 1} из ${data.totalPages}` : "Страниц нет";
   }
 
   async function load() {
     const current = ++request;
+    loading = true;
+    paginationReady = false;
+    syncPagination();
     panel.setAttribute("aria-busy", "true");
     list.setAttribute("aria-busy", "true");
     message.textContent = snapshot ? "Обновляем сводку… Пока показаны предыдущие данные." : "Загружаем сводку…";
@@ -89,6 +107,7 @@
       snapshot = data;
       loaded = true;
       filters.page = data.page;
+      paginationReady = true;
       render(data);
       message.textContent = `Сводка на ${esc(data.calculationDate)} · ${data.pageItemCount} на текущей странице.`;
     } catch (error) {
@@ -99,6 +118,8 @@
       if (!snapshot) list.innerHTML = '<p class="empty-state compact">Данные недоступны. Нажмите «Обновить».</p>';
     } finally {
       if (current === request) {
+        loading = false;
+        syncPagination();
         panel.setAttribute("aria-busy", "false");
         list.setAttribute("aria-busy", "false");
       }
@@ -106,14 +127,17 @@
   }
 
   function update(key, value) {
-    if (key === "size") filters.size = value;
-    else filters[key] = value;
+    syncTextFilters();
+    filters[key] = value;
     filters.page = 0;
     load();
   }
 
   form.addEventListener("input", event => {
     if (event.target.name !== "query" && event.target.name !== "quarter" && event.target.name !== "status") return;
+    ++request;
+    paginationReady = false;
+    syncPagination();
     clearTimeout(debounce);
     debounce = setTimeout(() => update(event.target.name, event.target.value), 250);
   });
@@ -127,17 +151,41 @@
     clearTimeout(debounce);
     filters = {...defaults}; syncForm(); load();
   });
-  document.getElementById("architecture-portfolio-refresh").addEventListener("click", load);
-  previous.addEventListener("click", () => { if (filters.page > 0) { --filters.page; load(); } });
-  next.addEventListener("click", () => { if (snapshot && filters.page + 1 < snapshot.totalPages) { ++filters.page; load(); } });
+  document.getElementById("architecture-portfolio-refresh").addEventListener("click", () => {
+    clearTimeout(debounce);
+    if (syncTextFilters()) filters.page = 0;
+    load();
+  });
+  previous.addEventListener("click", () => {
+    if (!loading && paginationReady && snapshot && filters.page === snapshot.page && filters.page > 0) {
+      --filters.page; load();
+    }
+  });
+  next.addEventListener("click", () => {
+    if (!loading && paginationReady && snapshot && filters.page === snapshot.page && filters.page + 1 < snapshot.totalPages) {
+      ++filters.page; load();
+    }
+  });
   list.addEventListener("click", event => {
     const id = event.target.closest("[data-open-architecture-project]")?.dataset.openArchitectureProject;
     if (id) window.PMProjectsUI?.openCard(id, "dashboards");
   });
 
   function onView(view) {
-    if (view === "dashboards") { if (!loaded) load(); }
-    else ++request;
+    if (view === "dashboards") {
+      if (syncTextFilters()) { filters.page = 0; paginationReady = false; }
+      if (!loading && (!loaded || !paginationReady)) load();
+    }
+    else {
+      ++request;
+      clearTimeout(debounce);
+      if (loading) loaded = false;
+      loading = false;
+      paginationReady = false;
+      syncPagination();
+      panel.setAttribute("aria-busy", "false");
+      list.setAttribute("aria-busy", "false");
+    }
   }
 
   syncForm();

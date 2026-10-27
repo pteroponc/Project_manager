@@ -15,7 +15,7 @@ function element() {
     closest() {return this;}};
 }
 
-function harness(fetchImpl, initialView='overview') {
+function harness(fetchImpl, initialView='overview', schedule=callback=>{callback(); return 1;}) {
   const nodes = new Map();
   const get = id => {if (!nodes.has(id)) nodes.set(id, element()); return nodes.get(id);};
   const fields = new Map(['query','quarter','status','readiness','sort','direction','size'].map(key => [key,element()]));
@@ -25,7 +25,7 @@ function harness(fetchImpl, initialView='overview') {
   const state={activeView:initialView};
   const window={PMProjectsUI:{openCard:(id,origin)=>opened.push({id,origin})}};
   const context=vm.createContext({window,state,document:{getElementById:get},URLSearchParams,
-    Number,Array,Object,String,clearTimeout,setTimeout:(callback)=>{callback(); return 1;},
+    Number,Array,Object,String,clearTimeout,setTimeout:schedule,
     escapeHtml:value=>String(value ?? '').replaceAll('&','&amp;').replaceAll('<','&lt;')
       .replaceAll('>','&gt;').replaceAll('"','&quot;').replaceAll("'",'&#39;'),
     displayLabel:value=>({active:'Активен',planned:'Запланирован'})[value] ?? value,
@@ -86,6 +86,31 @@ test('filters and pages are sent to the server and page changes preserve the cho
   assert.equal(new URL(h.calls.at(-1),'http://localhost').searchParams.get('page'),'0');
 });
 
+test('changing sort while a text filter is pending includes the visible text filter',async()=>{
+  const timers=[];
+  const h=harness(async()=>response(),'overview',callback=>{timers.push(callback); return timers.length;});
+  h.ui.onView('dashboards'); await settle();
+  h.fields.get('quarter').value='Q2 2026';
+  h.get('architecture-portfolio-filters').listeners.input({target:{name:'quarter',value:'Q2 2026'}});
+  h.fields.get('sort').value='deadline';
+  h.get('architecture-portfolio-filters').listeners.change({target:{name:'sort',value:'deadline'}});
+  const params=new URL(h.calls.at(-1),'http://localhost').searchParams;
+  assert.equal(params.get('quarter'),'Q2 2026');
+  assert.equal(params.get('sort'),'deadline');
+});
+
+test('refresh applies a pending text filter before requesting data',async()=>{
+  const timers=[];
+  const h=harness(async()=>response(),'overview',callback=>{timers.push(callback); return timers.length;});
+  h.ui.onView('dashboards'); await settle();
+  h.fields.get('query').value='Review';
+  h.get('architecture-portfolio-filters').listeners.input({target:{name:'query',value:'Review'}});
+  h.get('architecture-portfolio-refresh').listeners.click();
+  const params=new URL(h.calls.at(-1),'http://localhost').searchParams;
+  assert.equal(params.get('query'),'Review');
+  assert.equal(params.get('page'),'0');
+});
+
 test('empty state, initial failure and refresh use explicit feedback',async()=>{
   let fail=true;
   const h=harness(async()=>{if(fail) throw Error('private server trace');return response({totalCount:0,filteredCount:0,
@@ -108,6 +133,64 @@ test('older response cannot overwrite a newer filter result',async()=>{
   pending[0](response()); await settle();
   assert.match(h.get('architecture-portfolio-list').innerHTML,/data-open-architecture-project="b"/);
   assert.doesNotMatch(h.get('architecture-portfolio-list').innerHTML,/data-open-architecture-project="a"/);
+});
+
+test('pagination is locked during a request and repeated clicks send only one page request',async()=>{
+  const pending=[];
+  const h=harness(()=>new Promise(resolve=>pending.push(resolve)));
+  h.ui.onView('dashboards');
+  pending[0](response({totalPages:3,filteredCount:5})); await settle();
+  h.get('architecture-portfolio-next').listeners.click();
+  assert.equal(h.get('architecture-portfolio-next').disabled,true);
+  assert.equal(h.get('architecture-portfolio-prev').disabled,true);
+  h.get('architecture-portfolio-next').listeners.click();
+  h.get('architecture-portfolio-prev').listeners.click();
+  assert.equal(h.calls.length,2);
+  assert.equal(new URL(h.calls[1],'http://localhost').searchParams.get('page'),'1');
+  pending[1](response({page:1,totalPages:3,filteredCount:5})); await settle();
+  assert.equal(h.get('architecture-portfolio-prev').disabled,false);
+  assert.equal(h.get('architecture-portfolio-next').disabled,false);
+});
+
+test('filter failure keeps stale pagination locked until a successful refresh',async()=>{
+  let fail=false;
+  const h=harness(async url=>{
+    if(fail) throw Error('private API detail');
+    const params=new URL(url,'http://localhost').searchParams;
+    return params.get('readiness')==='BLOCKED'
+      ? response({totalCount:3,filteredCount:0,totalPages:0,items:[],pageItemCount:0,
+          readinessCounts:{BLOCKED:0,ATTENTION_REQUIRED:1,NOT_ASSESSED:2,READY:0}})
+      : response({totalPages:3,filteredCount:5});
+  });
+  h.ui.onView('dashboards'); await settle();
+  assert.equal(h.get('architecture-portfolio-next').disabled,false);
+  fail=true;
+  h.get('architecture-portfolio-filters').listeners.change({target:{name:'readiness',value:'BLOCKED'}}); await settle();
+  assert.equal(h.get('architecture-portfolio-next').disabled,true);
+  h.get('architecture-portfolio-next').listeners.click();
+  assert.equal(h.calls.length,2);
+  assert.match(h.get('architecture-portfolio-message').textContent,/предыдущие данные/);
+  assert.doesNotMatch(h.get('architecture-portfolio-message').textContent,/private API detail/);
+  fail=false;
+  h.get('architecture-portfolio-refresh').listeners.click(); await settle();
+  assert.match(h.get('architecture-readiness-counts').innerHTML,/Оценка не завершена/);
+  assert.match(h.get('architecture-readiness-counts').innerHTML,/>2<\/strong>/);
+  assert.equal(h.get('architecture-portfolio-total').textContent,'0 из 3 проектов');
+  assert.match(h.get('architecture-portfolio-list').innerHTML,/По выбранной готовности проектов нет/);
+  assert.equal(h.get('architecture-portfolio-next').disabled,true);
+});
+
+test('leaving during a request ignores its response and reloads on return',async()=>{
+  const pending=[];
+  const h=harness(()=>new Promise(resolve=>pending.push(resolve)));
+  h.ui.onView('dashboards');
+  h.state.activeView='project-card'; h.ui.onView('project-card');
+  pending[0](response()); await settle();
+  assert.doesNotMatch(h.get('architecture-portfolio-list').innerHTML,/Alpha/);
+  h.state.activeView='dashboards'; h.ui.onView('dashboards');
+  assert.equal(h.calls.length,2);
+  pending[1](response()); await settle();
+  assert.match(h.get('architecture-portfolio-list').innerHTML,/Alpha/);
 });
 
 test('project transition uses the existing card and keeps dashboard origin',async()=>{
