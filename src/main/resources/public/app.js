@@ -357,6 +357,7 @@ function showView(view) {
   });
 
   window.PMProjectsUI?.onView?.(nextView);
+  window.PMArchitecturePortfolioUI?.onView?.(nextView);
 
   window.scrollTo({ top: 0, behavior: "smooth" });
   return true;

@@ -102,6 +102,25 @@ const formProject = (overrides = {}) => ({ name: 'Проект', owner: 'Ком�
 const snapshot = (items = [item()]) => ({ totalCount: items.length, filteredCount: items.length,
   filterOptions: { quarters: ['Q3'], statuses: ['active'], healthValues: ['red'] }, items });
 
+test('dashboard summary opens the existing card and returns to dashboards', async () => {
+  const h = harness();
+  h.context.fetchJson = async () => card();
+  await h.ui.openCard('p1', 'dashboards');
+  assert.equal(h.state.activeView, 'project-card');
+  assert.match(h.get('back-to-registry').textContent, /дашбордам/);
+  h.get('back-to-registry').listeners.click();
+  assert.equal(h.state.activeView, 'dashboards');
+});
+
+test('dashboard URL restores on load and browser history', () => {
+  const h = harness('?view=dashboards');
+  assert.equal(h.state.activeView, 'dashboards');
+  h.state.activeView = 'project-card';
+  h.window.location.search = '?view=dashboards';
+  h.window.events.popstate({state:{pmRouteIndex:0}});
+  assert.equal(h.state.activeView, 'dashboards');
+});
+
 test('registry URL and filters survive route restoration', () => {
   const h = harness('?view=projects&query=crm&quarter=Q3&health=red&sort=progress&direction=desc');
   assert.match(h.ui.registryUrl(), /query=crm/);

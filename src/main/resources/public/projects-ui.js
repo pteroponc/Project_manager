@@ -19,6 +19,7 @@
   let registryRequest = 0;
   let cardRequest = 0;
   let registryScroll = 0;
+  let cardReturnView = "projects";
   let debounce;
   let dialogOpener = null;
   let dialogAction = null;
@@ -177,6 +178,11 @@
   async function openCard(id, origin = "registry") {
     if (origin === "registry") registryScroll = window.scrollY;
     if (window.PMPassportEditor?.allowNavigation(() => openCard(id, origin)) === false) return;
+    if (origin === "registry" || origin === "overview" || origin === "dashboards") {
+      cardReturnView = origin === "registry" ? "projects" : origin;
+    }
+    document.getElementById("back-to-registry").textContent = cardReturnView === "dashboards"
+      ? "← Назад к дашбордам" : cardReturnView === "overview" ? "← Назад к обзору" : "← Назад к реестру";
     closeProjectForm();
     if (showView("project-card") === false) return;
     updateUrl("project-card", id);
@@ -449,6 +455,7 @@
     const params = new URLSearchParams(window.location.search);
     const view = params.get("view");
     if (view === "projects") showView("projects");
+    else if (view === "dashboards") showView("dashboards");
     else if (view === "project-card" && params.get("project")) openCard(params.get("project"), "history");
     else if (view === "project-architecture" && params.get("project")) window.PMArchitectureUI?.open(params.get("project"));
     else if (navigatingHistory) showView("overview");
@@ -482,7 +489,7 @@
   registryMessage.addEventListener("click", event => {
     if (event.target.closest("[data-retry-registry]")) loadRegistry();
   });
-  document.getElementById("back-to-registry").addEventListener("click", () => showView("projects"));
+  document.getElementById("back-to-registry").addEventListener("click", () => showView(cardReturnView));
   detail.addEventListener("click", event => {
     const target = event.target.closest("button");
     if (!target) return;

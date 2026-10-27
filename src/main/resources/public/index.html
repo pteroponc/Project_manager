@@ -401,6 +401,34 @@
           </div>
         </section>
 
+        <section class="panel architecture-portfolio-panel view-section" id="architecture-portfolio-panel" data-view-section="dashboards" aria-labelledby="architecture-portfolio-title">
+          <div class="section-head">
+            <div><p class="section-kicker">Архитектура и ИБ</p><h2 id="architecture-portfolio-title">Готовность проектов</h2></div>
+            <button class="btn btn-ghost btn-small" type="button" id="architecture-portfolio-refresh">Обновить</button>
+          </div>
+          <p class="hint-text">Расчётная готовность не является официальным допуском к промышленной эксплуатации.</p>
+          <form class="registry-filters architecture-portfolio-filters" id="architecture-portfolio-filters" role="search">
+            <label class="registry-search">Поиск по названию и описанию<input name="query" type="search" placeholder="Название или описание" /></label>
+            <label>Квартал<input name="quarter" type="text" placeholder="Все кварталы" /></label>
+            <label>Статус проекта<input name="status" type="text" list="architecture-status-values" placeholder="Все статусы" /></label>
+            <datalist id="architecture-status-values"><option value="planned"></option><option value="active"></option><option value="paused"></option><option value="done"></option></datalist>
+            <label>Готовность<select name="readiness"><option value="all">Все оценки</option><option value="BLOCKED">Заблокировано</option><option value="ATTENTION_REQUIRED">Требует внимания</option><option value="NOT_ASSESSED">Оценка не завершена</option><option value="READY">Проверки завершены</option></select></label>
+            <label>Сортировка<select name="sort"><option value="name">Название</option><option value="deadline">Срок</option><option value="health">Состояние проекта</option><option value="owner">Владелец</option><option value="quarter">Квартал</option><option value="projectStatus">Статус проекта</option><option value="readiness">Готовность</option></select></label>
+            <label>Порядок<select name="direction"><option value="asc">По возрастанию</option><option value="desc">По убыванию</option></select></label>
+            <label>Строк на странице<select name="size"><option value="10">10</option><option value="20" selected>20</option><option value="50">50</option><option value="100">100</option></select></label>
+            <button class="btn btn-ghost btn-small" type="button" id="architecture-portfolio-reset">Сбросить</button>
+          </form>
+          <p id="architecture-portfolio-message" role="status" aria-live="polite">Откройте раздел, чтобы загрузить сводку.</p>
+          <div class="stats-grid architecture-readiness-grid" id="architecture-readiness-counts" aria-label="Распределение по готовности"></div>
+          <div class="section-head architecture-portfolio-results"><h3>Проекты</h3><span class="pill" id="architecture-portfolio-total">—</span></div>
+          <div class="projects-list" id="architecture-portfolio-list" aria-busy="false"></div>
+          <nav class="architecture-portfolio-pages" aria-label="Страницы сводки">
+            <button class="btn btn-ghost btn-small" type="button" id="architecture-portfolio-prev" disabled>Назад</button>
+            <span id="architecture-portfolio-page" role="status">Страница —</span>
+            <button class="btn btn-ghost btn-small" type="button" id="architecture-portfolio-next" disabled>Далее</button>
+          </nav>
+        </section>
+
         <section class="panel form-panel view-section is-collapsed" id="project-form" data-view-section="projects">
           <div class="section-head">
             <div>
@@ -567,6 +595,7 @@
     <script src="/architecture-deletion.js?v=pm003c3e" defer></script>
     <script src="/passport-editor.js?v=pm003c3e" defer></script>
     <script src="/architecture-ui.js?v=pm003c3e" defer></script>
-    <script src="/projects-ui.js?v=pm003c3e" defer></script>
+    <script src="/projects-ui.js?v=pm003d3" defer></script>
+    <script src="/architecture-portfolio-ui.js?v=pm003d3-3" defer></script>
   </body>
 </html>
