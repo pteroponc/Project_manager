@@ -89,7 +89,7 @@ function harness(search = '') {
 }
 
 const item = (overrides = {}) => ({ id: 'p1', name: 'Проект', summary: 'Описание', quarter: 'Q3',
-  status: 'active', health: 'red', progress: null, deadline: '2026-10-20',
+  status: 'active', health: 'red', progress: null, startDate: null, taskCount: 0, deadline: '2026-10-20',
   assessment: { requiresAttention: true, attentionReasons: ['Красный health'] }, ...overrides });
 const card = (overrides = {}) => ({ ...item(), version: 0, owner: 'Команда', deliveryModel: 'kanban',
   startDate: null, milestone: 'Legacy', risk: 'Риск', dependency: 'Зависимость',
@@ -138,15 +138,39 @@ test('null progress is unknown, zero is real zero, budget is absent from new sur
   assert.doesNotMatch(script, /<dt>Бюджет|<span>Бюджет/);
 });
 
-test('registry renders server attention reasons, task count and unknown details', async () => {
+test('registry renders server start date and task count with one HTTP request', async () => {
   const h = harness();
-  h.context.fetchJson = async url => url.includes('/card') ? card({ startDate: '2026-09-01', board: { taskCount: 3 } }) : snapshot();
+  const calls = [];
+  h.context.fetchJson = async url => { calls.push(url); return snapshot([item({ startDate: '2026-09-01', taskCount: 3 })]); };
   h.ui.onView('projects');
   await new Promise(resolve => setImmediate(resolve));
+  assert.deepEqual(calls, ['/api/projects/registry']);
   assert.match(h.get('projects-list').innerHTML, /Красный health/);
   assert.match(h.get('projects-list').innerHTML, /3/);
   assert.match(h.get('projects-list').innerHTML, /01\.09\.2026/);
   assert.match(h.get('projects-list').innerHTML, /Не указан/);
+});
+
+test('registry row opens the full card only on selection and keeps filters on return', async () => {
+  const h = harness('?view=projects&query=crm&health=red&sort=progress&direction=desc');
+  const calls = [];
+  h.context.fetchJson = async url => {
+    calls.push(url);
+    return url.endsWith('/card') ? card() : snapshot([item({ taskCount: 2 })]);
+  };
+  h.ui.onView('projects');
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(calls.length, 1);
+  h.get('projects-list').listeners.click({ target: {
+    closest: selector => selector === '[data-open-project]' ? { dataset: { openProject: 'p1' } } : null
+  } });
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(calls.filter(url => url.endsWith('/card')).length, 1);
+  h.get('back-to-registry').listeners.click();
+  assert.equal(h.state.activeView, 'projects');
+  for (const value of ['query=crm', 'health=red', 'sort=progress', 'direction=desc']) {
+    assert.ok(h.window.location.search.includes(value));
+  }
 });
 
 test('progress sort uses existing registry API and keeps missing values last', () => {
@@ -282,7 +306,7 @@ test('empty registry and initial error have distinct states', async () => {
 
 test('failed registry refresh keeps previous rows visibly stale', async () => {
   const h = harness();
-  h.context.fetchJson = async url => url.includes('/card') ? card() : snapshot();
+  h.context.fetchJson = async () => snapshot();
   h.ui.onView('projects');
   await new Promise(resolve => setImmediate(resolve));
   h.context.fetchJson = async () => { throw Error('offline'); };
@@ -315,8 +339,6 @@ test('late registry response cannot replace newer filter result', async () => {
   h.registryFields.get('health').value = 'red';
   h.registryForm.listeners.change({ target: { name: 'health', value: 'red' } });
   pending[1].resolve(snapshot([item({ name: 'Новый' })]));
-  await new Promise(resolve => setImmediate(resolve));
-  pending[2].resolve(card());
   await new Promise(resolve => setImmediate(resolve));
   pending[0].resolve(snapshot([item({ name: 'Старый' })]));
   await new Promise(resolve => setImmediate(resolve));

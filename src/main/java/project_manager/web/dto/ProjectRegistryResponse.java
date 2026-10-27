@@ -1,5 +1,6 @@
 package project_manager.web.dto;
 
+import java.time.LocalDate;
 import java.util.List;
 
 public record ProjectRegistryResponse(
@@ -26,6 +27,8 @@ public record ProjectRegistryResponse(
         Integer progress,
         String deadline,
         String milestone,
-        ProjectAssessmentResponse assessment
+        ProjectAssessmentResponse assessment,
+        LocalDate startDate,
+        long taskCount
     ) { }
 }

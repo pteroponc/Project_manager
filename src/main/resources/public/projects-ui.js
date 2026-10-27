@@ -130,14 +130,8 @@
     try {
       const snapshot = await fetchJson(registryUrl({ ...filters, sort: filters.sort === "progress" ? "name" : filters.sort,
         direction: filters.sort === "progress" ? "asc" : filters.direction }));
-      const enriched = await Promise.all(snapshot.items.map(async item => {
-        try {
-          const itemCard = await fetchJson(`/api/projects/${encodeURIComponent(item.id)}/card`);
-          return { ...item, startDate: itemCard.startDate, taskCount: itemCard.board?.taskCount ?? null };
-        } catch { return { ...item, startDate: null, taskCount: null, detailsUnavailable: true }; }
-      }));
       if (request !== registryRequest) return;
-      registry = { ...snapshot, items: sortItems(enriched) };
+      registry = { ...snapshot, items: sortItems(snapshot.items) };
       updateOptions(snapshot);
       renderRegistry(registry.items);
       registryMessage.textContent = "";
@@ -168,7 +162,7 @@
         <div><dt>Квартал</dt><dd>${text(item.quarter)}</dd></div>
         <div><dt>Статус</dt><dd>${statusLabel(item.status)}</dd></div>
         <div><dt>Состояние</dt><dd><span class="pill" data-tone="${escapeAttr(item.health || "unknown")}">${healthLabel(item.health)}</span></dd></div>
-        <div><dt>Начало</dt><dd>${item.detailsUnavailable ? "Недоступно" : date(item.startDate)}</dd></div>
+        <div><dt>Начало</dt><dd>${date(item.startDate)}</dd></div>
         <div><dt>Срок</dt><dd>${date(item.deadline)}</dd></div>
         <div><dt>Прогресс</dt><dd>${progress(item.progress)}</dd></div>
         <div><dt>Задачи</dt><dd>${taskCount(item.taskCount)}</dd></div>

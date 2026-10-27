@@ -1,6 +1,8 @@
 package project_manager;
 
 import org.junit.jupiter.api.Test;
+import jakarta.persistence.EntityManagerFactory;
+import org.hibernate.SessionFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -30,7 +32,10 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-@SpringBootTest(properties = "spring.datasource.url=jdbc:h2:mem:pmtest_registry;MODE=PostgreSQL;DB_CLOSE_DELAY=-1")
+@SpringBootTest(properties = {
+    "spring.datasource.url=jdbc:h2:mem:pmtest_registry;MODE=PostgreSQL;DB_CLOSE_DELAY=-1",
+    "spring.jpa.properties.hibernate.generate_statistics=true"
+})
 @AutoConfigureMockMvc
 @Import(ProjectRegistryAndCardIntegrationTest.FixedTime.class)
 @Transactional
@@ -50,6 +55,52 @@ class ProjectRegistryAndCardIntegrationTest {
     @Autowired BoardCardRepository cards;
     @Autowired ProjectMilestoneRepository milestones;
     @Autowired JdbcTemplate jdbc;
+    @Autowired EntityManagerFactory entityManagerFactory;
+
+    @Test
+    void registryIncludesStartDateAndTaskCountsWithoutLoadingCards() throws Exception {
+        project("p1", "Alpha", "Summary", "active", "green", "2026-10-20");
+        project("p2", "Beta", "Summary", "active", "green", "2026-10-20");
+        ProjectEntity first = projects.findById("p1").orElseThrow();
+        first.setStartDate(java.time.LocalDate.of(2026, 1, 15));
+        projects.saveAndFlush(first);
+        card("c1", "p1");
+        card("c2", "p1");
+
+        mvc.perform(get("/api/projects/registry"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.items[0].id").value("p1"))
+            .andExpect(jsonPath("$.items[0].startDate").value("2026-01-15"))
+            .andExpect(jsonPath("$.items[0].taskCount").value(2))
+            .andExpect(jsonPath("$.items[1].startDate").value(org.hamcrest.Matchers.nullValue()))
+            .andExpect(jsonPath("$.items[1].taskCount").value(0))
+            .andExpect(jsonPath("$.items[0].board").doesNotExist())
+            .andExpect(jsonPath("$.items[0].architecture").doesNotExist());
+    }
+
+    @Test
+    void registrySqlStatementCountDoesNotGrowWithProjectRows() throws Exception {
+        project("p0", "Project 00", "Summary", "active", "green", "2026-10-20");
+        card("c0", "p0");
+        var statistics = entityManagerFactory.unwrap(SessionFactory.class).getStatistics();
+        statistics.clear();
+        mvc.perform(get("/api/projects/registry"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.items[0].taskCount").value(1));
+        long singleProjectStatements = statistics.getPrepareStatementCount();
+        assertThat(singleProjectStatements).isPositive();
+
+        for (int i = 1; i <= 50; i++) {
+            project("p" + i, String.format("Project %02d", i), "Summary", "active", "green", "2026-10-20");
+        }
+        card("c50", "p50");
+        statistics.clear();
+        mvc.perform(get("/api/projects/registry"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.filteredCount").value(51))
+            .andExpect(jsonPath("$.items[50].taskCount").value(1));
+        assertThat(statistics.getPrepareStatementCount()).isEqualTo(singleProjectStatements);
+    }
 
     @Test
     void registrySearchFiltersAndAttentionReusePm001Rules() throws Exception {

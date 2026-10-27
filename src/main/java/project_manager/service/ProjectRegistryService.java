@@ -4,6 +4,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
 import project_manager.domain.ProjectEntity;
+import project_manager.repository.BoardCardRepository;
 import project_manager.repository.ProjectRepository;
 import project_manager.web.BadRequestException;
 import project_manager.web.dto.ProjectAssessmentResponse;
@@ -15,7 +16,9 @@ import java.time.LocalDate;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 @Service
 public class ProjectRegistryService {
@@ -24,12 +27,15 @@ public class ProjectRegistryService {
     private static final Set<String> DIRECTION_VALUES = Set.of("asc", "desc");
     private final ProjectService projectService;
     private final ProjectRepository repository;
+    private final BoardCardRepository boardCardRepository;
     private final ProjectAssessmentService assessmentService;
 
     public ProjectRegistryService(ProjectService projectService, ProjectRepository repository,
+                                  BoardCardRepository boardCardRepository,
                                   ProjectAssessmentService assessmentService) {
         this.projectService = projectService;
         this.repository = repository;
+        this.boardCardRepository = boardCardRepository;
         this.assessmentService = assessmentService;
     }
 
@@ -49,7 +55,12 @@ public class ProjectRegistryService {
             .sorted(comparator(sortValue, directionValue))
             .toList();
 
-        List<ProjectRegistryItem> items = assessed.stream().map(item -> toItem(item.project(), item.assessment())).toList();
+        List<String> projectIds = assessed.stream().map(item -> item.project().getId()).toList();
+        Map<String, Long> taskCounts = projectIds.isEmpty() ? Map.of() : boardCardRepository.countByProjectIds(projectIds)
+            .stream().collect(Collectors.toMap(row -> (String) row[0], row -> ((Number) row[1]).longValue()));
+        List<ProjectRegistryItem> items = assessed.stream()
+            .map(item -> toItem(item.project(), item.assessment(), taskCounts.getOrDefault(item.project().getId(), 0L)))
+            .toList();
         return new ProjectRegistryResponse(
             calculationDate.toString(),
             ProjectAssessmentService.ZONE.getId(),
@@ -96,11 +107,12 @@ public class ProjectRegistryService {
         };
     }
 
-    private ProjectRegistryItem toItem(ProjectEntity project, ProjectAssessmentService.Assessment assessment) {
+    private ProjectRegistryItem toItem(ProjectEntity project, ProjectAssessmentService.Assessment assessment,
+                                       long taskCount) {
         return new ProjectRegistryItem(
             project.getId(), project.getName(), project.getSummary(), project.getStatus(), project.getHealth(),
             project.getQuarter(), project.getProgress(), project.getDeadline(),
-            project.getMilestone(), ProjectAssessmentResponse.from(assessment)
+            project.getMilestone(), ProjectAssessmentResponse.from(assessment), project.getStartDate(), taskCount
         );
     }
 
