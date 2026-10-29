@@ -492,10 +492,10 @@ function renderProjectDashboards(projects) {
   const activeCount = projects.filter((project) => project.status === "active").length;
   const greenCount = projects.filter((project) => project.health === "green").length;
   const riskCount = projects.filter((project) => project.health === "yellow" || project.health === "red").length;
-  const overdueCount = projects.filter((project) => daysUntil(project.deadline) < 0).length;
+  const overdueCount = projects.filter((project) => isProjectOverdue(project)).length;
   const dueSoonCount = projects.filter((project) => {
     const days = daysUntil(project.deadline);
-    return days >= 0 && days <= 30;
+    return project.status !== "done" && days >= 0 && days <= 30;
   }).length;
   const deliveryModels = groupCount(projects, "deliveryModel");
   const statusCounts = groupCount(projects, "status");
@@ -520,8 +520,11 @@ function renderProjectDashboards(projects) {
     .sort((a, b) => Number(b.budget || 0) - Number(a.budget || 0))
     .slice(0, 4);
   const deadlineWatch = projects
-    .slice()
-    .sort((a, b) => new Date(a.deadline).getTime() - new Date(b.deadline).getTime())
+    .filter((project) => {
+      const days = daysUntil(project.deadline);
+      return project.status !== "done" && Number.isFinite(days) && days >= 0;
+    })
+    .sort((a, b) => a.deadline.localeCompare(b.deadline))
     .slice(0, 4);
   const riskWatch = projects
     .filter((project) => project.health !== "green" || milestoneTone(project) !== "green")
@@ -533,7 +536,7 @@ function renderProjectDashboards(projects) {
       ${renderDashboardKpi("Всего проектов", formatNumber(total), `${activeCount} активных`)}
       ${renderDashboardKpi("Бюджет", formatCurrency(totalBudget), `Средний: ${formatCurrency(averageBudget)}`)}
       ${renderDashboardKpi("Средний прогресс", `${averageProgress}%`, progressComment(averageProgress))}
-      ${renderDashboardKpi("Риски", formatNumber(riskCount), overdueCount ? `${overdueCount} просрочено` : `${dueSoonCount} сроков в 30 дней`)}
+      ${renderDashboardKpi("Риски", formatNumber(riskCount), "По состоянию проектов")}
     </div>
     <article class="dashboard-card">
       <div class="dashboard-card-head">
@@ -665,7 +668,7 @@ function renderDeadlineRows(projects) {
     <div class="dashboard-project-rows">
       ${projects
         .map((project) => `
-          <div class="deadline-row" data-tone="${milestoneTone(project)}">
+          <div class="deadline-row" data-tone="${deadlineTone(project)}">
             <div>
               <strong>${escapeHtml(project.name)}</strong>
               <small>${escapeHtml(project.milestone)}</small>
@@ -992,10 +995,11 @@ function matchesBoardFilters(card) {
 
 function renderBoardInsights() {
   const cards = (state.currentBoard?.columns ?? []).flatMap((column) => column.cards ?? []);
-  const today = new Date().toISOString().slice(0, 10);
   elements.boardTaskCount.textContent = cards.length;
   elements.boardPointCount.textContent = cards.reduce((sum, card) => sum + Number(card.estimate || 0), 0);
-  elements.boardOverdueCount.textContent = cards.filter((card) => card.dueDate && card.dueDate < today).length;
+  elements.boardOverdueCount.textContent = (state.currentBoard?.columns ?? [])
+    .reduce((count, column) => count + (column.cards ?? [])
+      .filter((card) => isTaskOverdue(card, column.key, state.currentBoard.deliveryModel)).length, 0);
   elements.boardBlockedCount.textContent = cards.filter((card) => card.blocked).length;
 }
 
@@ -1107,7 +1111,7 @@ function renderCreatedBoards() {
 function renderBoardCard(card, columnKey) {
   const hasPreviousColumn = Boolean(adjacentColumnKey(columnKey, -1));
   const hasNextColumn = Boolean(adjacentColumnKey(columnKey, 1));
-  const overdue = card.dueDate && card.dueDate < new Date().toISOString().slice(0, 10);
+  const overdue = isTaskOverdue(card, columnKey, state.currentBoard?.deliveryModel);
   const labels = String(card.labels ?? "").split(",").map((label) => label.trim()).filter(Boolean);
   return `
     <article class="board-card ${card.blocked ? "is-blocked" : ""}" data-card-id="${escapeAttr(card.id)}" draggable="true">
@@ -1641,24 +1645,29 @@ function formatDate(value) {
   return new Intl.DateTimeFormat("ru-RU", {
     day: "2-digit",
     month: "short",
-    year: "numeric"
+    year: "numeric",
+    ...(/^\d{4}-\d{2}-\d{2}$/.test(String(value)) ? { timeZone: "UTC" } : {})
   }).format(date);
 }
 
 function milestoneTone(project) {
-  const deadline = new Date(project.deadline);
-  if (Number.isNaN(deadline.getTime())) {
+  const daysLeft = daysUntil(project.deadline);
+  if (!Number.isFinite(daysLeft)) {
     return project.health === "red" ? "red" : "yellow";
   }
-  const daysLeft = Math.ceil((deadline.getTime() - Date.now()) / 86_400_000);
   const progress = Number(project.progress || 0);
-  if (project.health === "red" || daysLeft < 0) {
+  if (project.health === "red" || isProjectOverdue(project)) {
     return "red";
   }
-  if (project.health === "yellow" || daysLeft <= 14 || progress < 35) {
+  if (project.health === "yellow" || (project.status !== "done" && daysLeft <= 14) || progress < 35) {
     return "yellow";
   }
   return "green";
+}
+
+function deadlineTone(project) {
+  const days = daysUntil(project.deadline);
+  return days < 0 ? "red" : days <= 14 ? "yellow" : "green";
 }
 
 function groupCount(items, field) {
@@ -1684,14 +1693,28 @@ function riskWeight(project) {
 }
 
 function daysUntil(value) {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(value ?? ""))) {
     return Number.POSITIVE_INFINITY;
   }
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  date.setHours(0, 0, 0, 0);
-  return Math.ceil((date.getTime() - today.getTime()) / 86_400_000);
+  const [year, month, day] = value.split("-").map(Number);
+  const deadline = Date.UTC(year, month - 1, day);
+  if (new Date(deadline).toISOString().slice(0, 10) !== value) {
+    return Number.POSITIVE_INFINITY;
+  }
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "Europe/Moscow", year: "numeric", month: "2-digit", day: "2-digit"
+  }).formatToParts(new Date());
+  const part = (type) => Number(parts.find((item) => item.type === type).value);
+  return Math.round((deadline - Date.UTC(part("year"), part("month") - 1, part("day"))) / 86_400_000);
+}
+
+function isProjectOverdue(project) {
+  return project.status !== "done" && daysUntil(project.deadline) < 0;
+}
+
+function isTaskOverdue(card, columnKey, boardModel) {
+  const finalColumn = { kanban: "done", scrum: "retrospective", waterfall: "release" }[boardModel];
+  return columnKey !== finalColumn && daysUntil(card.dueDate) < 0;
 }
 
 function progressComment(progress) {
