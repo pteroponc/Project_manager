@@ -9,7 +9,10 @@ const names = ['showView', 'invalidateBoardContext', 'isCurrentBoardRequest',
   'activeBoardContext', 'isCurrentBoardContext', 'openProjectBoard', 'onProjectDeleted',
   'loadProjectCatalog', 'loadBoard', 'renderBoardLanding', 'findBoardCard',
   'moveBoardCard', 'createBoardCard', 'deleteBoardCard', 'saveBoardCard',
-  'boardCardPayload', 'boardCardsUrl', 'boardCardUrl'];
+  'boardCardPayload', 'boardCardsUrl', 'boardCardUrl', 'selectBoardProject',
+  'renderBoardProjectPicker', 'createBoard', 'rememberBoardVisit',
+  'loadCreatedBoards', 'saveCreatedBoards', 'adjacentColumnKey',
+  'renderBoardColumns', 'renderBoardCard', 'matchesBoardFilters', 'renderBoardInsights'];
 const functions = names.map((name) => {
   const start = source.search(new RegExp('^(?:async )?function ' + name + '\\(', 'm'));
   assert.ok(start >= 0, name);
@@ -19,7 +22,13 @@ const functions = names.map((name) => {
 function node() {
   const classes = new Set();
   const children = new Map();
-  return { textContent: '', innerHTML: '', disabled: false, listeners: {},
+  const selectors = new Map();
+  const childNodes = [];
+  let html = '';
+  return { textContent: '', get innerHTML() { return html; }, set innerHTML(value) { html = value; childNodes.length = 0; },
+    disabled: false, listeners: {}, childNodes, selectors, dataset: {},
+    appendChild(child) { childNodes.push(child); },
+    value: '', setAttribute() {}, querySelectorAll: (selector) => selectors.get(selector) ?? [],
     classList: { add: (value) => classes.add(value), remove: (value) => classes.delete(value),
       toggle: (value, on) => on ? classes.add(value) : classes.delete(value),
       contains: (value) => classes.has(value) },
@@ -51,6 +60,8 @@ function harness() {
     get(target, key) { return target[key] ??= node(); }
   });
   const state = { activeView: 'project-card', projects: [{ id: 'A', name: 'A' }, { id: 'B', name: 'B' }],
+    createdBoards: [], projectsRequest: 0, boardCatalogLoaded: false, boardCatalogLoading: false, boardCatalogError: false,
+    boardFilters: { query: '', priority: 'all', blocked: false },
     selectedProjectId: null, activeBoardModel: 'kanban', boardDrilledIn: false,
     boardRequest: 0, boardLoading: false, boardProjectSelectionRequired: false,
     currentBoard: null, createTaskContext: null, draggingBoardCardId: null };
@@ -59,13 +70,17 @@ function harness() {
   let confirmations = 0;
   const window = { scrollTo() {}, confirm() { confirmations++; return true; } };
   const context = vm.createContext({ state, elements, window, encodeURIComponent,
-    escapeHtml: String, console: { error() {} },
+    escapeHtml: String, escapeAttr: String, console: { error() {} },
+    BOARDS_STORAGE_KEY: 'project-manager-created-boards',
+    localStorage: { getItem: () => null, setItem() {} },
+    document: { createElement: node }, isTaskOverdue: () => false, formatDate: String,
     fetchJson: (url, options) => new Promise((resolve, reject) => calls.push({ url, options, resolve, reject })),
     renderProjectDashboards() {}, renderCreatedBoards() {}, renderBoardInsights() {},
     renderBoardColumns() {}, renderEmptyBoard() {},
     closeTaskModal() { state.selectedBoardCardId = null; },
     closeCreateTaskPanel() { state.createTaskContext = null; elements.createTaskForm.reset(); },
-    setFormState(message) { messages.push(message); } });
+    setFormState(message) { messages.push(message); },
+    setBoardMessage(message) { messages.push(message); } });
   vm.runInContext(functions, context);
   return { context, state, elements, calls, messages, window,
     get confirmations() { return confirmations; } };
@@ -119,7 +134,7 @@ test('leaving boards suppresses late success and late failure', async () => {
     assert.equal(h.state.currentBoard, null);
     assert.equal(h.state.activeView, 'projects');
     assert.equal(h.elements.boardColumns.innerHTML, before);
-    assert.deepEqual(h.messages, []);
+    assert.deepEqual(h.messages.filter(Boolean), []);
   }
 });
 
@@ -250,4 +265,93 @@ test('current network error is retryable and cannot expose old cards', async () 
   assert.equal(h.calls.length, 2);
   h.calls[1].resolve(board('A', 'kanban')); await new Promise((resolve) => setImmediate(resolve));
   assert.equal(h.state.currentBoard.projectId, 'A');
+});
+
+test('server catalog requires explicit selection and every model opens with storage denied', async () => {
+  const h = harness();
+  h.context.localStorage = { getItem() { throw Error('denied'); }, setItem() { throw Error('quota'); } };
+  assert.equal(h.context.loadCreatedBoards().length, 0);
+  const catalog = h.context.loadProjectCatalog();
+  h.calls[0].resolve([{ id: 'A', name: 'Server A' }, { id: 'B', name: 'Server B' }]); await catalog;
+  assert.equal(h.state.selectedProjectId, null);
+  assert.match(h.elements.boardProjectSelect.innerHTML, /Server A/);
+  const selected = h.context.selectBoardProject('A');
+  h.calls[1].resolve(board('A', 'kanban')); await selected;
+  for (const model of ['scrum', 'waterfall', 'kanban']) {
+    const opening = h.context.createBoard(model);
+    const call = h.calls.at(-1);
+    assert.match(call.url, new RegExp('model=' + model));
+    call.resolve(board('A', model)); await opening;
+    assert.equal(h.state.currentBoard.deliveryModel, model);
+    assert.equal(h.elements.boardProjectSelect.value, 'A');
+  }
+  assert.equal(h.calls.some((call) => call.options?.method), false);
+});
+
+test('picker clears context and late GET cannot reopen a deselected project', async () => {
+  const h = harness();
+  const opening = h.context.selectBoardProject('A');
+  await h.context.selectBoardProject('');
+  h.calls[0].resolve(board('A', 'kanban')); await opening;
+  assert.equal(h.state.currentBoard, null);
+  assert.equal(h.state.selectedProjectId, null);
+  assert.equal(h.elements.boardProjectSelect.value, '');
+  await h.context.selectBoardProject('unknown');
+  assert.equal(h.calls.length, 1);
+});
+
+test('project card can open a newly created server project before catalog refresh and switch models', async () => {
+  const h = harness();
+  const opening = h.context.openProjectBoard('new-project', 'kanban');
+  h.calls[0].resolve(board('new-project', 'kanban')); await opening;
+  assert.match(h.elements.boardProjectSelect.innerHTML, /new-project/);
+  const switched = h.context.createBoard('scrum');
+  assert.match(h.calls[1].url, /projects\/new-project\/board\?model=scrum/);
+  h.calls[1].resolve(board('new-project', 'scrum')); await switched;
+  assert.equal(h.state.currentBoard.projectId, 'new-project');
+});
+
+test('unassigned cards are visible, inspectable and move only after explicit selection', async () => {
+  const h = harness();
+  const opening = h.context.openProjectBoard('A', 'scrum');
+  const response = board('A', 'scrum');
+  response.unassignedColumns = [{ key: 'backlog', title: 'backlog', cards: [card('unmapped')] }];
+  const before = JSON.stringify(response);
+  h.calls[0].resolve(response); await opening;
+  assert.equal(JSON.stringify(response), before);
+  assert.equal(h.calls.length, 1);
+  assert.equal(h.context.findBoardCard('unmapped').columnKey, 'backlog');
+  const section = h.elements.boardColumns.childNodes.at(-1);
+  assert.match(section.innerHTML, /Несопоставленные задачи: 1/);
+  assert.match(section.innerHTML, /data-action="open-card" data-card-id="unmapped"/);
+  assert.equal(h.elements.boardTaskCount.textContent, 1);
+  assert.equal(h.context.adjacentColumnKey('backlog', 1), null);
+  const select = node(); select.dataset.cardId = 'unmapped';
+  h.elements.boardColumns.selectors.set('[data-action="move-card"]', [select]);
+  h.context.renderBoardColumns();
+  assert.match(select.innerHTML, /value="" disabled selected/);
+  assert.equal(select.value, '');
+  assert.equal(h.calls.length, 1);
+  await h.context.saveBoardCard('unmapped', formData({ columnKey: '' }));
+  assert.equal(h.calls.length, 1);
+  select.value = 'review';
+  const moved = select.listeners.change();
+  assert.equal(h.calls[1].options.method, 'PUT');
+  assert.equal(JSON.parse(h.calls[1].options.body).columnKey, 'review');
+  h.calls[1].resolve(card('unmapped')); await new Promise((resolve) => setImmediate(resolve));
+  h.calls[2].resolve(board('A', 'scrum', [card('unmapped')])); await moved;
+  assert.equal(h.context.findBoardCard('unmapped').columnKey, 'review');
+});
+
+test('catalog error retains previous choices and retry recovers without selecting a board', async () => {
+  const h = harness();
+  const failed = h.context.loadProjectCatalog();
+  h.calls[0].reject(Error('offline')); await failed;
+  assert.equal(h.state.boardCatalogLoading, false);
+  assert.match(h.elements.boardProjectMessage.textContent, /Не удалось/);
+  assert.match(h.elements.boardProjectSelect.innerHTML, /value="A"/);
+  const retry = h.context.loadProjectCatalog();
+  h.calls[1].resolve([]); await retry;
+  assert.match(h.elements.boardProjectMessage.textContent, /Проектов пока нет/);
+  assert.equal(h.state.currentBoard, null);
 });

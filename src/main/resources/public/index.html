@@ -282,6 +282,12 @@
               <span class="pill" id="board-model">доска</span>
             </div>
           </div>
+          <div class="board-project-picker">
+            <label><span>Проект</span><select id="board-project-select" aria-describedby="board-project-message"><option value="">Выберите проект</option></select></label>
+            <button class="btn btn-ghost" type="button" id="board-project-refresh">Обновить проекты</button>
+          </div>
+          <p class="hint-text" id="board-project-message" role="status">Загружаем список проектов...</p>
+          <p class="hint-text" id="board-message" role="status"></p>
           <div class="board-insights hidden" id="board-insights">
             <span class="pill"><strong id="board-task-count">0</strong> задач</span>
             <span class="pill"><strong id="board-point-count">0</strong> SP</span>
@@ -305,29 +311,29 @@
           <div class="board-deck" id="board-deck">
             <button class="board-type-card" type="button" data-board-model="kanban">
               <span>Канбан</span>
-              <strong>Создать Канбан-доску</strong>
+              <strong>Открыть Канбан</strong>
               <small>Поток задач: бэклог, готово к работе, в работе, проверка, готово.</small>
             </button>
             <button class="board-type-card" type="button" data-board-model="scrum">
               <span>Скрам</span>
-              <strong>Создать Скрам-доску</strong>
+              <strong>Открыть Скрам</strong>
               <small>Работа спринта: бэклог продукта, готово к спринту, в спринте, проверка, ретроспектива.</small>
             </button>
             <button class="board-type-card" type="button" data-board-model="waterfall">
               <span>Каскад</span>
-              <strong>Создать каскадную доску</strong>
+              <strong>Открыть каскадную доску</strong>
               <small>Последовательные этапы: инициация, планирование, исполнение, проверка, релиз.</small>
             </button>
           </div>
           <section class="created-boards">
             <div class="section-head compact-head">
               <div>
-                <p class="section-kicker">Созданные доски</p>
-                <h3>Доски инициатив</h3>
+                <p class="section-kicker">Недавние доски</p>
+                <h3>История просмотра</h3>
               </div>
             </div>
             <div class="created-board-list" id="created-board-list">
-              <div class="empty-state compact">Созданные доски появятся здесь.</div>
+              <div class="empty-state compact">История необязательна. Выберите проект и модель выше.</div>
             </div>
           </section>
           <section class="create-task-panel hidden" id="create-task-panel">

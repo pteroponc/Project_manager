@@ -1136,6 +1136,25 @@ textarea:focus {
   margin-top: 16px;
 }
 
+.board-project-picker {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+.board-project-picker label { flex: 1 1 240px; }
+.boards-panel #board-message { margin: 10px 0; overflow-wrap: anywhere; }
+.boards-panel #board-message[data-tone="error"] { color: var(--danger); }
+.board-card, .board-column { min-width: 0; overflow-wrap: anywhere; }
+.board-card-actions .board-card-status { flex: 1 1 100%; min-height: 40px; }
+.board-card-move-actions { display: flex; gap: 8px; }
+.board-card-move-actions .btn { min-width: 40px; min-height: 40px; }
+.board-card-head { display: flex; flex-wrap: wrap; align-items: start; gap: 8px; }
+.board-card-head strong { flex: 1 1 100px; }
+.board-unassigned-group { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 230px), 1fr)); }
+.board-unassigned-group h4 { grid-column: 1 / -1; margin: 0; }
+
 .board-column {
   display: grid;
   gap: 10px;

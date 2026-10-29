@@ -28,7 +28,7 @@ function harness(instant) {
     activeBoardModel: 'kanban', boardDrilledIn: true, boardRequest: 0, boardLoading: false };
   const context = vm.createContext({ Date: FixedDate, Intl, Number, state, elements,
     escapeAttr: String, escapeHtml: String,
-    adjacentColumnKey: () => null, setFormState() {}, boardCardUrl: (id) => `/cards/${id}`,
+    adjacentColumnKey: () => null, setFormState() {}, setBoardMessage() {}, boardCardUrl: (id) => `/cards/${id}`,
     groupCount: () => ({}), renderDashboardKpi: (...args) => args.join(':'),
     renderDistributionBars: () => '', renderProjectRows: () => '', renderRiskRows: () => '',
     formatNumber: String, formatCurrency: String, declOfNum: () => 'модели',
