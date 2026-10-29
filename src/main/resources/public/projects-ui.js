@@ -453,6 +453,7 @@
     else if (view === "dashboards") showView("dashboards");
     else if (view === "project-card" && params.get("project")) openCard(params.get("project"), "history");
     else if (view === "project-architecture" && params.get("project")) window.PMArchitectureUI?.open(params.get("project"));
+    else if (["overview", "boards", "release", "docs"].includes(view)) showView(view);
     else if (navigatingHistory) showView("overview");
   }
 
@@ -467,7 +468,10 @@
   });
   form.addEventListener("change", event => {
     if (!keys.includes(event.target.name)) return;
-    if (event.target.name === "query") clearTimeout(debounce);
+    if (event.target.name === "query") {
+      clearTimeout(debounce);
+      if (filters.query === event.target.value) return;
+    }
     filters[event.target.name] = event.target.value;
     updateUrl("projects", null, true);
     loadRegistry();

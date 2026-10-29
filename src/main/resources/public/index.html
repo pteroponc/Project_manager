@@ -19,13 +19,17 @@
               <strong>Менеджер проектов</strong>
             </div>
           </div>
-          <nav class="sidebar-nav">
-            <button class="nav-item active" type="button" data-view="overview" data-icon="⌂">Обзор</button>
-            <button class="nav-item" type="button" data-view="projects" data-icon="+">Проекты</button>
-            <button class="nav-item" type="button" data-view="dashboards" data-icon="▦">Дашборды</button>
-            <button class="nav-item" type="button" data-view="boards" data-icon="▤">Доски</button>
-            <button class="nav-item" type="button" data-view="release" data-icon="→">Релизы</button>
-            <button class="nav-item" type="button" data-view="docs" data-icon="□">Документы</button>
+          <button class="mobile-navigation-toggle" type="button" id="navigation-toggle" aria-controls="primary-navigation" aria-expanded="true">
+            <span><span>Разделы</span><strong id="navigation-current">Обзор</strong></span>
+            <span class="navigation-chevron" aria-hidden="true">▾</span>
+          </button>
+          <nav class="sidebar-nav" id="primary-navigation" aria-label="Основные разделы">
+            <button class="nav-item active" type="button" data-view="overview" data-icon="⌂" aria-label="Обзор">Обзор</button>
+            <button class="nav-item" type="button" data-view="projects" data-icon="+" aria-label="Проекты">Проекты</button>
+            <button class="nav-item" type="button" data-view="dashboards" data-icon="▦" aria-label="Дашборды">Дашборды</button>
+            <button class="nav-item" type="button" data-view="boards" data-icon="▤" aria-label="Доски">Доски</button>
+            <button class="nav-item" type="button" data-view="release" data-icon="→" aria-label="Релизы">Релизы</button>
+            <button class="nav-item" type="button" data-view="docs" data-icon="□" aria-label="Документы">Документы</button>
           </nav>
         </aside>
 
@@ -596,6 +600,7 @@
     </div>
 
     <script src="/app.js?v=pm003c3e" defer></script>
+    <script src="/navigation-ui.js" defer></script>
     <script src="/architecture-editor-validation.js?v=pm003c3e" defer></script>
     <script src="/architecture-child-editor.js?v=pm003c3e" defer></script>
     <script src="/architecture-check-editor.js?v=pm003c3e" defer></script>

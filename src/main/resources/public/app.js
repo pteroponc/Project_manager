@@ -397,6 +397,8 @@ function showView(view, options = {}) {
     button.classList.toggle("active", button.dataset.view === nextView);
   });
 
+  window.PMNavigationUI?.onView(nextView);
+
   window.PMProjectsUI?.onView?.(nextView);
   window.PMArchitecturePortfolioUI?.onView?.(nextView);
 

@@ -2259,3 +2259,50 @@ input:disabled, select:disabled, textarea:disabled {
 @media (forced-colors: active) {
   :where(button, a, input, select, textarea, summary, [tabindex]):focus-visible { outline-color: Highlight; }
 }
+
+/* PM-006.1B: the same six section buttons in a responsive disclosure. */
+.mobile-navigation-toggle { display: none; }
+.sidebar-nav[hidden] { display: none !important; }
+
+@media (min-width: 1024px) {
+  .app-layout { grid-template-columns: 214px minmax(0, 1fr); }
+  .sidebar { position: sticky; top: 0; min-height: 100vh; padding: 24px 14px; }
+  .sidebar-brand { padding: 0 10px; }
+  .sidebar-nav { grid-template-columns: 1fr; margin-top: 34px; }
+}
+
+@media (max-width: 1023px) {
+  .app-layout { grid-template-columns: minmax(0, 1fr); }
+  .sidebar {
+    position: static; display: flex; flex-wrap: wrap; align-items: center;
+    min-width: 0; min-height: 0; padding: 14px 16px; gap: 12px;
+  }
+  .sidebar-brand { flex: 1 1 140px; min-width: 0; padding: 0; }
+  .sidebar-brand strong { overflow-wrap: anywhere; }
+  .sidebar[data-navigation-ready="true"] .mobile-navigation-toggle {
+    display: flex; align-items: center; justify-content: space-between; gap: 10px;
+    min-height: 44px; max-width: 100%; padding: 8px 12px; border: 1px solid var(--sidebar-accent-border);
+    border-radius: var(--radius-sm); background: var(--sidebar-active); color: var(--sidebar-text);
+    text-align: left; line-height: 1.25; overflow-wrap: anywhere;
+  }
+  .mobile-navigation-toggle > span:first-child { display: grid; gap: 2px; }
+  .mobile-navigation-toggle > span:first-child > span { font-size: .7rem; color: var(--sidebar-muted); }
+  .mobile-navigation-toggle strong { font-size: .84rem; }
+  .mobile-navigation-toggle:hover { background: var(--sidebar-hover); }
+  .navigation-chevron { transition: transform .15s ease; }
+  .mobile-navigation-toggle[aria-expanded="true"] .navigation-chevron { transform: rotate(180deg); }
+  .sidebar-nav {
+    flex: 1 0 100%; min-width: 0; grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px; margin-top: 0;
+  }
+  .sidebar-nav .nav-item {
+    height: auto; min-height: 44px; padding: 10px 12px 10px 40px;
+    font-size: .85rem; white-space: normal; overflow-wrap: anywhere;
+  }
+  .sidebar-nav .nav-item::before { left: 9px; width: 22px; }
+}
+
+@media (max-width: 520px) {
+  .sidebar { padding: 12px; }
+  .sidebar-nav { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}

@@ -130,6 +130,37 @@ test('registry URL and filters survive route restoration', () => {
   assert.equal(h.registryFields.get('direction').value, 'desc');
 });
 
+test('every existing main section restores from URL and browser history', () => {
+  for (const view of ['overview', 'boards', 'release', 'docs']) {
+    const h = harness('?view=' + view);
+    assert.equal(h.state.activeView, view);
+    h.state.activeView = 'project-card';
+    h.window.events.popstate({ state: { pmRouteIndex: 0 } });
+    assert.equal(h.state.activeView, view);
+  }
+});
+
+test('blur after an applied debounced search does not reload rows under a project click', async () => {
+  const h = harness(); let reads = 0;
+  h.context.fetchJson = async () => { reads++; return snapshot(); };
+  h.registryFields.get('query').value = 'Платформа';
+  h.registryForm.listeners.input({ target: { name: 'query' } });
+  await new Promise(resolve => setTimeout(resolve, 280));
+  assert.equal(reads, 1);
+  h.registryForm.listeners.change({ target: { name: 'query', value: 'Платформа' } });
+  assert.equal(reads, 1);
+});
+
+test('blur before debounce applies a changed search once and cancels its pending timer', async () => {
+  const h = harness(); let reads = 0;
+  h.context.fetchJson = async () => { reads++; return snapshot(); };
+  h.registryFields.get('query').value = 'Платформа';
+  h.registryForm.listeners.input({ target: { name: 'query' } });
+  h.registryForm.listeners.change({ target: { name: 'query', value: 'Платформа' } });
+  await new Promise(resolve => setTimeout(resolve, 280));
+  assert.equal(reads, 1);
+});
+
 test('null progress is unknown, zero is real zero, budget is absent from new surfaces', () => {
   const h = harness();
   assert.equal(h.ui.progress(null), 'Не указан');
