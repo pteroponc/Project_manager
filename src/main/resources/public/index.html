@@ -196,6 +196,7 @@
             <div class="empty-state compact">Релизные поезда появятся после загрузки API.</div>
           </div>
           <form class="release-train-form" id="release-train-form">
+            <h3 class="full-width" id="release-train-form-title">Новый релизный поезд</h3>
             <label>
               <span>Название поезда</span>
               <input name="name" placeholder="RT-2026-Q4 Core" required />
@@ -263,8 +264,9 @@
               <textarea name="decision" rows="3" placeholder="Что нужно решить до заморозки" required></textarea>
             </label>
             <div class="form-actions full-width">
-              <button class="btn btn-primary" type="submit">Запланировать поезд</button>
-              <p class="hint-text" id="release-train-message">Новый поезд появится в релизном срезе сразу после сохранения.</p>
+              <button class="btn btn-primary" type="submit" id="release-train-submit">Запланировать поезд</button>
+              <button class="btn btn-ghost hidden" type="button" id="release-train-cancel-edit">Отменить редактирование</button>
+              <p class="hint-text" id="release-train-message" role="status">Новый поезд появится в релизном срезе сразу после сохранения.</p>
             </div>
           </form>
         </section>

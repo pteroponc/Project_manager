@@ -46,6 +46,10 @@ const state = {
   overviewRequest: 0,
   projectsRequest: 0,
   trainsRequest: 0,
+  trainEditorRequest: 0,
+  trainEditorLoading: false,
+  editingReleaseTrainId: null,
+  trainMutationPending: false,
   boardRequest: 0,
   boardLoading: false,
   boardProjectSelectionRequired: false,
@@ -114,6 +118,9 @@ const elements = {
   releaseTrainCapacity: document.getElementById("release-train-capacity"),
   releaseTrainForm: document.getElementById("release-train-form"),
   releaseTrainMessage: document.getElementById("release-train-message"),
+  releaseTrainFormTitle: document.getElementById("release-train-form-title"),
+  releaseTrainSubmit: document.getElementById("release-train-submit"),
+  releaseTrainCancelEdit: document.getElementById("release-train-cancel-edit"),
   refreshButton: document.getElementById("refresh-button"),
   form: document.getElementById("create-project-form"),
   formKicker: document.getElementById("form-kicker"),
@@ -292,6 +299,13 @@ elements.boardDeck?.querySelectorAll("[data-board-model]").forEach((button) => {
 });
 elements.form.addEventListener("submit", handleProjectSubmit);
 elements.releaseTrainForm?.addEventListener("submit", handleReleaseTrainSubmit);
+elements.releaseTrainCancelEdit?.addEventListener("click", resetReleaseTrainEditor);
+elements.releaseTrainList?.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-release-action]");
+  if (!button || !elements.releaseTrainList.contains(button)) return;
+  if (button.dataset.releaseAction === "edit") void openReleaseTrainEditor(button.dataset.trainId);
+  if (button.dataset.releaseAction === "delete") void deleteReleaseTrain(button.dataset.trainId);
+});
 elements.addProjectLink?.addEventListener("click", () => {
   resetFormMode();
   openProjectForm();
@@ -355,6 +369,13 @@ function showView(view, options = {}) {
   const nextView = view || "overview";
   const previousView = state.activeView;
   if (previousView === "boards" && nextView !== "boards") invalidateBoardContext();
+  if (previousView === "release" && nextView !== "release") {
+    ++state.trainEditorRequest;
+    setReleaseTrainEditorLoading(false);
+    if (elements.releaseTrainMessage.textContent === "Загружаем релизный поезд...") {
+      elements.releaseTrainMessage.textContent = "Выберите поезд для редактирования.";
+    }
+  }
   state.activeView = nextView;
 
   elements.viewSections.forEach((section) => {
@@ -473,13 +494,17 @@ async function loadTrainSnapshot() {
   const request = ++state.trainsRequest;
   try {
     const snapshot = await fetchJson("/api/release-trains/snapshot");
-    if (request !== state.trainsRequest) return;
+    if (request !== state.trainsRequest) return false;
     state.releaseTrainSnapshot = snapshot;
     state.releaseTrains = snapshot.trains ?? [];
     renderReleaseTrains(snapshot);
+    return true;
   } catch (error) {
-    if (request !== state.trainsRequest) return;
-    elements.releaseTrainList.textContent = "Не удалось обновить релизные поезда. Повторите загрузку.";
+    if (request !== state.trainsRequest) return false;
+    if (!state.releaseTrainSnapshot) {
+      elements.releaseTrainList.textContent = "Не удалось обновить релизные поезда. Повторите загрузку.";
+    }
+    return false;
   }
 }
 
@@ -898,10 +923,31 @@ function renderReleaseTrains(snapshot) {
             <strong>Решение до заморозки</strong>
             <p>${escapeHtml(train.decision)}</p>
           </div>
+          <div class="release-train-actions">
+            <button class="btn btn-secondary btn-small" type="button" data-release-action="edit" data-train-id="${escapeAttr(train.id)}" ${state.trainMutationPending ? "disabled" : ""}>Редактировать</button>
+            <button class="btn btn-ghost btn-small" type="button" data-release-action="delete" data-train-id="${escapeAttr(train.id)}" ${state.trainMutationPending || state.trainEditorLoading ? "disabled" : ""}>Удалить</button>
+          </div>
         </article>
       `;
     })
     .join("");
+}
+
+function applyReleaseTrainChange(train, deletedId) {
+  ++state.trainsRequest;
+  const trains = state.releaseTrains.filter((item) => item.id !== (deletedId ?? train.id));
+  if (train) trains.push(train);
+  state.releaseTrains = trains;
+  const snapshot = {
+    trains,
+    totalCapacityPoints: trains.reduce((sum, item) => sum + item.capacityPoints, 0),
+    totalCommittedPoints: trains.reduce((sum, item) => sum + item.committedPoints, 0),
+    blockedItems: trains.reduce((sum, item) => sum + item.blockedItems, 0),
+    averageReadiness: trains.length
+      ? Math.round(trains.reduce((sum, item) => sum + item.readiness, 0) / trains.length) : 0
+  };
+  state.releaseTrainSnapshot = snapshot;
+  renderReleaseTrains(snapshot);
 }
 
 function renderReleaseStage(title, date, status, activeStatuses) {
@@ -1507,32 +1553,176 @@ function boardCardPayload(formData, columnKey) {
   return payload;
 }
 
+const RELEASE_TRAIN_FIELDS = ["name", "status", "cadence", "quarter", "plannedReleaseDate",
+  "codeFreezeDate", "qaFreezeDate", "goLiveDate", "capacityPoints", "committedPoints",
+  "readiness", "blockedItems", "scope", "risk", "decision"];
+const RELEASE_TRAIN_NUMBERS = ["capacityPoints", "committedPoints", "readiness", "blockedItems"];
+
+function releaseTrainPayload() {
+  const payload = Object.fromEntries(new FormData(elements.releaseTrainForm).entries());
+  for (const field of RELEASE_TRAIN_FIELDS) {
+    if (!String(payload[field] ?? "").trim()) throw new Error("Заполните все поля релизного поезда");
+  }
+  if (!Object.hasOwn(LABELS.releaseStatus, payload.status)) throw new Error("Выберите допустимый статус");
+  for (const field of RELEASE_TRAIN_NUMBERS) {
+    const number = Number(payload[field]);
+    if (!Number.isInteger(number) || number < 0 || number > (field === "readiness" ? 100 : 2147483647)) {
+      throw new Error("Проверьте числовые показатели релизного поезда");
+    }
+    payload[field] = number;
+  }
+  return payload;
+}
+
+function setReleaseTrainPending(pending) {
+  state.trainMutationPending = pending;
+  updateReleaseTrainControls();
+}
+
+function setReleaseTrainEditorLoading(loading) {
+  state.trainEditorLoading = loading;
+  updateReleaseTrainControls();
+}
+
+function updateReleaseTrainControls() {
+  const blocked = state.trainMutationPending || state.trainEditorLoading;
+  elements.releaseTrainSubmit.disabled = blocked;
+  elements.releaseTrainCancelEdit.disabled = state.trainMutationPending;
+  elements.releaseTrainCancelEdit.classList.toggle("hidden",
+    !state.editingReleaseTrainId && !state.trainEditorLoading);
+  elements.releaseTrainForm.querySelectorAll("input, select, textarea").forEach((field) => {
+    field.disabled = blocked;
+  });
+  elements.releaseTrainList.querySelectorAll("[data-release-action]").forEach((button) => {
+    button.disabled = state.trainMutationPending
+      || (state.trainEditorLoading && button.dataset.releaseAction === "delete");
+  });
+}
+
+function resetReleaseTrainEditor() {
+  if (state.trainMutationPending) return;
+  ++state.trainEditorRequest;
+  state.trainEditorLoading = false;
+  state.editingReleaseTrainId = null;
+  elements.releaseTrainForm.reset();
+  elements.releaseTrainFormTitle.textContent = "Новый релизный поезд";
+  elements.releaseTrainSubmit.textContent = "Запланировать поезд";
+  elements.releaseTrainCancelEdit.classList.add("hidden");
+  elements.releaseTrainMessage.textContent = "Новый поезд появится в релизном срезе сразу после сохранения.";
+  updateReleaseTrainControls();
+}
+
+async function openReleaseTrainEditor(id) {
+  if (state.trainMutationPending || state.activeView !== "release") return;
+  const request = ++state.trainEditorRequest;
+  setReleaseTrainEditorLoading(true);
+  elements.releaseTrainMessage.textContent = "Загружаем релизный поезд...";
+  try {
+    const train = await fetchJson(`/api/release-trains/${encodeURIComponent(id)}`);
+    if (request !== state.trainEditorRequest || state.activeView !== "release") return;
+    if (train.id !== id) throw new Error("Ответ относится к другому релизному поезду");
+    for (const field of RELEASE_TRAIN_FIELDS) {
+      elements.releaseTrainForm.elements.namedItem(field).value = train[field] ?? "";
+    }
+    state.editingReleaseTrainId = id;
+    elements.releaseTrainFormTitle.textContent = `Редактирование: ${train.name}`;
+    elements.releaseTrainSubmit.textContent = "Сохранить изменения";
+    elements.releaseTrainCancelEdit.classList.remove("hidden");
+    elements.releaseTrainMessage.textContent = "Изменения сохраняются в существующий релизный поезд.";
+    setReleaseTrainEditorLoading(false);
+    elements.releaseTrainForm.scrollIntoView({ behavior: "smooth", block: "start" });
+    elements.releaseTrainForm.elements.namedItem("name").focus();
+  } catch (error) {
+    if (request !== state.trainEditorRequest || state.activeView !== "release") return;
+    const retainedEditor = state.editingReleaseTrainId
+      ? `Остаётся открыта форма поезда «${elements.releaseTrainForm.elements.namedItem("name").value}»; данные сохранены.`
+      : "Сохранён режим создания нового поезда.";
+    elements.releaseTrainMessage.textContent = (error.status === 404
+      ? "Релизный поезд не найден. " : "Не удалось открыть релизный поезд: " + error.message + ". ")
+      + "Переключение не выполнено. " + retainedEditor;
+    if (error.status === 404) void loadTrainSnapshot();
+  } finally {
+    if (request === state.trainEditorRequest) setReleaseTrainEditorLoading(false);
+  }
+}
+
 async function handleReleaseTrainSubmit(event) {
   event.preventDefault();
-  const formData = new FormData(elements.releaseTrainForm);
-  const payload = Object.fromEntries(formData.entries());
-  payload.capacityPoints = Number(payload.capacityPoints || 0);
-  payload.committedPoints = Number(payload.committedPoints || 0);
-  payload.readiness = Number(payload.readiness || 0);
-  payload.blockedItems = Number(payload.blockedItems || 0);
-
-  elements.releaseTrainMessage.textContent = "Сохраняем релизный поезд...";
-
+  if (state.trainMutationPending || state.trainEditorLoading) return;
+  let payload;
   try {
-    const saved = await fetchJson("/api/release-trains", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json"
-      },
+    payload = releaseTrainPayload();
+  } catch (error) {
+    elements.releaseTrainMessage.textContent = error.message;
+    return;
+  }
+  const id = state.editingReleaseTrainId;
+  const editorRequest = ++state.trainEditorRequest;
+  setReleaseTrainPending(true);
+  elements.releaseTrainMessage.textContent = "Сохраняем релизный поезд...";
+  try {
+    const saved = await fetchJson(id ? `/api/release-trains/${encodeURIComponent(id)}` : "/api/release-trains", {
+      method: id ? "PUT" : "POST",
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload)
     });
-
-    elements.releaseTrainMessage.textContent = `Релизный поезд "${saved.name}" добавлен`;
-    elements.releaseTrainForm.reset();
-    await loadDashboard();
+    applyReleaseTrainChange(saved);
+    const refreshed = await loadTrainSnapshot();
+    if (editorRequest === state.trainEditorRequest && state.activeView === "release") {
+      setReleaseTrainPending(false);
+      resetReleaseTrainEditor();
+      elements.releaseTrainMessage.textContent = `Релизный поезд "${saved.name}" ${id ? "обновлён" : "добавлен"}`
+        + (refreshed ? "" : ". Серверный список пока не обновлён; повторите загрузку страницы.");
+    }
   } catch (error) {
-    console.error(error);
-    elements.releaseTrainMessage.textContent = error.message || "Не удалось сохранить релизный поезд";
+    if (editorRequest === state.trainEditorRequest && state.activeView === "release") {
+      elements.releaseTrainMessage.textContent = error.status === 404
+        ? "Релизный поезд не найден. Данные формы сохранены; обновите список."
+        : error.status === 409
+          ? "Конфликт изменений. Данные формы сохранены; обновите список перед повтором."
+          : error.message || "Не удалось сохранить релизный поезд";
+    }
+    if (error.status === 404) void loadTrainSnapshot();
+  } finally {
+    setReleaseTrainPending(false);
+    if (elements.releaseTrainMessage.textContent === "Сохраняем релизный поезд...") {
+      elements.releaseTrainMessage.textContent = "Запрос завершён. Откройте поезд заново для проверки результата; данные формы сохранены.";
+    }
+  }
+}
+
+async function deleteReleaseTrain(id) {
+  if (state.trainMutationPending || state.trainEditorLoading || state.activeView !== "release") return;
+  const train = state.releaseTrains.find((item) => item.id === id);
+  if (!train || !window.confirm(`Удалить релизный поезд "${train.name}"?`)) return;
+  if (state.trainMutationPending || state.trainEditorLoading || state.activeView !== "release") return;
+  const editorRequest = ++state.trainEditorRequest;
+  setReleaseTrainPending(true);
+  elements.releaseTrainMessage.textContent = "Удаляем релизный поезд...";
+  try {
+    await fetchJson(`/api/release-trains/${encodeURIComponent(id)}`, { method: "DELETE" });
+    applyReleaseTrainChange(null, id);
+    const refreshed = await loadTrainSnapshot();
+    if (editorRequest === state.trainEditorRequest && state.activeView === "release") {
+      setReleaseTrainPending(false);
+      if (state.editingReleaseTrainId === id) resetReleaseTrainEditor();
+      elements.releaseTrainMessage.textContent = `Релизный поезд "${train.name}" удалён`
+        + (refreshed ? "" : ". Серверный список пока не обновлён; повторите загрузку страницы.");
+    }
+  } catch (error) {
+    if (editorRequest === state.trainEditorRequest && state.activeView === "release") {
+      elements.releaseTrainMessage.textContent = error.status === 404
+        ? "Релизный поезд уже отсутствует. Обновите список."
+        : error.status === 409
+          ? "Удаление отклонено из-за конфликта. Обновите список и повторите."
+          : "Не удалось удалить релизный поезд: " + error.message;
+    }
+    if (error.status === 404) void loadTrainSnapshot();
+  } finally {
+    setReleaseTrainPending(false);
+    if (elements.releaseTrainMessage.textContent === "Удаляем релизный поезд...") {
+      elements.releaseTrainMessage.textContent = "Запрос завершён. Проверьте список перед повторным удалением.";
+    }
   }
 }
 

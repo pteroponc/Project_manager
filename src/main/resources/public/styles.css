@@ -961,6 +961,12 @@ h3 {
   box-shadow: none;
 }
 
+.release-train-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
 .release-track {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -1637,6 +1643,10 @@ textarea:focus {
   .release-train-card,
   .board-column {
     padding: 12px;
+  }
+
+  .release-train-actions .btn {
+    width: 100%;
   }
 }
 
