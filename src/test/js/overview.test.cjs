@@ -203,10 +203,10 @@ test('portfolio distribution explicitly renders unknown health and status', () =
 
 test('approved desktop and mobile overview layout rules are present', () => {
   assert.match(css, /grid-template-columns:\s*214px minmax\(0, 1fr\)/);
-  assert.match(css, /background:\s*#11251f/);
-  assert.match(css, /background:\s*#20483c/);
+  assert.match(css, /background:\s*var\(--sidebar\)/);
+  assert.match(css, /background:\s*var\(--sidebar-active\)/);
   assert.match(css, /grid-template-columns:\s*repeat\(4, minmax\(0, 1fr\)\)/);
-  assert.match(css, /border:\s*1px solid #dde5e2/);
+  assert.match(css, /border:\s*1px solid var\(--line\)/);
   assert.match(css, /@media \(max-width: 520px\)[\s\S]*grid-template-columns:\s*repeat\(2, minmax\(0, 1fr\)\)/);
   assert.doesNotMatch(css, /\.metric-card-budget\s*\{\s*grid-column:\s*1 \/ -1/);
 });
