@@ -417,6 +417,7 @@
       async () => {
         try {
           await fetchJson(`/api/projects/${encodeURIComponent(project.id)}`, { method: "DELETE" });
+          window.PMBoardContext.onProjectDeleted(project.id);
           closeDialog();
           card = null;
           registry = null;
@@ -498,11 +499,7 @@
     if (target.dataset.cardAction === "architecture") return window.PMArchitectureUI?.open(card.id);
     if (target.dataset.cardAction === "delete") return deleteProject(card, target);
     if (target.dataset.cardAction === "board") {
-      state.selectedProjectId = card.id;
-      showView("boards");
-      loadBoard(card.id, card.deliveryModel || "kanban").catch(error => {
-        elements.boardColumns.textContent = "Не удалось открыть доску: " + error.message;
-      });
+      window.PMBoardContext.openProjectBoard(card.id, card.deliveryModel || "kanban");
       return;
     }
     if (target.hasAttribute("data-cancel-milestone")) return renderCard();

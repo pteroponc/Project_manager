@@ -292,6 +292,32 @@ test('deletion-impact blocks confirmation when tasks or milestones exist', async
   assert.equal(h.get('project-dialog-confirm').classList.contains('hidden'), true);
 });
 
+test('project card opens its own board through the guarded board context', async () => {
+  const h = harness();
+  const opened = [];
+  h.window.PMBoardContext = { openProjectBoard: (...args) => opened.push(args) };
+  h.context.fetchJson = async () => card({ id: 'p1', deliveryModel: 'scrum' });
+  await h.ui.openCard('p1');
+  const button = { dataset: { cardAction: 'board' }, closest() { return this; }, hasAttribute() { return false; } };
+  h.get('project-detail-content').listeners.click({ target: button });
+  assert.deepEqual(opened, [['p1', 'scrum']]);
+});
+
+test('successful project deletion clears board context after DELETE', async () => {
+  const h = harness();
+  const events = [];
+  h.window.PMBoardContext = { onProjectDeleted: id => events.push(`board:${id}`) };
+  h.context.fetchJson = async (url, options) => {
+    if (url.endsWith('/deletion-impact')) return { taskCount: 0, milestoneCount: 0, deletionAllowed: true };
+    if (options?.method === 'DELETE') { events.push('delete'); return null; }
+    return snapshot([]);
+  };
+  await h.ui.deleteProject(card(), node());
+  await h.get('project-dialog-confirm').listeners.click();
+  assert.deepEqual(events, ['delete', 'board:p1']);
+  assert.equal(h.state.activeView, 'projects');
+});
+
 test('empty registry and initial error have distinct states', async () => {
   const h = harness();
   h.context.fetchJson = async () => snapshot([]);

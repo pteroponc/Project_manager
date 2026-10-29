@@ -7,6 +7,7 @@ const vm = require('node:vm');
 const source = fs.readFileSync(path.join(__dirname, '../../main/resources/public/app.js'), 'utf8');
 const names = ['formatDate', 'daysUntil', 'isProjectOverdue', 'isTaskOverdue', 'milestoneTone',
   'deadlineTone', 'renderDeadlineRows', 'renderBoardInsights', 'renderBoardCard',
+  'isCurrentBoardRequest', 'activeBoardContext', 'isCurrentBoardContext',
   'moveBoardCard', 'renderProjectDashboards'];
 const functions = names.map((name) => {
   const start = source.search(new RegExp('^(?:async )?function ' + name + '\\(', 'm'));
@@ -23,7 +24,8 @@ function harness(instant) {
   const elements = new Proxy({}, { get(target, key) {
     return target[key] ??= { textContent: '', innerHTML: '' };
   } });
-  const state = { currentBoard: null };
+  const state = { currentBoard: null, activeView: 'boards', selectedProjectId: 'p1',
+    activeBoardModel: 'kanban', boardDrilledIn: true, boardRequest: 0, boardLoading: false };
   const context = vm.createContext({ Date: FixedDate, Intl, Number, state, elements,
     escapeAttr: String, escapeHtml: String,
     adjacentColumnKey: () => null, setFormState() {}, boardCardUrl: (id) => `/cards/${id}`,

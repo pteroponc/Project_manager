@@ -46,6 +46,10 @@ const state = {
   overviewRequest: 0,
   projectsRequest: 0,
   trainsRequest: 0,
+  boardRequest: 0,
+  boardLoading: false,
+  boardProjectSelectionRequired: false,
+  createTaskContext: null,
   overviewLoadedAt: null,
   activeView: "overview",
   selectedProjectId: null,
@@ -253,6 +257,8 @@ elements.viewButtons.forEach((button) => {
   });
 });
 
+window.PMBoardContext = { openProjectBoard, onProjectDeleted };
+
 document.getElementById("filters-form")?.addEventListener("change", async (event) => {
   state.filters[event.target.name] = event.target.value;
   await loadOverview();
@@ -300,7 +306,8 @@ elements.cancelEditButton.addEventListener("click", () => {
 });
 elements.createTaskForm.addEventListener("submit", async (event) => {
   event.preventDefault();
-  await createBoardCard(elements.createTaskColumn.value, new FormData(elements.createTaskForm));
+  await createBoardCard(elements.createTaskColumn.value, new FormData(elements.createTaskForm),
+    state.createTaskContext);
 });
 elements.cancelTaskCreate.addEventListener("click", closeCreateTaskPanel);
 elements.taskModalClose.addEventListener("click", closeTaskModal);
@@ -343,9 +350,11 @@ async function loadDeliveryModels() {
   resetFormMode();
 }
 
-function showView(view) {
-  if (window.PMPassportEditor?.allowNavigation(() => showView(view)) === false) return false;
+function showView(view, options = {}) {
+  if (window.PMPassportEditor?.allowNavigation(() => showView(view, options)) === false) return false;
   const nextView = view || "overview";
+  const previousView = state.activeView;
+  if (previousView === "boards" && nextView !== "boards") invalidateBoardContext();
   state.activeView = nextView;
 
   elements.viewSections.forEach((section) => {
@@ -359,8 +368,73 @@ function showView(view) {
   window.PMProjectsUI?.onView?.(nextView);
   window.PMArchitecturePortfolioUI?.onView?.(nextView);
 
+  if (nextView === "boards" && previousView !== "boards" && !options.skipBoardReload) {
+    if (state.boardDrilledIn && state.selectedProjectId) {
+      void loadBoard(state.selectedProjectId, state.activeBoardModel);
+    } else {
+      renderBoardLanding();
+    }
+  }
+
   window.scrollTo({ top: 0, behavior: "smooth" });
   return true;
+}
+
+function invalidateBoardContext() {
+  ++state.boardRequest;
+  state.boardLoading = false;
+  state.currentBoard = null;
+  state.createTaskContext = null;
+  state.draggingBoardCardId = null;
+  closeTaskModal();
+  closeCreateTaskPanel();
+  elements.createTaskButton.disabled = true;
+  elements.boardInsights?.classList.add("hidden");
+  elements.boardFilters?.classList.add("hidden");
+}
+
+function isCurrentBoardRequest(request, projectId, model) {
+  return request === state.boardRequest && state.activeView === "boards"
+    && state.boardDrilledIn && state.selectedProjectId === projectId
+    && state.activeBoardModel === model;
+}
+
+function activeBoardContext() {
+  const board = state.currentBoard;
+  if (!board || state.boardLoading || !isCurrentBoardRequest(state.boardRequest,
+      board.projectId, board.deliveryModel)) return null;
+  return { request: state.boardRequest, projectId: board.projectId, model: board.deliveryModel };
+}
+
+function isCurrentBoardContext(context) {
+  return Boolean(context && !state.boardLoading && state.currentBoard
+    && isCurrentBoardRequest(context.request, context.projectId, context.model)
+    && state.currentBoard.projectId === context.projectId
+    && state.currentBoard.deliveryModel === context.model);
+}
+
+function openProjectBoard(projectId, model) {
+  if (showView("boards", { skipBoardReload: true }) === false) return false;
+  state.selectedProjectId = projectId;
+  state.activeBoardModel = model;
+  state.boardDrilledIn = true;
+  state.boardProjectSelectionRequired = false;
+  return loadBoard(projectId, model);
+}
+
+function onProjectDeleted(projectId) {
+  ++state.projectsRequest;
+  state.projects = state.projects.filter((project) => project.id !== projectId);
+  if (state.selectedProjectId === projectId) {
+    invalidateBoardContext();
+    state.selectedProjectId = null;
+    state.boardDrilledIn = false;
+    state.boardProjectSelectionRequired = true;
+    renderBoardLanding("Проект удалён. Выберите другой проект в реестре.");
+  } else {
+    renderCreatedBoards();
+  }
+  void loadProjectCatalog();
 }
 
 async function loadDashboard() {
@@ -373,12 +447,20 @@ async function loadProjectCatalog() {
     const projects = await fetchJson("/api/projects");
     if (request !== state.projectsRequest) return;
     state.projects = projects;
-    if (!state.selectedProjectId || !projects.some(p => p.id === state.selectedProjectId)) {
+    if (state.selectedProjectId && !projects.some(p => p.id === state.selectedProjectId)
+        && state.boardDrilledIn) {
+      invalidateBoardContext();
+      state.selectedProjectId = null;
+      state.boardDrilledIn = false;
+      state.boardProjectSelectionRequired = true;
+    }
+    if (!state.boardProjectSelectionRequired
+        && (!state.selectedProjectId || !projects.some(p => p.id === state.selectedProjectId))) {
       state.selectedProjectId = projects[0]?.id ?? null;
     }
     renderProjectDashboards(projects);
     renderCreatedBoards();
-    if (state.selectedProjectId && state.boardDrilledIn) {
+    if (state.activeView === "boards" && state.selectedProjectId && state.boardDrilledIn) {
       await loadBoard(state.selectedProjectId, state.activeBoardModel);
     } else renderBoardLanding();
   } catch (error) {
@@ -833,30 +915,62 @@ function renderReleaseStage(title, date, status, activeStatuses) {
 }
 
 async function loadBoard(projectId, boardModel = state.activeBoardModel) {
+  const request = ++state.boardRequest;
   state.activeBoardModel = boardModel;
-  const board = await fetchJson(`/api/projects/${projectId}/board?model=${encodeURIComponent(boardModel)}`);
-  state.currentBoard = board;
-  elements.boardTitle.textContent = `${board.projectName} - ${board.boardTitle}`;
-  elements.boardModel.textContent = board.deliveryModel;
-  elements.boardDeck?.classList.add("compact");
-  if (elements.createTaskButton) {
+  state.boardLoading = true;
+  state.currentBoard = null;
+  state.createTaskContext = null;
+  closeTaskModal();
+  closeCreateTaskPanel();
+  elements.createTaskButton.disabled = true;
+  elements.boardInsights?.classList.add("hidden");
+  elements.boardFilters?.classList.add("hidden");
+  elements.boardTitle.textContent = "Загружаем доску...";
+  elements.boardModel.textContent = boardModel;
+  elements.boardColumns.innerHTML = '<div class="empty-state compact">Загружаем задачи проекта...</div>';
+  try {
+    const board = await fetchJson(`/api/projects/${encodeURIComponent(projectId)}/board?model=${encodeURIComponent(boardModel)}`);
+    if (!isCurrentBoardRequest(request, projectId, boardModel)) return;
+    if (board.projectId !== projectId || board.deliveryModel !== boardModel) {
+      throw new Error("Ответ доски не соответствует выбранному проекту и модели");
+    }
+    state.boardLoading = false;
+    state.currentBoard = board;
+    elements.boardTitle.textContent = `${board.projectName} - ${board.boardTitle}`;
+    elements.boardModel.textContent = board.deliveryModel;
+    elements.boardDeck?.classList.add("compact");
+    if (!board.columns?.length) {
+      renderEmptyBoard();
+      return;
+    }
     elements.createTaskButton.disabled = false;
+    elements.boardInsights?.classList.remove("hidden");
+    elements.boardFilters?.classList.remove("hidden");
+    renderBoardInsights();
+    renderBoardColumns();
+  } catch (error) {
+    if (!isCurrentBoardRequest(request, projectId, boardModel)) return;
+    state.boardLoading = false;
+    state.currentBoard = null;
+    if (error.status === 404) {
+      state.selectedProjectId = null;
+      state.boardDrilledIn = false;
+      state.boardProjectSelectionRequired = true;
+      renderBoardLanding("Проект не найден. Выберите другой проект в реестре.");
+      return;
+    }
+    elements.boardColumns.innerHTML = '<div class="empty-state compact">Не удалось открыть доску. ' +
+      '<button class="text-link" type="button" data-action="retry-board">Повторить</button></div>';
+    elements.boardColumns.querySelector('[data-action="retry-board"]')?.addEventListener("click", () => {
+      if (isCurrentBoardRequest(request, projectId, boardModel)) void loadBoard(projectId, boardModel);
+    });
   }
-
-  if (!board.columns?.length) {
-    renderEmptyBoard();
-    return;
-  }
-
-  elements.boardInsights?.classList.remove("hidden");
-  elements.boardFilters?.classList.remove("hidden");
-  renderBoardInsights();
-  renderBoardColumns();
 }
 
 function renderBoardColumns() {
   const board = state.currentBoard;
-  if (!board?.columns?.length) {
+  const renderedContext = activeBoardContext();
+  if (!board?.columns?.length || !renderedContext) {
     return;
   }
   elements.boardColumns.innerHTML = "";
@@ -903,6 +1017,7 @@ function renderBoardColumns() {
 
   elements.boardColumns.querySelectorAll('[data-action="edit-card"]').forEach((button) => {
     button.addEventListener("click", () => {
+      if (!isCurrentBoardContext(renderedContext)) return;
       const card = findBoardCard(button.dataset.cardId);
       if (card) {
         startEditBoardCard(card.card, card.columnKey);
@@ -912,6 +1027,7 @@ function renderBoardColumns() {
 
   elements.boardColumns.querySelectorAll('[data-action="open-card"]').forEach((button) => {
     button.addEventListener("click", () => {
+      if (!isCurrentBoardContext(renderedContext)) return;
       const card = findBoardCard(button.dataset.cardId);
       if (card) {
         openTaskModal(card.card, card.columnTitle);
@@ -921,6 +1037,7 @@ function renderBoardColumns() {
 
   elements.boardColumns.querySelectorAll('[data-action="new-card"]').forEach((button) => {
     button.addEventListener("click", () => {
+      if (!isCurrentBoardContext(renderedContext)) return;
       startCreateBoardCard(button.dataset.columnKey);
     });
   });
@@ -934,22 +1051,26 @@ function renderBoardColumns() {
       select.value = found.columnKey;
     }
     select.addEventListener("change", async () => {
-      await moveBoardCard(select.dataset.cardId, select.value);
+      if (isCurrentBoardContext(renderedContext)) {
+        await moveBoardCard(select.dataset.cardId, select.value, renderedContext);
+      }
     });
   });
 
   elements.boardColumns.querySelectorAll('[data-action="move-prev"], [data-action="move-next"]').forEach((button) => {
     button.addEventListener("click", async () => {
+      if (!isCurrentBoardContext(renderedContext)) return;
       const offset = button.dataset.action === "move-prev" ? -1 : 1;
       const nextColumnKey = adjacentColumnKey(button.dataset.columnKey, offset);
       if (nextColumnKey) {
-        await moveBoardCard(button.dataset.cardId, nextColumnKey);
+        await moveBoardCard(button.dataset.cardId, nextColumnKey, renderedContext);
       }
     });
   });
 
   elements.boardColumns.querySelectorAll(".board-card[draggable='true']").forEach((cardElement) => {
     cardElement.addEventListener("dragstart", (event) => {
+      if (!isCurrentBoardContext(renderedContext)) { event.preventDefault(); return; }
       state.draggingBoardCardId = cardElement.dataset.cardId;
       cardElement.classList.add("dragging");
       event.dataTransfer.effectAllowed = "move";
@@ -966,6 +1087,7 @@ function renderBoardColumns() {
 
   elements.boardColumns.querySelectorAll(".board-column").forEach((columnElement) => {
     columnElement.addEventListener("dragover", (event) => {
+      if (!isCurrentBoardContext(renderedContext)) return;
       event.preventDefault();
       columnElement.classList.add("drag-over");
       event.dataTransfer.dropEffect = "move";
@@ -977,10 +1099,11 @@ function renderBoardColumns() {
     });
     columnElement.addEventListener("drop", async (event) => {
       event.preventDefault();
+      if (!isCurrentBoardContext(renderedContext)) return;
       columnElement.classList.remove("drag-over");
       const cardId = event.dataTransfer.getData("text/plain") || state.draggingBoardCardId;
       if (cardId) {
-        await moveBoardCard(cardId, columnElement.dataset.columnKey);
+        await moveBoardCard(cardId, columnElement.dataset.columnKey, renderedContext);
       }
     });
   });
@@ -1016,7 +1139,7 @@ function renderEmptyBoard() {
   elements.boardColumns.innerHTML = '<div class="empty-state compact">Доска появится после выбора инициативы.</div>';
 }
 
-function renderBoardLanding() {
+function renderBoardLanding(message) {
   state.currentBoard = null;
   const project = state.projects.find((item) => item.id === state.selectedProjectId);
   elements.boardTitle.textContent = project ? `Раздел досок: ${project.name}` : "Раздел досок";
@@ -1029,9 +1152,12 @@ function renderBoardLanding() {
   elements.boardFilters?.classList.add("hidden");
   closeCreateTaskPanel();
   renderCreatedBoards();
-  elements.boardColumns.innerHTML = project
+  elements.boardColumns.innerHTML = message
+    ? `<div class="empty-state compact">${escapeHtml(message)} <button class="text-link" type="button" data-action="choose-board-project">Открыть проекты</button></div>`
+    : project
     ? '<div class="empty-state compact">Выберите Kanban, Scrum или Waterfall выше, чтобы открыть внутреннюю доску инициативы.</div>'
-    : '<div class="empty-state compact">Сначала выберите инициативу из списка, затем откройте Kanban, Scrum или Waterfall.</div>';
+    : '<div class="empty-state compact">Сначала выберите инициативу из реестра проектов, затем откройте Kanban, Scrum или Waterfall. <button class="text-link" type="button" data-action="choose-board-project">Открыть проекты</button></div>';
+  elements.boardColumns.querySelector('[data-action="choose-board-project"]')?.addEventListener("click", () => showView("projects"));
 }
 
 async function createBoard(boardModel) {
@@ -1069,12 +1195,8 @@ async function openCreatedBoard(boardId) {
     return;
   }
 
-  state.selectedProjectId = board.projectId;
-  state.activeBoardModel = board.model;
-  state.boardDrilledIn = true;
-  showView("boards");
   renderCreatedBoards();
-  await loadBoard(board.projectId, board.model);
+  await openProjectBoard(board.projectId, board.model);
 }
 
 function renderCreatedBoards() {
@@ -1146,7 +1268,9 @@ function adjacentColumnKey(columnKey, offset) {
   return columns[index + offset]?.key ?? null;
 }
 
-async function moveBoardCard(cardId, columnKey) {
+async function moveBoardCard(cardId, columnKey, expectedContext = activeBoardContext()) {
+  if (!isCurrentBoardContext(expectedContext)
+      || !state.currentBoard.columns.some((column) => column.key === columnKey)) return;
   const found = findBoardCard(cardId);
   if (!found || found.columnKey === columnKey) {
     return;
@@ -1166,16 +1290,18 @@ async function moveBoardCard(cardId, columnKey) {
   setFormState("Переносим задачу...", false);
 
   try {
-    await fetchJson(boardCardUrl(cardId), {
+    await fetchJson(boardCardUrl(cardId, expectedContext), {
       method: "PUT",
       headers: {
         "Content-Type": "application/json"
       },
       body: JSON.stringify(payload)
     });
+    if (!isCurrentBoardContext(expectedContext)) return;
     setFormState(`Задача "${found.card.title}" перенесена`, false);
-    await loadBoard(state.currentBoard.projectId, state.currentBoard.deliveryModel);
+    await loadBoard(expectedContext.projectId, expectedContext.model);
   } catch (error) {
+    if (!isCurrentBoardContext(expectedContext)) return;
     console.error(error);
     setFormState(error.message || "Не удалось перенести задачу", true);
   }
@@ -1211,12 +1337,14 @@ function closeTaskModal() {
 }
 
 function closeCreateTaskPanel() {
+  state.createTaskContext = null;
   elements.createTaskPanel.classList.add("hidden");
   elements.createTaskForm.reset();
 }
 
 function startCreateBoardCard(columnKey) {
-  if (!state.currentBoard?.columns?.length) {
+  const context = activeBoardContext();
+  if (!context || !state.currentBoard.columns?.length) {
     return;
   }
   const project = state.projects.find((item) => item.id === state.currentBoard?.projectId);
@@ -1226,12 +1354,15 @@ function startCreateBoardCard(columnKey) {
   elements.createTaskColumn.value = columnKey || state.currentBoard.columns[0].key;
   elements.createTaskOwner.value = project?.owner ?? "";
   elements.createTaskDueDate.value = project?.deadline ?? "";
+  state.createTaskContext = context;
   elements.createTaskPanel.classList.remove("hidden");
   elements.createTaskPanel.scrollIntoView({ behavior: "smooth", block: "nearest" });
   elements.createTaskTitle.focus();
 }
 
 function startEditBoardCard(card, columnKey) {
+  const context = activeBoardContext();
+  if (!context || findBoardCard(card.id)?.columnKey !== columnKey) return;
   const cardElement = elements.boardColumns.querySelector(`[data-card-id="${cssEscape(card.id)}"]`);
   if (!cardElement) {
     return;
@@ -1290,69 +1421,78 @@ function startEditBoardCard(card, columnKey) {
   const form = cardElement.querySelector("form");
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
-    await saveBoardCard(card.id, new FormData(form));
+    await saveBoardCard(card.id, new FormData(form), context);
   });
   cardElement.querySelector('[data-action="cancel-card-edit"]').addEventListener("click", () => {
-    loadBoard(state.currentBoard.projectId, state.currentBoard.deliveryModel);
+    if (isCurrentBoardContext(context)) void loadBoard(context.projectId, context.model);
   });
 }
 
-async function createBoardCard(columnKey, formData) {
+async function createBoardCard(columnKey, formData, context = activeBoardContext()) {
+  if (!isCurrentBoardContext(context) || !state.currentBoard.columns.some((column) => column.key === columnKey)) return;
   const payload = boardCardPayload(formData, columnKey);
   setFormState("Создаем задачу...", false);
 
   try {
-    const created = await fetchJson(boardCardsUrl(), {
+    const created = await fetchJson(boardCardsUrl(context), {
       method: "POST",
       headers: {
         "Content-Type": "application/json"
       },
       body: JSON.stringify(payload)
     });
+    if (!isCurrentBoardContext(context)) return;
     setFormState(`Задача "${created.title}" создана`, false);
     closeCreateTaskPanel();
-    await loadBoard(state.currentBoard.projectId, state.currentBoard.deliveryModel);
+    await loadBoard(context.projectId, context.model);
   } catch (error) {
+    if (!isCurrentBoardContext(context)) return;
     console.error(error);
     setFormState(error.message || "Не удалось создать задачу", true);
   }
 }
 
 async function deleteBoardCard(card) {
+  const context = activeBoardContext();
+  if (!context || !findBoardCard(card.id)) return;
   const approved = window.confirm(`Удалить задачу "${card.title}"?`);
-  if (!approved) {
-    return;
-  }
+  if (!approved || !isCurrentBoardContext(context) || !findBoardCard(card.id)) return;
   setFormState("Удаляем задачу...", false);
 
   try {
-    await fetchJson(boardCardUrl(card.id), {
+    await fetchJson(boardCardUrl(card.id, context), {
       method: "DELETE"
     });
+    if (!isCurrentBoardContext(context)) return;
     closeTaskModal();
     setFormState(`Задача "${card.title}" удалена`, false);
-    await loadBoard(state.currentBoard.projectId, state.currentBoard.deliveryModel);
+    await loadBoard(context.projectId, context.model);
   } catch (error) {
+    if (!isCurrentBoardContext(context)) return;
     console.error(error);
     setFormState(error.message || "Не удалось удалить задачу", true);
   }
 }
 
-async function saveBoardCard(cardId, formData) {
+async function saveBoardCard(cardId, formData, context = activeBoardContext()) {
+  if (!isCurrentBoardContext(context) || !findBoardCard(cardId)) return;
   const payload = boardCardPayload(formData);
+  if (!state.currentBoard.columns.some((column) => column.key === payload.columnKey)) return;
   setFormState("Сохраняем задачу...", false);
 
   try {
-    await fetchJson(boardCardUrl(cardId), {
+    await fetchJson(boardCardUrl(cardId, context), {
       method: "PUT",
       headers: {
         "Content-Type": "application/json"
       },
       body: JSON.stringify(payload)
     });
+    if (!isCurrentBoardContext(context)) return;
     setFormState("Задача обновлена", false);
-    await loadBoard(state.currentBoard.projectId, state.currentBoard.deliveryModel);
+    await loadBoard(context.projectId, context.model);
   } catch (error) {
+    if (!isCurrentBoardContext(context)) return;
     console.error(error);
     setFormState(error.message || "Не удалось сохранить задачу", true);
   }
@@ -1541,12 +1681,12 @@ async function fetchJson(url, options) {
   return response.json();
 }
 
-function boardCardsUrl() {
-  return `/api/projects/${state.currentBoard.projectId}/board/cards?model=${encodeURIComponent(state.currentBoard.deliveryModel)}`;
+function boardCardsUrl(context) {
+  return `/api/projects/${encodeURIComponent(context.projectId)}/board/cards?model=${encodeURIComponent(context.model)}`;
 }
 
-function boardCardUrl(cardId) {
-  return `/api/projects/${state.currentBoard.projectId}/board/cards/${encodeURIComponent(cardId)}?model=${encodeURIComponent(state.currentBoard.deliveryModel)}`;
+function boardCardUrl(cardId, context) {
+  return `/api/projects/${encodeURIComponent(context.projectId)}/board/cards/${encodeURIComponent(cardId)}?model=${encodeURIComponent(context.model)}`;
 }
 
 function boardTitleLabel(model) {
