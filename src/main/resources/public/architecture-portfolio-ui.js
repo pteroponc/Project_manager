@@ -30,6 +30,13 @@
 
   function syncForm() {
     for (const key of keys) field(key).value = filters[key];
+    syncFilterCount();
+  }
+
+  function syncFilterCount() {
+    const counter = document.getElementById("architecture-filter-count");
+    if (counter) counter.textContent = String(["query", "quarter", "status", "readiness"]
+      .filter(key => key === "readiness" ? field(key).value !== "all" : field(key).value.trim() !== "").length);
   }
 
   function syncTextFilters() {
@@ -56,7 +63,7 @@
   }
 
   function render(data) {
-    counts.innerHTML = statuses.map(([code, label]) => `<article class="metric-card panel">
+    counts.innerHTML = statuses.map(([code, label, tone]) => `<article class="metric-card panel ${tone}" data-readiness="${code}">
       <span class="metric-label">${label}</span>
       <strong class="metric-value">${Number(data.readinessCounts[code] ?? 0)}</strong>
       <small>${code === "READY" ? "Расчётный показатель" : "Проектов"}</small>
@@ -91,6 +98,7 @@
   }
 
   async function load() {
+    syncFilterCount();
     const current = ++request;
     loading = true;
     paginationReady = false;
@@ -99,6 +107,7 @@
     list.setAttribute("aria-busy", "true");
     message.textContent = snapshot ? "Обновляем сводку… Пока показаны предыдущие данные." : "Загружаем сводку…";
     if (!snapshot) list.innerHTML = '<p class="empty-state compact">Загружаем проекты…</p>';
+    window.PMDashboardUI?.onArchitecture(snapshot, "Обновляем сводку; показан предыдущий срез.");
     try {
       const data = await fetchJson(url());
       if (current !== request || state.activeView !== "dashboards") return;
@@ -110,12 +119,14 @@
       paginationReady = true;
       render(data);
       message.textContent = `Сводка на ${esc(data.calculationDate)} · ${data.pageItemCount} на текущей странице.`;
+      window.PMDashboardUI?.onArchitecture(data, "");
     } catch (error) {
       if (current !== request || state.activeView !== "dashboards") return;
       message.textContent = snapshot
         ? "Не удалось обновить сводку. Показаны предыдущие данные; текущие фильтры ещё не применены."
         : "Не удалось загрузить сводку. Повторите загрузку.";
       if (!snapshot) list.innerHTML = '<p class="empty-state compact">Данные недоступны. Нажмите «Обновить».</p>';
+      window.PMDashboardUI?.onArchitecture(snapshot, message.textContent);
     } finally {
       if (current === request) {
         loading = false;
@@ -136,6 +147,7 @@
   form.addEventListener("input", event => {
     if (event.target.name !== "query" && event.target.name !== "quarter" && event.target.name !== "status") return;
     ++request;
+    syncFilterCount();
     paginationReady = false;
     syncPagination();
     clearTimeout(debounce);

@@ -401,6 +401,7 @@ function showView(view, options = {}) {
 
   window.PMProjectsUI?.onView?.(nextView);
   window.PMArchitecturePortfolioUI?.onView?.(nextView);
+  window.PMDashboardUI?.onView?.(nextView);
 
   if (nextView === "boards" && previousView !== "boards" && !options.skipBoardReload) {
     if (state.boardDrilledIn && state.selectedProjectId) {
@@ -534,7 +535,8 @@ async function loadProjectCatalog() {
     state.boardCatalogLoading = false;
     state.boardCatalogLoaded = true;
     renderBoardProjectPicker();
-    renderProjectDashboards(projects);
+    if (window.PMDashboardUI) window.PMDashboardUI.onCatalog(projects);
+    else renderProjectDashboards(projects);
     renderCreatedBoards();
     if (!state.boardDrilledIn) renderBoardLanding();
   } catch (error) {

@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="ru">
   <head>
     <meta charset="UTF-8" />
@@ -7,7 +7,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="/styles.css" />
+    <link rel="stylesheet" href="/styles.css?v=pm0062b-final" />
   </head>
   <body>
     <div class="page-shell">
@@ -397,29 +397,37 @@
 
 
 
-        <section class="panel project-dashboard-panel view-section" id="project-dashboard-panel" data-view-section="dashboards">
-          <div class="section-head">
-            <div>
-              <p class="section-kicker">Дашборды проектов</p>
-              <h2>Дашборды проектов</h2>
-            </div>
-            <div class="slice-summary">
-              <span class="pill" id="dashboard-health-summary">0 стабильных / 0 с риском</span>
-              <span class="pill success" id="dashboard-delivery-summary">0 моделей</span>
-            </div>
+        <section class="view-section dashboard-workspace" id="dashboard-workspace" data-view-section="dashboards" data-active-tab="portfolio" aria-labelledby="control-title">
+          <header class="control-header"><div><p class="section-kicker">Портфель проектов</p><h1 id="control-title">Дашборды</h1><p class="hint-text">Центр контроля проектов · архитектура и ИБ — отдельный срез</p></div><button type="button" class="btn btn-secondary" id="control-refresh">Обновить портфель</button></header>
+          <div class="control-tabs" role="tablist" aria-label="Представление дашборда">
+            <button type="button" role="tab" id="control-tab-portfolio" aria-controls="control-portfolio" aria-selected="true" tabindex="0" data-control-tab="portfolio">Портфель</button>
+            <button type="button" role="tab" id="control-tab-deadlines" aria-controls="control-deadlines" aria-selected="false" tabindex="-1" data-control-tab="deadlines">Сроки</button>
+            <button type="button" role="tab" id="control-tab-architecture" aria-controls="architecture-portfolio-panel" aria-selected="false" tabindex="-1" data-control-tab="architecture">Архитектура и ИБ</button>
           </div>
-          <div class="project-dashboard-grid" id="project-dashboard-grid">
-            <div class="empty-state compact">Дашборды появятся после загрузки проектов.</div>
-          </div>
-        </section>
-
-        <section class="panel architecture-portfolio-panel view-section" id="architecture-portfolio-panel" data-view-section="dashboards" aria-labelledby="architecture-portfolio-title">
+          <div class="control-kpis" id="control-kpis" aria-label="Показатели портфеля"><p class="empty-state compact">Загружаем показатели портфеля…</p></div>
+          <details class="control-filter-disclosure" id="control-filter-disclosure" data-dashboard-pane="portfolio deadlines"><summary>Фильтры портфеля <span id="control-filter-count">0</span></summary>
+            <p class="hint-text">Только показатели, проекты и сроки портфеля. Не влияет на архитектуру и ИБ.</p>
+            <form id="control-filters" class="control-filters" aria-label="Фильтры портфеля">
+              <label>Квартал<select name="quarter" aria-label="Квартал портфеля"><option value="all">Все кварталы</option></select></label>
+              <label>Статус<select name="status" aria-label="Статус портфеля"><option value="all">Все статусы</option></select></label>
+              <label>Состояние<select name="health" aria-label="Состояние портфеля"><option value="all">Все состояния</option></select></label>
+              <button type="button" class="btn btn-secondary" id="control-reset">Сбросить фильтры портфеля</button>
+            </form>
+          </details>
+          <p role="status" aria-live="polite" id="control-message">Откройте дашборд для загрузки портфеля.</p>
+          <div class="control-work-grid">
+            <section class="control-box" id="control-portfolio" data-dashboard-pane="portfolio" aria-labelledby="control-attention-title"><div class="section-head"><h2 id="control-attention-title">Требуют внимания</h2><span class="pill" id="control-attention-count">—</span></div><div id="control-attention"></div><div id="control-architecture-alert" role="status">Готовность архитектуры и ИБ загружается отдельно.</div></section>
+            <section class="control-box" id="control-deadlines" data-dashboard-pane="deadlines" aria-labelledby="control-deadlines-title"><h2 id="control-deadlines-title">Ближайшие сроки</h2><p class="hint-text">Плановые сроки проектов и их контрольные точки · ближайшие 14 дней</p><div id="control-deadline-list"></div><details><summary>Все предстоящие сроки проектов</summary><p class="hint-text">Незавершённые проекты, без ограничения 14 днями.</p><div id="control-all-deadlines"></div></details></section>
+            <section class="control-box control-projects" data-dashboard-pane="portfolio" aria-labelledby="control-projects-title"><h2 id="control-projects-title">Проекты портфеля</h2><div id="control-project-list"></div></section>
+            <section class="panel architecture-portfolio-panel control-box" id="architecture-portfolio-panel" data-dashboard-pane="architecture" aria-labelledby="architecture-portfolio-title">
           <div class="section-head">
-            <div><p class="section-kicker">Архитектура и ИБ</p><h2 id="architecture-portfolio-title">Готовность проектов</h2></div>
+            <div><p class="section-kicker">Архитектура и ИБ</p><h2 id="architecture-portfolio-title" tabindex="-1">Готовность проектов</h2></div>
             <button class="btn btn-ghost btn-small" type="button" id="architecture-portfolio-refresh">Обновить</button>
           </div>
           <p class="hint-text">Расчётная готовность не является официальным допуском к промышленной эксплуатации.</p>
-          <form class="registry-filters architecture-portfolio-filters" id="architecture-portfolio-filters" role="search">
+          <details class="control-filter-disclosure" id="architecture-filter-disclosure"><summary>Фильтры архитектуры и ИБ <span id="architecture-filter-count">0</span></summary>
+          <p class="hint-text">Только готовность архитектуры и ИБ. Не влияет на показатели портфеля. Счётчики готовности показывают весь срез до фильтра по готовности.</p>
+          <form aria-label="Фильтры архитектуры и ИБ" class="registry-filters architecture-portfolio-filters" id="architecture-portfolio-filters" role="search">
             <label class="registry-search">Поиск по названию и описанию<input name="query" type="search" placeholder="Название или описание" /></label>
             <label>Квартал<input name="quarter" type="text" placeholder="Все кварталы" /></label>
             <label>Статус проекта<input name="status" type="text" list="architecture-status-values" placeholder="Все статусы" /></label>
@@ -430,8 +438,10 @@
             <label>Строк на странице<select name="size"><option value="10">10</option><option value="20" selected>20</option><option value="50">50</option><option value="100">100</option></select></label>
             <button class="btn btn-ghost btn-small" type="button" id="architecture-portfolio-reset">Сбросить</button>
           </form>
+          </details>
           <p id="architecture-portfolio-message" role="status" aria-live="polite">Откройте раздел, чтобы загрузить сводку.</p>
           <div class="stats-grid architecture-readiness-grid" id="architecture-readiness-counts" aria-label="Распределение по готовности"></div>
+          <details class="control-architecture-projects"><summary>Проекты в срезе архитектуры и ИБ</summary>
           <div class="section-head architecture-portfolio-results"><h3>Проекты</h3><span class="pill" id="architecture-portfolio-total">—</span></div>
           <div class="projects-list" id="architecture-portfolio-list" aria-busy="false"></div>
           <nav class="architecture-portfolio-pages" aria-label="Страницы сводки">
@@ -439,6 +449,10 @@
             <span id="architecture-portfolio-page" role="status">Страница —</span>
             <button class="btn btn-ghost btn-small" type="button" id="architecture-portfolio-next" disabled>Далее</button>
           </nav>
+          </details>
+        </section>
+          </div>
+          <details class="control-box control-diagnostics" id="project-dashboard-panel" data-dashboard-pane="portfolio"><summary>Распределения и качество данных</summary><p class="hint-text">Текущий срез портфеля. Состояние проекта, наблюдение за исполнением и риски ИБ оцениваются отдельно.</p><span id="dashboard-health-summary" class="hidden"></span><span id="dashboard-delivery-summary" class="hidden"></span><div id="control-quality"></div><div class="project-dashboard-grid" id="project-dashboard-grid"></div></details>
         </section>
 
         <section class="panel form-panel view-section is-collapsed" id="project-form" data-view-section="projects">
@@ -599,7 +613,7 @@
       </section>
     </div>
 
-    <script src="/app.js?v=pm003c3e" defer></script>
+    <script src="/app.js?v=pm0062b" defer></script>
     <script src="/navigation-ui.js" defer></script>
     <script src="/architecture-editor-validation.js?v=pm003c3e" defer></script>
     <script src="/architecture-child-editor.js?v=pm003c3e" defer></script>
@@ -609,6 +623,7 @@
     <script src="/passport-editor.js?v=pm003c3e" defer></script>
     <script src="/architecture-ui.js?v=pm003c3e" defer></script>
     <script src="/projects-ui.js?v=pm003d3" defer></script>
-    <script src="/architecture-portfolio-ui.js?v=pm003d3-3" defer></script>
+    <script src="/architecture-portfolio-ui.js?v=pm0062b" defer></script>
+    <script src="/dashboard-ui.js?v=pm0062b-final" defer></script>
   </body>
 </html>

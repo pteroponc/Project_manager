@@ -198,6 +198,19 @@ test('project transition uses the existing card and keeps dashboard origin',asyn
   h.ui.onView('dashboards'); await settle();
   h.get('architecture-portfolio-list').listeners.click({target:{closest:()=>({dataset:{openArchitectureProject:'a'}})}});
   assert.deepEqual(h.opened,[{id:'a',origin:'dashboards'}]);
-  assert.match(html,/data-view-section="dashboards"[^>]*aria-labelledby="architecture-portfolio-title"/);
+  assert.match(html,/id="dashboard-workspace" data-view-section="dashboards"/);
+  assert.match(html,/data-dashboard-pane="architecture" aria-labelledby="architecture-portfolio-title"/);
   assert.match(html,/architecture-portfolio-ui\.js/);
+});
+
+test('readiness cards carry semantic roles, independent of position, and filters expose their scope', async()=>{
+  const h=harness(async()=>response()); h.ui.onView('dashboards'); await settle();
+  const cards=h.get('architecture-readiness-counts').innerHTML;
+  assert.match(cards,/class="metric-card panel danger" data-readiness="BLOCKED"/);
+  assert.match(cards,/class="metric-card panel success" data-readiness="READY"/);
+  assert.match(cards,/class="metric-card panel " data-readiness="NOT_ASSESSED"/);
+  h.fields.get('readiness').value='READY';
+  h.get('architecture-portfolio-filters').listeners.change({target:{name:'readiness',value:'READY'}}); await settle();
+  assert.equal(h.get('architecture-filter-count').textContent,'1');
+  assert.match(html,/Не влияет на показатели портфеля/);
 });
