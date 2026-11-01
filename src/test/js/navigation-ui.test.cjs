@@ -36,7 +36,7 @@ function setup(compact = true) {
   const window = { matchMedia(query) { assert.equal(query, '(max-width: 1023px)'); return media; }, scrollTo() {} };
   const elements = { viewButtons: buttons, viewSections: [], releaseTrainMessage: node() };
   const context = vm.createContext({ window, document, state, elements,
-    invalidateBoardContext() {}, setReleaseTrainEditorLoading() {}, renderBoardLanding() {} });
+    discardTaskDraft() { return true; }, invalidateBoardContext() {}, setReleaseTrainEditorLoading() {}, renderBoardLanding() {} });
   vm.runInContext(script + '\n' + showView, context);
   return { context, window, document, sidebar, navigation, toggle, current, buttons, media, state, node };
 }

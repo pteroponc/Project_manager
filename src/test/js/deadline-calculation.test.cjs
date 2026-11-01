@@ -8,7 +8,7 @@ const source = fs.readFileSync(path.join(__dirname, '../../main/resources/public
 const names = ['formatDate', 'daysUntil', 'isProjectOverdue', 'isTaskOverdue', 'milestoneTone',
   'deadlineTone', 'renderDeadlineRows', 'renderBoardInsights', 'renderBoardCard',
   'isCurrentBoardRequest', 'activeBoardContext', 'isCurrentBoardContext',
-  'moveBoardCard', 'renderProjectDashboards'];
+  'moveBoardCard', 'runTaskMutation', 'renderProjectDashboards'];
 const functions = names.map((name) => {
   const start = source.search(new RegExp('^(?:async )?function ' + name + '\\(', 'm'));
   assert.ok(start >= 0, name);
@@ -25,10 +25,12 @@ function harness(instant) {
     return target[key] ??= { textContent: '', innerHTML: '' };
   } });
   const state = { currentBoard: null, activeView: 'boards', selectedProjectId: 'p1',
-    activeBoardModel: 'kanban', boardDrilledIn: true, boardRequest: 0, boardLoading: false };
+    activeBoardModel: 'kanban', boardDrilledIn: true, boardRequest: 0, boardLoading: false, taskOperations: {} };
   const context = vm.createContext({ Date: FixedDate, Intl, Number, state, elements,
     escapeAttr: String, escapeHtml: String,
     adjacentColumnKey: () => null, setFormState() {}, setBoardMessage() {}, boardCardUrl: (id) => `/cards/${id}`,
+    discardTaskDraft: () => true, captureTaskDraft() {}, syncTaskControls() {},
+    taskOperationBlocked: () => Boolean(state.taskOperations.p1), closeCreateTaskPanel() {}, closeTaskModal() {},
     groupCount: () => ({}), renderDashboardKpi: (...args) => args.join(':'),
     renderDistributionBars: () => '', renderProjectRows: () => '', renderRiskRows: () => '',
     formatNumber: String, formatCurrency: String, declOfNum: () => 'модели',
@@ -88,7 +90,10 @@ test('board badge and counter agree after moving into and out of a final column'
   state.currentBoard = board(columnKey);
   context.findBoardCard = () => ({ card, columnKey });
   context.fetchJson = async (_url, options) => { columnKey = JSON.parse(options.body).columnKey; };
-  context.loadBoard = async () => { state.currentBoard = board(columnKey); context.renderBoardInsights(); };
+  context.loadBoard = async () => {
+    state.currentBoard = board(columnKey); delete state.taskOperations.p1;
+    context.renderBoardInsights(); return true;
+  };
   const check = () => {
     context.renderBoardInsights();
     const badge = /Просрочено/.test(context.renderBoardCard(card, columnKey));

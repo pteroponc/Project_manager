@@ -12,7 +12,11 @@ const names = ['showView', 'invalidateBoardContext', 'isCurrentBoardRequest',
   'boardCardPayload', 'boardCardsUrl', 'boardCardUrl', 'selectBoardProject',
   'renderBoardProjectPicker', 'createBoard', 'rememberBoardVisit',
   'loadCreatedBoards', 'saveCreatedBoards', 'adjacentColumnKey',
-  'renderBoardColumns', 'renderBoardCard', 'matchesBoardFilters', 'renderBoardInsights'];
+  'renderBoardColumns', 'renderBoardCard', 'matchesBoardFilters', 'renderBoardInsights',
+  'taskFormValues', 'taskDraftForm', 'captureTaskDraft', 'discardTaskDraft', 'restoreTaskDraft',
+  'taskOperationBlocked', 'syncTaskControls', 'runTaskMutation', 'restoreTaskFocus',
+  'handleTaskKeydown', 'startEditBoardCard', 'startCreateBoardCard', 'closeCreateTaskPanel',
+  'openTaskModal', 'closeTaskModal'];
 const functions = names.map((name) => {
   const start = source.search(new RegExp('^(?:async )?function ' + name + '\\(', 'm'));
   assert.ok(start >= 0, name);
@@ -25,16 +29,21 @@ function node() {
   const selectors = new Map();
   const childNodes = [];
   let html = '';
+  const attrs = new Map();
   return { textContent: '', get innerHTML() { return html; }, set innerHTML(value) { html = value; childNodes.length = 0; },
-    disabled: false, listeners: {}, childNodes, selectors, dataset: {},
+    disabled: false, listeners: {}, childNodes, selectors, dataset: {}, elements: [],
+    isConnected: true, tabIndex: 0, getClientRects: () => [1],
+    focus() { this.focusCount = (this.focusCount ?? 0) + 1; }, scrollIntoView() {},
+    contains(target) { return target === this || childNodes.includes(target); },
     appendChild(child) { childNodes.push(child); },
-    value: '', setAttribute() {}, querySelectorAll: (selector) => selectors.get(selector) ?? [],
+    value: '', setAttribute(name, value) { attrs.set(name, value); },
+    getAttribute: name => attrs.get(name), hasAttribute: name => attrs.has(name), removeAttribute: name => attrs.delete(name), querySelectorAll: (selector) => selectors.get(selector) ?? [],
     classList: { add: (value) => classes.add(value), remove: (value) => classes.delete(value),
       toggle: (value, on) => on ? classes.add(value) : classes.delete(value),
       contains: (value) => classes.has(value) },
-    querySelector(selector) { if (!children.has(selector)) children.set(selector, node()); return children.get(selector); },
+    querySelector(selector) { if (selectors.has(selector)) return selectors.get(selector); if (!children.has(selector)) children.set(selector, node()); return children.get(selector); },
     addEventListener(type, listener) { this.listeners[type] = listener; },
-    reset() { this.resetCount = (this.resetCount ?? 0) + 1; }
+    reset() { this.resetCount = (this.resetCount ?? 0) + 1; this.elements.forEach(f => { f.value = ''; f.checked = false; }); }
   };
 }
 
@@ -60,7 +69,7 @@ function harness() {
     get(target, key) { return target[key] ??= node(); }
   });
   const state = { activeView: 'project-card', projects: [{ id: 'A', name: 'A' }, { id: 'B', name: 'B' }],
-    createdBoards: [], projectsRequest: 0, boardCatalogLoaded: false, boardCatalogLoading: false, boardCatalogError: false,
+    taskOperations: {}, taskDraft: null, createdBoards: [], projectsRequest: 0, boardCatalogLoaded: false, boardCatalogLoading: false, boardCatalogError: false,
     boardFilters: { query: '', priority: 'all', blocked: false },
     selectedProjectId: null, activeBoardModel: 'kanban', boardDrilledIn: false,
     boardRequest: 0, boardLoading: false, boardProjectSelectionRequired: false,
@@ -73,7 +82,7 @@ function harness() {
     escapeHtml: String, escapeAttr: String, console: { error() {} },
     BOARDS_STORAGE_KEY: 'project-manager-created-boards',
     localStorage: { getItem: () => null, setItem() {} },
-    document: { createElement: node }, isTaskOverdue: () => false, formatDate: String,
+    document: { createElement: node, activeElement: null }, cssEscape: String, isTaskOverdue: () => false, formatDate: String,
     fetchJson: (url, options) => new Promise((resolve, reject) => calls.push({ url, options, resolve, reject })),
     renderProjectDashboards() {}, renderCreatedBoards() {}, renderBoardInsights() {},
     renderBoardColumns() {}, renderEmptyBoard() {},
@@ -354,4 +363,252 @@ test('catalog error retains previous choices and retry recovers without selectin
   h.calls[1].resolve([]); await retry;
   assert.match(h.elements.boardProjectMessage.textContent, /Проектов пока нет/);
   assert.equal(h.state.currentBoard, null);
+});
+
+
+async function loadedBoard() {
+  const h = harness();
+  const ready = h.context.openProjectBoard('A', 'kanban');
+  h.calls[0].resolve(board('A', 'kanban', [card()])); await ready;
+  return h;
+}
+
+function draftFor(h, kind = 'edit') {
+  const form = node();
+  form.elements = [
+    { name: 'title', type: 'text', value: 'Draft title' },
+    { name: 'columnKey', type: 'select-one', value: 'review' },
+    { name: 'blocked', type: 'checkbox', checked: false }
+  ];
+  if (kind === 'create') h.elements.createTaskForm = form;
+  else {
+    h.elements.boardColumns.selectors.set('[data-card-form="card-a"]', form);
+    h.elements.boardColumns.querySelector('[data-card-id="card-a"]').selectors.set('form', form);
+  }
+  h.state.taskDraft = { kind, ...h.context.activeBoardContext(), cardId: kind === 'edit' ? 'card-a' : null,
+    baseline: { title: 'Original', columnKey: 'review', blocked: false },
+    values: { title: 'Draft title', columnKey: 'review', blocked: false }, dirty: true };
+  return form;
+}
+
+test('double create submit sends one POST and keeps pending through refresh', async () => {
+  const h = await loadedBoard();
+  const first = h.context.createBoardCard('review', formData());
+  await h.context.createBoardCard('review', formData());
+  assert.equal(h.calls.length, 2);
+  assert.equal(h.elements.createTaskButton.disabled, true);
+  h.calls[1].resolve(card()); await new Promise(setImmediate);
+  assert.equal(h.calls[2].options, undefined);
+  await h.context.createBoardCard('review', formData());
+  assert.equal(h.calls.length, 3);
+  h.calls[2].resolve(board('A', 'kanban', [card()])); await first;
+  assert.equal(h.state.taskOperations.A, undefined);
+  assert.equal(h.messages.at(-1), 'Задача создана');
+});
+
+test('PUT blocks another PUT, DELETE and POST until definitive error; form remains', async () => {
+  const h = await loadedBoard(); const form = draftFor(h);
+  const save = h.context.saveBoardCard('card-a', formData());
+  await h.context.saveBoardCard('card-a', formData());
+  await h.context.deleteBoardCard(card());
+  await h.context.createBoardCard('review', formData());
+  assert.equal(h.calls.length, 2);
+  h.calls[1].reject(Object.assign(Error('Invalid'), { status: 400 })); await save;
+  assert.equal(h.state.taskOperations.A, undefined);
+  assert.equal(form.elements[0].value, 'Draft title');
+  assert.equal(h.state.taskDraft.dirty, true);
+  assert.match(h.messages.at(-1), /Введённые данные сохранены/);
+});
+
+test('DELETE repeat is blocked before a second confirmation and request', async () => {
+  const h = await loadedBoard();
+  const first = h.context.deleteBoardCard(card());
+  await h.context.deleteBoardCard(card());
+  assert.equal(h.confirmations, 1); assert.equal(h.calls.length, 2);
+  h.calls[1].reject(Object.assign(Error('Not found'), { status: 404 })); await first;
+  assert.equal(h.state.taskOperations.A, undefined);
+});
+
+test('unknown mutation outcome requires successful reread, failed reread cannot unblock', async () => {
+  const h = await loadedBoard(); draftFor(h, 'create');
+  const first = h.context.createBoardCard('review', formData());
+  h.calls[1].reject(Error('connection lost')); await first;
+  assert.equal(h.state.taskOperations.A.phase, 'unknown');
+  await h.context.createBoardCard('review', formData()); assert.equal(h.calls.length, 2);
+  const reread = h.context.loadBoard('A', 'kanban');
+  h.calls[2].reject(Error('offline')); await reread;
+  assert.equal(h.state.taskOperations.A.phase, 'unknown');
+  assert.equal(h.state.taskDraft.values.title, 'Draft title');
+  const retry = h.context.loadBoard('A', 'kanban');
+  h.calls[3].resolve(board('A', 'kanban', [card()])); await retry;
+  assert.equal(h.state.taskOperations.A, undefined);
+  assert.equal(h.elements.createTaskForm.elements[0].value, 'Draft title');
+});
+
+test('confirmed write plus refresh failure reports success separately and blocks blind retry', async () => {
+  const h = await loadedBoard();
+  const save = h.context.saveBoardCard('card-a', formData());
+  h.calls[1].resolve(card()); await new Promise(setImmediate);
+  h.calls[2].reject(Error('refresh unavailable')); await save;
+  assert.match(h.messages.at(-1), /Задача обновлена.*Не удалось обновить доску/);
+  assert.equal(h.state.taskOperations.A.phase, 'unknown');
+});
+
+test('old operation cannot clear the pending operation of another project', async () => {
+  const h = await loadedBoard();
+  const a = h.context.saveBoardCard('card-a', formData());
+  const next = h.context.openProjectBoard('B', 'scrum');
+  h.calls[2].resolve(board('B', 'scrum', [card('card-b')])); await next;
+  const b = h.context.saveBoardCard('card-b', formData());
+  const operation = h.state.taskOperations.B;
+  h.calls[1].resolve(card()); await a;
+  assert.equal(h.state.taskOperations.B, operation);
+  assert.equal(h.elements.createTaskButton.disabled, true);
+  h.calls[3].reject(Object.assign(Error('Invalid'), { status: 400 })); await b;
+});
+
+test('reopen while pending cannot reconcile an unfinished mutation', async () => {
+  const h = await loadedBoard();
+  const save = h.context.saveBoardCard('card-a', formData());
+  const reopened = h.context.openProjectBoard('A', 'kanban');
+  h.calls[2].resolve(board('A', 'kanban', [card()])); await reopened;
+  assert.equal(h.state.taskOperations.A.phase, 'pending');
+  h.calls[1].resolve(card()); await save;
+  assert.equal(h.state.taskOperations.A.phase, 'unknown');
+  assert.equal(h.elements.createTaskButton.disabled, true);
+});
+
+test('filter rerender preserves inline draft even when filter excludes its original card', async () => {
+  const h = await loadedBoard(); const form = draftFor(h);
+  h.state.boardFilters.query = 'no matching task';
+  h.context.renderBoardColumns();
+  assert.equal(h.context.matchesBoardFilters(card()), true);
+  assert.equal(form.elements[0].value, 'Draft title');
+  assert.equal(h.state.taskDraft.dirty, true);
+});
+
+test('same board refresh restores edit fields and binds draft to new generation', async () => {
+  const h = await loadedBoard(); const form = draftFor(h);
+  const oldRequest = h.state.taskDraft.request;
+  const refresh = h.context.loadBoard('A', 'kanban');
+  h.calls[1].resolve(board('A', 'kanban', [card()])); await refresh;
+  assert.equal(form.elements[0].value, 'Draft title');
+  assert.ok(h.state.taskDraft.request > oldRequest);
+  assert.equal(h.state.taskDraft.projectId, 'A');
+});
+
+test('dirty project switch and navigation cancellation leave context and draft untouched', async () => {
+  const h = await loadedBoard(); draftFor(h);
+  h.window.confirm = () => false;
+  assert.equal(h.context.openProjectBoard('B', 'scrum'), false);
+  assert.equal(h.context.showView('projects'), false);
+  assert.equal(h.state.selectedProjectId, 'A'); assert.equal(h.calls.length, 1);
+  assert.equal(h.state.taskDraft.values.title, 'Draft title');
+  h.window.confirm = () => true;
+  const next = h.context.openProjectBoard('B', 'scrum');
+  assert.equal(h.state.taskDraft, null);
+  h.calls[1].resolve(board('B', 'scrum')); await next;
+});
+
+test('Escape asks before discarding an edit, respects cancellation, then closes it', async () => {
+  const h = await loadedBoard(); draftFor(h);
+  h.elements.taskModal.classList.add('hidden');
+  let prevented = 0; const event = { key: 'Escape', preventDefault() { prevented++; } };
+  h.window.confirm = () => false; h.context.handleTaskKeydown(event);
+  assert.equal(h.state.taskDraft.dirty, true);
+  h.window.confirm = () => true; h.context.handleTaskKeydown(event);
+  assert.equal(h.state.taskDraft, null); assert.equal(prevented, 2);
+});
+
+test('modal traps Tab/Shift+Tab and Escape restores focus to connected trigger', async () => {
+  const h = await loadedBoard(); const trigger = node(), first = node(), last = node();
+  h.context.document.activeElement = trigger;
+  h.context.openTaskModal(card(), 'Завершено');
+  assert.equal(h.elements.taskModalBlocked.textContent, 'Не заблокирована');
+  h.elements.taskModal.selectors.set('button, [href], input, select, textarea, [tabindex]', [first, last]);
+  h.elements.taskModal.childNodes.push(first, last);
+  let prevented = 0;
+  h.context.document.activeElement = last;
+  h.context.handleTaskKeydown({ key: 'Tab', preventDefault() { prevented++; } });
+  assert.equal(first.focusCount, 1);
+  h.context.document.activeElement = first;
+  h.context.handleTaskKeydown({ key: 'Tab', shiftKey: true, preventDefault() { prevented++; } });
+  assert.equal(last.focusCount, 1);
+  h.context.handleTaskKeydown({ key: 'Escape', preventDefault() { prevented++; } });
+  assert.equal(trigger.focusCount, 1); assert.equal(prevented, 3);
+  trigger.isConnected = false; h.context.restoreTaskFocus(trigger); assert.equal(trigger.focusCount, 1);
+});
+
+test('pending controls retain their original disabled state and do not disable a GET retry', async () => {
+  const h = await loadedBoard();
+  const enabled = node(), disabled = node(), retry = node(); disabled.disabled = true;
+  retry.dataset.action = 'retry-board';
+  h.elements.boardColumns.selectors.set('button, input, select, textarea', [enabled, disabled, retry]);
+  const save = h.context.saveBoardCard('card-a', formData());
+  assert.equal(enabled.disabled, true); assert.equal(disabled.disabled, true);
+  assert.equal(retry.disabled, false);
+  h.calls[1].reject(Object.assign(Error('Invalid'), { status: 400 })); await save;
+  assert.equal(enabled.disabled, false); assert.equal(disabled.disabled, true);
+});
+
+test('404 refresh preserves draft and requires confirmed discard before another project', async () => {
+  const h = await loadedBoard(); draftFor(h);
+  const refresh = h.context.loadBoard('A', 'kanban');
+  h.calls[1].reject(Object.assign(Error('missing'), { status: 404 })); await refresh;
+  assert.equal(h.state.taskDraft.values.title, 'Draft title');
+  assert.equal(h.state.currentBoard, null);
+  h.window.confirm = () => false;
+  assert.equal(h.context.openProjectBoard('B', 'scrum'), false);
+  assert.equal(h.state.selectedProjectId, 'A');
+});
+
+test('deleted project keeps draft in memory and cannot submit it to another project', async () => {
+  const h = await loadedBoard(); draftFor(h);
+  h.context.onProjectDeleted('A');
+  assert.equal(h.state.taskDraft.projectId, 'A'); assert.equal(h.state.currentBoard, null);
+  h.window.confirm = () => false;
+  assert.equal(h.context.openProjectBoard('B', 'scrum'), false);
+  await h.context.saveBoardCard('card-a', formData());
+  assert.equal(h.calls.filter(c => c.options?.method).length, 0);
+  h.calls[1].resolve([{ id: 'B', name: 'B' }]); await new Promise(setImmediate);
+});
+
+test('card removed by refresh keeps editable values but cannot send PUT for the missing card', async () => {
+  const h = await loadedBoard(); const form = draftFor(h);
+  h.state.taskDraft.originalCard = card(); h.state.taskDraft.originalColumn = 'review';
+  const refresh = h.context.loadBoard('A', 'kanban');
+  h.calls[1].resolve(board('A', 'kanban')); await refresh;
+  assert.equal(h.state.taskDraft.values.title, 'Draft title');
+  assert.equal(form.elements[0].value, 'Draft title');
+  await h.context.saveBoardCard('card-a', formData());
+  assert.equal(h.calls.length, 2);
+});
+
+test('late refresh success cannot overwrite messages in a reopened generation', async () => {
+  const h = await loadedBoard();
+  const save = h.context.saveBoardCard('card-a', formData());
+  h.calls[1].resolve(card()); await new Promise(setImmediate);
+  const reopen = h.context.openProjectBoard('A', 'kanban');
+  h.calls[3].resolve(board('A', 'kanban', [card()])); await reopen;
+  const before = h.messages.length;
+  h.calls[2].resolve(board('A', 'kanban', [card()])); await save;
+  assert.equal(h.messages.length, before);
+});
+
+test('move while a save is pending neither sends another PUT nor discards the draft', async () => {
+  const h = await loadedBoard(); draftFor(h);
+  const save = h.context.saveBoardCard('card-a', formData());
+  await h.context.moveBoardCard('card-a', 'done');
+  assert.equal(h.calls.length, 2); assert.equal(h.confirmations, 0);
+  assert.equal(h.state.taskDraft.dirty, true);
+  h.calls[1].reject(Object.assign(Error('Invalid'), { status: 400 })); await save;
+});
+
+test('reopening the current model refreshes without asking to discard its draft', async () => {
+  const h = await loadedBoard(); const form = draftFor(h);
+  h.window.confirm = () => { throw Error('A refresh must preserve the draft'); };
+  const refresh = h.context.openProjectBoard('A', 'kanban');
+  h.calls[1].resolve(board('A', 'kanban', [card()])); await refresh;
+  assert.equal(form.elements[0].value, 'Draft title');
+  assert.equal(h.state.taskDraft.dirty, true);
 });

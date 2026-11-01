@@ -53,6 +53,9 @@ const state = {
   trainEditorLoading: false,
   editingReleaseTrainId: null,
   trainMutationPending: false,
+  taskOperations: {},
+  taskDraft: null,
+  taskModalReturnFocus: null,
   boardRequest: 0,
   boardLoading: false,
   boardProjectSelectionRequired: false,
@@ -95,6 +98,7 @@ const elements = {
   boardProjectRefresh: document.getElementById("board-project-refresh"),
   boardProjectMessage: document.getElementById("board-project-message"),
   boardMessage: document.getElementById("board-message"),
+  taskReload: document.getElementById("board-task-reload"),
   createTaskButton: document.getElementById("create-task-button"),
   createTaskPanel: document.getElementById("create-task-panel"),
   createTaskForm: document.getElementById("create-task-form"),
@@ -334,7 +338,17 @@ elements.createTaskForm.addEventListener("submit", async (event) => {
   await createBoardCard(elements.createTaskColumn.value, new FormData(elements.createTaskForm),
     state.createTaskContext);
 });
-elements.cancelTaskCreate.addEventListener("click", closeCreateTaskPanel);
+elements.cancelTaskCreate.addEventListener("click", () => closeCreateTaskPanel());
+elements.createTaskForm.addEventListener("input", captureTaskDraft);
+elements.createTaskForm.addEventListener("change", captureTaskDraft);
+elements.taskReload?.addEventListener("click", () => {
+  if (state.selectedProjectId && state.boardDrilledIn) void loadBoard(state.selectedProjectId, state.activeBoardModel);
+});
+document.addEventListener("keydown", handleTaskKeydown);
+window.addEventListener("beforeunload", (event) => {
+  captureTaskDraft();
+  if (state.taskDraft?.dirty) { event.preventDefault(); event.returnValue = ""; }
+});
 elements.taskModalClose.addEventListener("click", closeTaskModal);
 elements.taskModal.addEventListener("click", (event) => {
   if (event.target === elements.taskModal) {
@@ -379,7 +393,10 @@ function showView(view, options = {}) {
   if (window.PMPassportEditor?.allowNavigation(() => showView(view, options)) === false) return false;
   const nextView = view || "overview";
   const previousView = state.activeView;
-  if (previousView === "boards" && nextView !== "boards") invalidateBoardContext();
+  if (previousView === "boards" && nextView !== "boards") {
+    if (!discardTaskDraft()) return false;
+    invalidateBoardContext();
+  }
   if (previousView === "release" && nextView !== "release") {
     ++state.trainEditorRequest;
     setReleaseTrainEditorLoading(false);
@@ -415,14 +432,18 @@ function showView(view, options = {}) {
   return true;
 }
 
-function invalidateBoardContext() {
+function invalidateBoardContext(preserveDraft = false) {
+  captureTaskDraft();
+  if (!preserveDraft) state.taskDraft = null;
   ++state.boardRequest;
   state.boardLoading = false;
   state.currentBoard = null;
   state.createTaskContext = null;
   state.draggingBoardCardId = null;
   closeTaskModal();
-  closeCreateTaskPanel();
+  if (!preserveDraft) closeCreateTaskPanel(true);
+  else elements.createTaskPanel.classList.add("hidden");
+  syncTaskControls();
   elements.createTaskButton.disabled = true;
   elements.boardInsights?.classList.add("hidden");
   elements.boardFilters?.classList.add("hidden");
@@ -449,6 +470,9 @@ function isCurrentBoardContext(context) {
 }
 
 function openProjectBoard(projectId, model) {
+  const sameContext = state.activeView === "boards" && state.boardDrilledIn
+    && state.selectedProjectId === projectId && state.activeBoardModel === model;
+  if (!sameContext && !discardTaskDraft()) { renderBoardProjectPicker(); return false; }
   if (showView("boards", { skipBoardReload: true }) === false) return false;
   state.selectedProjectId = projectId;
   state.activeBoardModel = model;
@@ -462,6 +486,7 @@ function selectBoardProject(projectId) {
   if (projectId && !state.projects.some((project) => project.id === projectId)
       && state.currentBoard?.projectId !== projectId) return;
   if (projectId) return openProjectBoard(projectId, state.activeBoardModel);
+  if (!discardTaskDraft()) { renderBoardProjectPicker(); return false; }
   invalidateBoardContext();
   state.selectedProjectId = null;
   state.boardDrilledIn = false;
@@ -500,7 +525,7 @@ function onProjectDeleted(projectId) {
   ++state.projectsRequest;
   state.projects = state.projects.filter((project) => project.id !== projectId);
   if (state.selectedProjectId === projectId) {
-    invalidateBoardContext();
+    invalidateBoardContext(true);
     state.selectedProjectId = null;
     state.boardDrilledIn = false;
     state.boardProjectSelectionRequired = true;
@@ -527,7 +552,7 @@ async function loadProjectCatalog() {
     state.projects = projects;
     if (state.selectedProjectId && !projects.some(p => p.id === state.selectedProjectId)
         && state.boardDrilledIn) {
-      invalidateBoardContext();
+      invalidateBoardContext(true);
       state.selectedProjectId = null;
       state.boardDrilledIn = false;
       state.boardProjectSelectionRequired = true;
@@ -1019,6 +1044,11 @@ function renderReleaseStage(title, date, status, activeStatuses) {
 }
 
 async function loadBoard(projectId, boardModel = state.activeBoardModel) {
+  captureTaskDraft();
+  const draft = state.taskDraft;
+  if (draft && (draft.projectId !== projectId || draft.model !== boardModel) && !discardTaskDraft()) return false;
+  const operationAtStart = state.taskOperations?.[projectId];
+  const canReconcile = operationAtStart?.phase === "unknown";
   const request = ++state.boardRequest;
   state.activeBoardModel = boardModel;
   state.boardLoading = true;
@@ -1026,7 +1056,8 @@ async function loadBoard(projectId, boardModel = state.activeBoardModel) {
   setBoardMessage("");
   state.createTaskContext = null;
   closeTaskModal();
-  closeCreateTaskPanel();
+  elements.createTaskPanel.classList.add("hidden");
+  syncTaskControls();
   elements.createTaskButton.disabled = true;
   elements.boardInsights?.classList.add("hidden");
   elements.boardFilters?.classList.add("hidden");
@@ -1041,6 +1072,7 @@ async function loadBoard(projectId, boardModel = state.activeBoardModel) {
     }
     state.boardLoading = false;
     state.currentBoard = board;
+    if (canReconcile && state.taskOperations?.[projectId] === operationAtStart) delete state.taskOperations[projectId];
     rememberBoardVisit(board);
     renderBoardProjectPicker();
     elements.boardTitle.textContent = `${board.projectName} - ${board.boardTitle}`;
@@ -1048,21 +1080,31 @@ async function loadBoard(projectId, boardModel = state.activeBoardModel) {
     elements.boardDeck?.classList.add("compact");
     if (!board.columns?.length) {
       renderEmptyBoard();
-      return;
+      return true;
     }
     elements.createTaskButton.disabled = false;
     elements.boardInsights?.classList.remove("hidden");
     elements.boardFilters?.classList.remove("hidden");
     renderBoardInsights();
     renderBoardColumns();
+    syncTaskControls();
     if (![...board.columns, ...(board.unassignedColumns ?? [])].some((column) => column.cards?.length)) {
       setBoardMessage("На доске пока нет задач. Создайте первую задачу.");
     }
+    if (canReconcile) setBoardMessage("Доска перечитана. Проверьте результат предыдущей операции перед повторным сохранением.");
+    return true;
   } catch (error) {
     if (!isCurrentBoardRequest(request, projectId, boardModel)) return;
     state.boardLoading = false;
     state.currentBoard = null;
     if (error.status === 404) {
+      if (state.taskDraft) {
+        elements.boardColumns.innerHTML = '<div class="empty-state compact">Проект недоступен. Черновик сохранён в этой вкладке.</div>';
+        setBoardMessage("Повторите чтение доски или подтвердите сброс черновика при выборе другого проекта.", true);
+        syncTaskControls();
+        elements.taskReload?.classList.remove("hidden");
+        return false;
+      }
       state.selectedProjectId = null;
       state.boardDrilledIn = false;
       state.boardProjectSelectionRequired = true;
@@ -1071,13 +1113,16 @@ async function loadBoard(projectId, boardModel = state.activeBoardModel) {
     }
     elements.boardColumns.innerHTML = '<div class="empty-state compact">Не удалось открыть доску. ' +
       '<button class="text-link" type="button" data-action="retry-board">Повторить</button></div>';
+    syncTaskControls();
     elements.boardColumns.querySelector('[data-action="retry-board"]')?.addEventListener("click", () => {
       if (isCurrentBoardRequest(request, projectId, boardModel)) void loadBoard(projectId, boardModel);
     });
+    return false;
   }
 }
 
 function renderBoardColumns() {
+  captureTaskDraft();
   const board = state.currentBoard;
   const renderedContext = activeBoardContext();
   if (!board?.columns?.length || !renderedContext) {
@@ -1178,7 +1223,7 @@ function renderBoardColumns() {
 
   elements.boardColumns.querySelectorAll(".board-card[draggable='true']").forEach((cardElement) => {
     cardElement.addEventListener("dragstart", (event) => {
-      if (!isCurrentBoardContext(renderedContext)) { event.preventDefault(); return; }
+      if (taskOperationBlocked() || !isCurrentBoardContext(renderedContext)) { event.preventDefault(); return; }
       state.draggingBoardCardId = cardElement.dataset.cardId;
       cardElement.classList.add("dragging");
       event.dataTransfer.effectAllowed = "move";
@@ -1215,9 +1260,12 @@ function renderBoardColumns() {
       }
     });
   });
+  restoreTaskDraft();
+  syncTaskControls();
 }
 
 function matchesBoardFilters(card) {
+  if (state.taskDraft?.kind === "edit" && state.taskDraft.cardId === card.id) return true;
   const haystack = `${card.title} ${card.description} ${card.owner} ${card.labels ?? ""}`.toLowerCase();
   return (!state.boardFilters.query || haystack.includes(state.boardFilters.query))
     && (state.boardFilters.priority === "all" || card.priority === state.boardFilters.priority)
@@ -1244,7 +1292,8 @@ function renderEmptyBoard() {
   }
   elements.boardInsights?.classList.add("hidden");
   elements.boardFilters?.classList.add("hidden");
-  closeCreateTaskPanel();
+  if (!state.taskDraft) closeCreateTaskPanel(true);
+  else elements.createTaskPanel.classList.add("hidden");
   elements.boardColumns.innerHTML = '<div class="empty-state compact">Доска появится после выбора инициативы.</div>';
 }
 
@@ -1260,7 +1309,8 @@ function renderBoardLanding(message) {
   }
   elements.boardInsights?.classList.add("hidden");
   elements.boardFilters?.classList.add("hidden");
-  closeCreateTaskPanel();
+  if (!state.taskDraft) closeCreateTaskPanel(true);
+  else elements.createTaskPanel.classList.add("hidden");
   renderCreatedBoards();
   renderBoardProjectPicker();
   elements.boardColumns.innerHTML = message
@@ -1372,7 +1422,7 @@ function adjacentColumnKey(columnKey, offset) {
 }
 
 async function moveBoardCard(cardId, columnKey, expectedContext = activeBoardContext()) {
-  if (!isCurrentBoardContext(expectedContext)
+  if (taskOperationBlocked() || !isCurrentBoardContext(expectedContext)
       || !state.currentBoard.columns.some((column) => column.key === columnKey)) return;
   const found = findBoardCard(cardId);
   if (!found || found.columnKey === columnKey) {
@@ -1390,25 +1440,9 @@ async function moveBoardCard(cardId, columnKey, expectedContext = activeBoardCon
     estimate: Number(found.card.estimate || 0),
     blocked: Boolean(found.card.blocked)
   };
-  setBoardMessage("Переносим задачу...", false);
-
-  try {
-    await fetchJson(boardCardUrl(cardId, expectedContext), {
-      method: "PUT",
-      headers: {
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify(payload)
-    });
-    if (!isCurrentBoardContext(expectedContext)) return;
-    setBoardMessage(`Задача "${found.card.title}" перенесена`, false);
-    await loadBoard(expectedContext.projectId, expectedContext.model);
-  } catch (error) {
-    if (!isCurrentBoardContext(expectedContext)) return;
-    console.error(error);
-    setBoardMessage(error.message || "Не удалось перенести задачу", true);
-    renderBoardColumns();
-  }
+  if (!discardTaskDraft()) return;
+  return runTaskMutation("move", cardId, expectedContext, boardCardUrl(cardId, expectedContext),
+    "PUT", payload, `Задача "${found.card.title}" перенесена`);
 }
 
 function findBoardCard(cardId) {
@@ -1422,6 +1456,7 @@ function findBoardCard(cardId) {
 }
 
 function openTaskModal(card, columnTitle) {
+  state.taskModalReturnFocus = document.activeElement;
   state.selectedBoardCardId = card.id;
   elements.taskModalColumn.textContent = columnTitle;
   elements.taskModalTitle.textContent = card.title;
@@ -1431,19 +1466,25 @@ function openTaskModal(card, columnTitle) {
   elements.taskModalPriority.textContent = card.priority;
   elements.taskModalEstimate.textContent = `${card.estimate ?? 0} SP`;
   elements.taskModalLabels.textContent = card.labels || "Без тегов";
-  elements.taskModalBlocked.textContent = card.blocked ? "Заблокирована" : "В работе";
+  elements.taskModalBlocked.textContent = card.blocked ? "Заблокирована" : "Не заблокирована";
   elements.taskModal.classList.remove("hidden");
+  syncTaskControls();
+  elements.taskModalClose.focus();
 }
 
 function closeTaskModal() {
   state.selectedBoardCardId = null;
   elements.taskModal.classList.add("hidden");
+  restoreTaskFocus(state.taskModalReturnFocus);
+  state.taskModalReturnFocus = null;
 }
 
-function closeCreateTaskPanel() {
+function closeCreateTaskPanel(force = false) {
+  if (!force && state.taskDraft?.kind === "create" && !discardTaskDraft()) return false;
   state.createTaskContext = null;
   elements.createTaskPanel.classList.add("hidden");
   elements.createTaskForm.reset();
+  return true;
 }
 
 function startCreateBoardCard(columnKey) {
@@ -1451,6 +1492,8 @@ function startCreateBoardCard(columnKey) {
   if (!context || !state.currentBoard.columns?.length) {
     return;
   }
+  if (taskOperationBlocked() || !discardTaskDraft()) return;
+  const returnFocus = document.activeElement;
   const project = state.projects.find((item) => item.id === state.currentBoard?.projectId);
   elements.createTaskColumn.innerHTML = state.currentBoard.columns
     .map((column) => `<option value="${escapeAttr(column.key)}">${escapeHtml(column.title)}</option>`)
@@ -1459,14 +1502,18 @@ function startCreateBoardCard(columnKey) {
   elements.createTaskOwner.value = project?.owner ?? "";
   elements.createTaskDueDate.value = project?.deadline ?? "";
   state.createTaskContext = context;
+  state.taskDraft = { kind: "create", ...context, returnFocus,
+    baseline: taskFormValues(elements.createTaskForm), values: taskFormValues(elements.createTaskForm), dirty: false };
   elements.createTaskPanel.classList.remove("hidden");
   elements.createTaskPanel.scrollIntoView({ behavior: "smooth", block: "nearest" });
   elements.createTaskTitle.focus();
 }
 
-function startEditBoardCard(card, columnKey) {
+function startEditBoardCard(card, columnKey, restoring = false) {
   const context = activeBoardContext();
-  if (!context || findBoardCard(card.id)?.columnKey !== columnKey) return;
+  if (!context || (!restoring && findBoardCard(card.id)?.columnKey !== columnKey)) return;
+  if (!restoring && (taskOperationBlocked() || !discardTaskDraft())) return;
+  const returnFocus = document.activeElement;
   const cardElement = elements.boardColumns.querySelector(`[data-card-id="${cssEscape(card.id)}"]`);
   if (!cardElement) {
     return;
@@ -1479,6 +1526,7 @@ function startEditBoardCard(card, columnKey) {
 
   cardElement.innerHTML = `
     <form class="board-card-form" data-card-form="${escapeAttr(card.id)}">
+      <p class="hint-text">Открытая форма остаётся видимой независимо от фильтров.</p>
       <label>
         <span>Колонка</span>
         <select name="columnKey" required>${columnOptions}</select>
@@ -1525,83 +1573,40 @@ function startEditBoardCard(card, columnKey) {
   `;
 
   const form = cardElement.querySelector("form");
+  if (!restoring) state.taskDraft = { kind: "edit", ...context, cardId: card.id, originalCard: { ...card }, originalColumn: columnKey, returnFocus,
+    baseline: taskFormValues(form), values: taskFormValues(form), dirty: false };
+  form.addEventListener("input", captureTaskDraft);
+  form.addEventListener("change", captureTaskDraft);
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
     await saveBoardCard(card.id, new FormData(form), context);
   });
   cardElement.querySelector('[data-action="cancel-card-edit"]').addEventListener("click", () => {
-    if (isCurrentBoardContext(context)) void loadBoard(context.projectId, context.model);
+    if (isCurrentBoardContext(context) && discardTaskDraft()) renderBoardColumns();
   });
+  if (!restoring) form.querySelector('[name="title"]').focus();
 }
 
 async function createBoardCard(columnKey, formData, context = activeBoardContext()) {
   if (!isCurrentBoardContext(context) || !state.currentBoard.columns.some((column) => column.key === columnKey)) return;
   const payload = boardCardPayload(formData, columnKey);
-  setBoardMessage("Создаем задачу...", false);
-
-  try {
-    const created = await fetchJson(boardCardsUrl(context), {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify(payload)
-    });
-    if (!isCurrentBoardContext(context)) return;
-    setBoardMessage(`Задача "${created.title}" создана`, false);
-    closeCreateTaskPanel();
-    await loadBoard(context.projectId, context.model);
-  } catch (error) {
-    if (!isCurrentBoardContext(context)) return;
-    console.error(error);
-    setBoardMessage(error.message || "Не удалось создать задачу", true);
-  }
+  return runTaskMutation("create", null, context, boardCardsUrl(context), "POST", payload, "Задача создана");
 }
 
 async function deleteBoardCard(card) {
   const context = activeBoardContext();
-  if (!context || !findBoardCard(card.id)) return;
-  const approved = window.confirm(`Удалить задачу "${card.title}"?`);
-  if (!approved || !isCurrentBoardContext(context) || !findBoardCard(card.id)) return;
-  setBoardMessage("Удаляем задачу...", false);
-
-  try {
-    await fetchJson(boardCardUrl(card.id, context), {
-      method: "DELETE"
-    });
-    if (!isCurrentBoardContext(context)) return;
-    closeTaskModal();
-    setBoardMessage(`Задача "${card.title}" удалена`, false);
-    await loadBoard(context.projectId, context.model);
-  } catch (error) {
-    if (!isCurrentBoardContext(context)) return;
-    console.error(error);
-    setBoardMessage(error.message || "Не удалось удалить задачу", true);
-  }
+  if (!context || !findBoardCard(card.id) || taskOperationBlocked()) return;
+  if (!window.confirm(`Удалить задачу "${card.title}"?`) || !discardTaskDraft()) return;
+  if (!isCurrentBoardContext(context) || !findBoardCard(card.id)) return;
+  return runTaskMutation("delete", card.id, context, boardCardUrl(card.id, context), "DELETE", null,
+    `Задача "${card.title}" удалена`);
 }
 
 async function saveBoardCard(cardId, formData, context = activeBoardContext()) {
   if (!isCurrentBoardContext(context) || !findBoardCard(cardId)) return;
   const payload = boardCardPayload(formData);
   if (!state.currentBoard.columns.some((column) => column.key === payload.columnKey)) return;
-  setBoardMessage("Сохраняем задачу...", false);
-
-  try {
-    await fetchJson(boardCardUrl(cardId, context), {
-      method: "PUT",
-      headers: {
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify(payload)
-    });
-    if (!isCurrentBoardContext(context)) return;
-    setBoardMessage("Задача обновлена", false);
-    await loadBoard(context.projectId, context.model);
-  } catch (error) {
-    if (!isCurrentBoardContext(context)) return;
-    console.error(error);
-    setBoardMessage(error.message || "Не удалось сохранить задачу", true);
-  }
+  return runTaskMutation("save", cardId, context, boardCardUrl(cardId, context), "PUT", payload, "Задача обновлена");
 }
 
 function boardCardPayload(formData, columnKey) {
@@ -1611,6 +1616,170 @@ function boardCardPayload(formData, columnKey) {
   payload.blocked = formData.has("blocked");
   payload.labels = payload.labels ?? "";
   return payload;
+}
+
+function taskFormValues(form) {
+  return Object.fromEntries([...form.elements].filter((field) => field.name)
+    .map((field) => [field.name, field.type === "checkbox" ? field.checked : field.value]));
+}
+
+function taskDraftForm() {
+  if (state.taskDraft?.kind === "create") return elements.createTaskForm;
+  if (state.taskDraft?.kind === "edit") return elements.boardColumns.querySelector(
+    `[data-card-form="${cssEscape(state.taskDraft.cardId)}"]`);
+  return null;
+}
+
+function captureTaskDraft() {
+  const draft = state.taskDraft;
+  const form = draft && taskDraftForm();
+  if (!form || !isCurrentBoardContext(draft) || form.isConnected === false) return;
+  draft.values = taskFormValues(form);
+  draft.dirty = JSON.stringify(draft.values) !== JSON.stringify(draft.baseline);
+}
+
+function discardTaskDraft() {
+  captureTaskDraft();
+  const draft = state.taskDraft;
+  if (draft?.dirty && !window.confirm("Сбросить несохранённые изменения задачи?")) return false;
+  state.taskDraft = null;
+  if (draft?.kind === "create") closeCreateTaskPanel(true);
+  if (draft?.kind === "edit" && activeBoardContext()) renderBoardColumns();
+  restoreTaskFocus(draft?.returnFocus);
+  return true;
+}
+
+function restoreTaskDraft() {
+  const draft = state.taskDraft;
+  const context = activeBoardContext();
+  if (!draft || !context || draft.projectId !== context.projectId || draft.model !== context.model) return;
+  draft.request = context.request;
+  if (draft.kind === "edit") {
+    const found = findBoardCard(draft.cardId);
+    if (!found) {
+      setBoardMessage("Задача больше не доступна. Черновик сохранён; подтвердите сброс перед сменой контекста.", true);
+      if (!draft.originalCard) return;
+      const holder = document.createElement("article");
+      holder.className = "board-card";
+      holder.dataset.cardId = draft.cardId;
+      elements.boardColumns.appendChild(holder);
+      startEditBoardCard(draft.originalCard, draft.originalColumn, true);
+      holder.querySelector('[type="submit"]').disabled = true;
+    } else {
+      startEditBoardCard(found.card, found.columnKey, true);
+    }
+  } else {
+    state.createTaskContext = context;
+    elements.createTaskPanel.classList.remove("hidden");
+  }
+  const form = taskDraftForm();
+  if (form) for (const field of form.elements) {
+    if (!(field.name in draft.values)) continue;
+    if (field.type === "checkbox") field.checked = draft.values[field.name];
+    else field.value = draft.values[field.name];
+  }
+}
+
+function taskOperationBlocked() {
+  return Boolean(state.taskOperations?.[state.selectedProjectId]);
+}
+
+function syncTaskControls() {
+  const operation = state.taskOperations?.[state.selectedProjectId];
+  const blocked = Boolean(operation || state.boardLoading || !state.currentBoard);
+  const roots = [elements.boardColumns, elements.createTaskPanel];
+  roots.forEach((root) => root?.querySelectorAll("button, input, select, textarea").forEach((control) => {
+    if (control.dataset.action === "retry-board") return;
+    if (blocked && !control.hasAttribute("data-task-disabled")) {
+      control.setAttribute("data-task-disabled", String(control.disabled));
+      control.disabled = true;
+    } else if (!blocked && control.hasAttribute("data-task-disabled")) {
+      control.disabled = control.getAttribute("data-task-disabled") === "true";
+      control.removeAttribute("data-task-disabled");
+    }
+  }));
+  elements.boardColumns?.querySelectorAll(".board-card[draggable]").forEach((card) => {
+    card.draggable = !blocked;
+  });
+  elements.createTaskButton.disabled = blocked;
+  elements.taskModalEdit.disabled = blocked;
+  elements.taskModalDelete.disabled = blocked;
+  elements.boardColumns?.setAttribute("aria-busy", String(Boolean(operation?.phase === "pending" || state.boardLoading)));
+  elements.taskReload?.classList.toggle("hidden", operation?.phase !== "unknown");
+  if (elements.taskReload) elements.taskReload.disabled = state.boardLoading;
+}
+
+async function runTaskMutation(kind, cardId, context, url, method, payload, successMessage) {
+  if (!isCurrentBoardContext(context) || taskOperationBlocked()) return;
+  captureTaskDraft();
+  const draft = state.taskDraft;
+  if (draft && (draft.projectId !== context.projectId || draft.model !== context.model
+      || (kind === "save" && (draft.kind !== "edit" || draft.cardId !== cardId))
+      || (kind === "create" && draft.kind !== "create"))) return;
+  state.taskOperations ??= {};
+  const operation = { kind, cardId, context, phase: "pending" };
+  state.taskOperations[context.projectId] = operation;
+  syncTaskControls();
+  setBoardMessage("Выполняем операцию с задачей...");
+  try {
+    await fetchJson(url, { method, ...(payload ? {
+      headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload)
+    } : {}) });
+  } catch (error) {
+    // Network failures and server failures may follow a committed write. Do not blindly repeat.
+    const unknown = !error.status || error.status >= 500 || error.status === 408;
+    if (state.taskOperations[context.projectId] !== operation) return;
+    if (unknown || !isCurrentBoardContext(context)) operation.phase = "unknown";
+    else delete state.taskOperations[context.projectId];
+    if (isCurrentBoardContext(context)) {
+      setBoardMessage(unknown
+        ? "Результат операции неизвестен. Перечитайте доску перед повторным действием. Черновик сохранён."
+        : `${error.message || "Не удалось сохранить задачу"}. Введённые данные сохранены.`, true);
+      syncTaskControls();
+    }
+    return;
+  }
+  if (state.taskOperations[context.projectId] !== operation) return;
+  operation.phase = "unknown";
+  if (!isCurrentBoardContext(context)) { syncTaskControls(); return; }
+  // Only the submitted draft is cleared after a confirmed mutation, never in a refresh catch.
+  state.taskDraft = null;
+  closeCreateTaskPanel(true);
+  closeTaskModal();
+  const refresh = loadBoard(context.projectId, context.model);
+  const refreshRequest = state.boardRequest;
+  const refreshed = await refresh;
+  if (!isCurrentBoardRequest(refreshRequest, context.projectId, context.model)) return;
+  if (refreshed) setBoardMessage(successMessage);
+  else setBoardMessage(`${successMessage}. Не удалось обновить доску. Перечитайте данные перед следующей операцией.`, true);
+  syncTaskControls();
+}
+
+function restoreTaskFocus(target) {
+  if (target?.isConnected && !target.disabled) target.focus();
+}
+
+function handleTaskKeydown(event) {
+  if (!elements.taskModal.classList.contains("hidden")) {
+    if (event.key === "Escape") { event.preventDefault(); closeTaskModal(); return; }
+    if (event.key === "Tab") {
+      const focusable = [...elements.taskModal.querySelectorAll("button, [href], input, select, textarea, [tabindex]")]
+        .filter((node) => !node.disabled && node.tabIndex >= 0 && node.getClientRects().length);
+      const first = focusable[0], last = focusable.at(-1);
+      if (!first) { event.preventDefault(); elements.taskModal.focus(); return; }
+      if (!elements.taskModal.contains(document.activeElement)
+          || (event.shiftKey && document.activeElement === first)
+          || (!event.shiftKey && document.activeElement === last)) {
+        event.preventDefault(); (event.shiftKey ? last : first).focus();
+      }
+    }
+    return;
+  }
+  if (event.key === "Escape" && state.taskDraft) {
+    event.preventDefault();
+    if (taskOperationBlocked()) return;
+    if (discardTaskDraft()) renderBoardColumns();
+  }
 }
 
 const RELEASE_TRAIN_FIELDS = ["name", "status", "cadence", "quarter", "plannedReleaseDate",
