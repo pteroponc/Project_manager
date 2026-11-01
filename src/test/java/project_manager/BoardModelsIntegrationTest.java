@@ -74,7 +74,9 @@ class BoardModelsIntegrationTest {
         var before = jdbc.queryForList("select * from board_cards where id=?", id);
         mvc.perform(put("/api/projects/{project}/board/cards/{id}", project, id).param("model", "scrum")
                 .contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsBytes(card("unknown-column"))))
-            .andExpect(status().isNotFound());
+            .andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"))
+            .andExpect(jsonPath("$.fieldErrors.columnKey").exists());
         assertThat(jdbc.queryForList("select * from board_cards where id=?", id)).isEqualTo(before);
     }
 }

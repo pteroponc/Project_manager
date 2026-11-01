@@ -4,8 +4,11 @@ import project_manager.domain.ProjectBoard;
 import project_manager.domain.BoardCard;
 import project_manager.service.BoardService;
 import project_manager.web.dto.BoardCardRequest;
+import project_manager.web.dto.ProjectMutationError;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
+import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -19,6 +22,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
 import java.util.Map;
+import java.util.TreeMap;
 
 @RestController
 @RequestMapping("/api")
@@ -65,5 +69,15 @@ public class BoardController {
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void deleteBoardCard(@PathVariable String projectId, @PathVariable String cardId) {
         boardService.deleteCard(projectId, cardId);
+    }
+
+    @ExceptionHandler(MethodArgumentNotValidException.class)
+    @ResponseStatus(HttpStatus.BAD_REQUEST)
+    public ProjectMutationError handleCardValidation(MethodArgumentNotValidException exception) {
+        Map<String, String> fields = new TreeMap<>();
+        exception.getBindingResult().getFieldErrors().forEach(error ->
+            fields.putIfAbsent(error.getField(), error.getDefaultMessage() == null
+                ? "Invalid value" : error.getDefaultMessage()));
+        return new ProjectMutationError("VALIDATION_ERROR", "Invalid board card fields", fields, null);
     }
 }

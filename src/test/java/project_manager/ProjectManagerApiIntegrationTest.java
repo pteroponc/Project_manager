@@ -76,7 +76,8 @@ class ProjectManagerApiIntegrationTest {
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(cardRequest("backlog", "medium", -1)))
             .andExpect(status().isBadRequest())
-            .andExpect(jsonPath("$.error").value(containsString("estimate")));
+            .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"))
+            .andExpect(jsonPath("$.fieldErrors.estimate").exists());
     }
 
     @Test

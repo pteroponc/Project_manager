@@ -11,6 +11,8 @@ import project_manager.web.dto.BoardCardRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDate;
+import java.time.format.DateTimeParseException;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
@@ -35,7 +37,12 @@ public class BoardService {
     }
 
     public ProjectBoard getBoard(String projectId, String boardModel) {
-        ProjectEntity project = projectService.requireProject(projectId);
+        ProjectEntity project;
+        try {
+            project = projectService.requireProject(projectId);
+        } catch (IllegalArgumentException exception) {
+            throw ProjectMutationException.projectNotFound();
+        }
         String deliveryModel = normalizeDeliveryModel(
             boardModel == null || boardModel.isBlank() ? project.getDeliveryModel() : boardModel
         );
@@ -70,6 +77,7 @@ public class BoardService {
 
     @Transactional
     public BoardCard createCard(String projectId, BoardCardRequest request, String boardModel) {
+        validateRequest(request);
         ProjectEntity project = projectWriteLock.require(projectId);
         List<BoardColumn> columns = columnsFor(project, boardModel);
         validateColumn(columns, request.columnKey());
@@ -103,12 +111,13 @@ public class BoardService {
 
     @Transactional
     public BoardCard updateCard(String projectId, String cardId, BoardCardRequest request, String boardModel) {
+        validateRequest(request);
         ProjectEntity project = projectWriteLock.require(projectId);
-        List<BoardColumn> columns = columnsFor(project, boardModel);
-        validateColumn(columns, request.columnKey());
         BoardCardEntity card = boardCardRepository.findById(cardId)
             .filter(item -> item.getProjectId().equals(projectId))
             .orElseThrow(ProjectMutationException::boardCardNotFound);
+        List<BoardColumn> columns = columnsFor(project, boardModel);
+        validateColumn(columns, request.columnKey());
 
         if (!card.getColumnKey().equals(request.columnKey())) {
             int nextPosition = boardCardRepository
@@ -128,6 +137,7 @@ public class BoardService {
     @Transactional
     public BoardCard transferCard(String sourceProjectId, String targetProjectId, String cardId,
                                   BoardCardRequest request) {
+        validateRequest(request);
         projectWriteLock.requireBoth(sourceProjectId, targetProjectId);
         ProjectEntity target = projectService.requireProject(targetProjectId);
         List<BoardColumn> columns = columnsFor(target);
@@ -187,7 +197,38 @@ public class BoardService {
     private void validateColumn(List<BoardColumn> columns, String columnKey) {
         boolean exists = columns.stream().anyMatch(column -> column.key().equals(columnKey));
         if (!exists) {
-            throw new IllegalArgumentException("Board column not found: " + columnKey);
+            throw ProjectMutationException.invalid("columnKey", "Unknown board column");
+        }
+    }
+
+    private void validateRequest(BoardCardRequest request) {
+        if (request == null) throw ProjectMutationException.badRequest("Invalid board card request");
+        requireText(request.title(), "title", 255);
+        requireText(request.description(), "description", 10000);
+        requireText(request.owner(), "owner", 255);
+        requireText(request.dueDate(), "dueDate", 255);
+        requireText(request.columnKey(), "columnKey", 255);
+        requireText(request.priority(), "priority", 255);
+        if (request.labels() != null && request.labels().length() > 255) {
+            throw ProjectMutationException.invalid("labels", "Must be at most 255 characters");
+        }
+        if (request.estimate() < 0) throw ProjectMutationException.invalid("estimate", "Must be nonnegative");
+        if (!request.dueDate().matches("[0-9]{4}-[0-9]{2}-[0-9]{2}")) {
+            throw ProjectMutationException.invalid("dueDate", "Must be a real date in yyyy-MM-dd format");
+        }
+        try {
+            LocalDate.parse(request.dueDate());
+        } catch (DateTimeParseException exception) {
+            throw ProjectMutationException.invalid("dueDate", "Must be a real date in yyyy-MM-dd format");
+        }
+    }
+
+    private void requireText(String value, String field, int maxLength) {
+        if (value == null || value.isBlank()) {
+            throw ProjectMutationException.invalid(field, "Required value");
+        }
+        if (value.length() > maxLength) {
+            throw ProjectMutationException.invalid(field, "Must be at most " + maxLength + " characters");
         }
     }
 
@@ -256,7 +297,7 @@ public class BoardService {
         }
         return switch (priority.trim().toLowerCase()) {
             case "low", "medium", "high", "critical" -> priority.trim().toLowerCase();
-            default -> throw new IllegalArgumentException("Unsupported priority: " + priority);
+            default -> throw ProjectMutationException.invalid("priority", "Unsupported priority");
         };
     }
 
@@ -278,7 +319,7 @@ public class BoardService {
         }
         return switch (deliveryModel.trim().toLowerCase()) {
             case "scrum", "waterfall", "kanban" -> deliveryModel.trim().toLowerCase();
-            default -> throw new IllegalArgumentException("Unsupported delivery model: " + deliveryModel);
+            default -> throw ProjectMutationException.invalid("model", "Unsupported delivery model");
         };
     }
 }
