@@ -1071,6 +1071,17 @@ async function loadBoard(projectId, boardModel = state.activeBoardModel) {
     if (board.projectId !== projectId || board.deliveryModel !== boardModel) {
       throw new Error("Ответ доски не соответствует выбранному проекту и модели");
     }
+    if (canReconcile && operationAtStart.kind === "reorder") {
+      const column = board.columns?.find((item) => item.key === operationAtStart.columnKey);
+      const snapshot = column && boardOrderSnapshot(column, board);
+      if (!snapshot) throw new Error("Не удалось проверить порядок колонки");
+      const order = await fetchJson(boardOrderUrl({ projectId }, operationAtStart.columnKey));
+      if (!isCurrentBoardRequest(request, projectId, boardModel)) return;
+      if (order?.projectId !== projectId || order.columnKey !== operationAtStart.columnKey
+          || !sameBoardOrder(snapshot, order.cards)) {
+        throw new Error("Снимки доски и порядка не совпали");
+      }
+    }
     state.boardLoading = false;
     state.currentBoard = board;
     if (canReconcile && state.taskOperations?.[projectId] === operationAtStart) delete state.taskOperations[projectId];
@@ -1140,9 +1151,12 @@ function renderBoardColumns() {
     const wipExceeded = column.wipLimit && (column.cards?.length ?? 0) > column.wipLimit;
     columnElement.className = `board-column ${wipExceeded ? "wip-exceeded" : ""}`;
     columnElement.dataset.columnKey = column.key;
-    const visibleCards = (column.cards ?? []).filter(matchesBoardFilters);
+    const orderedCards = board.deliveryModel === "kanban" ? canonicalBoardCards(column) : (column.cards ?? []);
+    const visibleCards = orderedCards.filter(matchesBoardFilters);
+    const orderAvailable = board.deliveryModel === "kanban" && visibleCards.length === orderedCards.length
+      && orderedCards.every((card) => Number.isInteger(board.storedPositions?.[card.id]));
     const cards = visibleCards
-      .map((card) => renderBoardCard(card, column.key))
+      .map((card, index) => renderBoardCard(card, column.key, { index, count: visibleCards.length, orderAvailable }))
       .join("");
 
     columnElement.innerHTML = `
@@ -1153,6 +1167,8 @@ function renderBoardColumns() {
           <button class="btn btn-ghost btn-small" type="button" data-action="new-card" data-column-key="${escapeAttr(column.key)}">Новая задача</button>
         </div>
       </header>
+      ${board.deliveryModel === "kanban" && visibleCards.length !== orderedCards.length
+        ? '<p class="hint-text board-order-hint">Порядок недоступен: фильтр скрывает часть карточек. Сбросьте фильтры.</p>' : ""}
       ${cards || '<div class="empty-state compact">В этой колонке пока нет задач.</div>'}
     `;
     elements.boardColumns.appendChild(columnElement);
@@ -1223,6 +1239,14 @@ function renderBoardColumns() {
       if (nextColumnKey) {
         await moveBoardCard(button.dataset.cardId, nextColumnKey, renderedContext);
       }
+    });
+  });
+
+  elements.boardColumns.querySelectorAll('[data-action="order-up"], [data-action="order-down"]').forEach((button) => {
+    button.addEventListener("click", async () => {
+      if (!isCurrentBoardContext(renderedContext)) return;
+      await reorderBoardCard(button.dataset.cardId, button.dataset.columnKey,
+        button.dataset.action === "order-up" ? "up" : "down", renderedContext);
     });
   });
 
@@ -1387,7 +1411,7 @@ function renderCreatedBoards() {
   });
 }
 
-function renderBoardCard(card, columnKey) {
+function renderBoardCard(card, columnKey, order = null) {
   const hasPreviousColumn = Boolean(adjacentColumnKey(columnKey, -1));
   const hasNextColumn = Boolean(adjacentColumnKey(columnKey, 1));
   const overdue = isTaskOverdue(card, columnKey, state.currentBoard?.deliveryModel);
@@ -1412,11 +1436,126 @@ function renderBoardCard(card, columnKey) {
         <div class="board-card-move-actions" aria-label="Быстрый перенос задачи">
           <button class="btn btn-ghost btn-small" type="button" data-action="move-prev" data-card-id="${escapeAttr(card.id)}" data-column-key="${escapeAttr(columnKey)}" aria-label="Перенести в предыдущий статус" title="Перенести в предыдущий статус" ${hasPreviousColumn ? "" : "disabled"}>&larr;</button>
           <button class="btn btn-ghost btn-small" type="button" data-action="move-next" data-card-id="${escapeAttr(card.id)}" data-column-key="${escapeAttr(columnKey)}" aria-label="Перенести в следующий статус" title="Перенести в следующий статус" ${hasNextColumn ? "" : "disabled"}>&rarr;</button>
+          ${order ? `<button class="btn btn-ghost btn-small" type="button" data-action="order-up" data-card-id="${escapeAttr(card.id)}" data-column-key="${escapeAttr(columnKey)}" aria-label="Переместить задачу ${escapeAttr(card.title)} вверх в колонке" title="Выше" ${order.orderAvailable && order.index > 0 ? "" : "disabled"}>&uarr;</button>
+          <button class="btn btn-ghost btn-small" type="button" data-action="order-down" data-card-id="${escapeAttr(card.id)}" data-column-key="${escapeAttr(columnKey)}" aria-label="Переместить задачу ${escapeAttr(card.title)} вниз в колонке" title="Ниже" ${order.orderAvailable && order.index < order.count - 1 ? "" : "disabled"}>&darr;</button>` : ""}
         </div>
         <button class="btn btn-ghost btn-small" type="button" data-action="edit-card" data-card-id="${escapeAttr(card.id)}">Редактировать</button>
       </div>
     </article>
   `;
+}
+
+function canonicalBoardCards(column, board = state.currentBoard) {
+  const positions = board?.storedPositions ?? {};
+  return [...(column.cards ?? [])].sort((left, right) =>
+    (positions[left.id] - positions[right.id]) || (left.id < right.id ? -1 : left.id > right.id ? 1 : 0));
+}
+
+function boardOrderSnapshot(column, board = state.currentBoard) {
+  const positions = board?.storedPositions;
+  if (!positions || !(column.cards ?? []).every((card) => Number.isInteger(positions[card.id])
+      && Number.isSafeInteger(card.version))) return null;
+  return canonicalBoardCards(column, board).map((card) =>
+    ({ id: card.id, position: positions[card.id], version: card.version }));
+}
+
+function sameBoardOrder(expected, actual) {
+  return Array.isArray(actual) && expected.length === actual.length
+    && expected.every((card, index) => card.id === actual[index]?.id
+      && card.position === actual[index]?.position && card.version === actual[index]?.version);
+}
+
+function boardOrderUrl(context, columnKey) {
+  return `/api/projects/${encodeURIComponent(context.projectId)}/board/kanban/columns/${encodeURIComponent(columnKey)}/order`;
+}
+
+async function refreshBoardAfterOrder(context, operation, message) {
+  operation.phase = "unknown";
+  const refresh = loadBoard(context.projectId, context.model);
+  const refreshRequest = state.boardRequest;
+  const refreshed = await refresh;
+  if (!isCurrentBoardRequest(refreshRequest, context.projectId, context.model)) return;
+  setBoardMessage(refreshed ? message
+    : `${message} Не удалось подтвердить актуальный порядок. Повторите чтение перед изменением порядка.`, true);
+  syncTaskControls();
+}
+
+async function reorderBoardCard(cardId, columnKey, direction, context = activeBoardContext()) {
+  if (!isCurrentBoardContext(context) || context.model !== "kanban" || taskOperationBlocked()
+      || !["up", "down"].includes(direction)) return;
+  const column = state.currentBoard.columns.find((item) => item.key === columnKey);
+  if (!column || !(column.cards ?? []).some((card) => card.id === cardId)
+      || column.cards.some((card) => !matchesBoardFilters(card))) return;
+  const shown = boardOrderSnapshot(column);
+  if (!shown) return;
+  const index = shown.findIndex((card) => card.id === cardId);
+  if (index < 0 || (direction === "up" && index === 0)
+      || (direction === "down" && index === shown.length - 1)) return;
+
+  captureTaskDraft();
+  state.taskOperations ??= {};
+  const operation = { kind: "reorder", cardId, columnKey, context, phase: "pending" };
+  state.taskOperations[context.projectId] = operation;
+  syncTaskControls();
+  setBoardMessage("Проверяем актуальный порядок задач...");
+  try {
+    const current = await fetchJson(boardOrderUrl(context, columnKey));
+    if (state.taskOperations[context.projectId] !== operation) return;
+    if (!isCurrentBoardContext(context)) { operation.phase = "unknown"; return; }
+    if (current?.projectId !== context.projectId || current.columnKey !== columnKey
+        || !sameBoardOrder(shown, current.cards)) {
+      await refreshBoardAfterOrder(context, operation,
+        "Порядок изменился. Доска перечитана; проверьте карточки и нажмите кнопку снова.");
+      return;
+    }
+    setBoardMessage("Меняем порядок задач...");
+    const result = await fetchJson(`${boardOrderUrl(context, columnKey).replace(/\/order$/, "")}/cards/${encodeURIComponent(cardId)}/reorder`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ direction, expectedOrder: current.cards })
+    });
+    if (state.taskOperations[context.projectId] !== operation) return;
+    if (!isCurrentBoardContext(context)) { operation.phase = "unknown"; return; }
+    if (result?.projectId !== context.projectId || result.columnKey !== columnKey
+        || result.changed !== true || !Array.isArray(result.cards)
+        || result.cards.length !== shown.length
+        || new Set(result.cards.map((card) => card.id)).size !== shown.length
+        || result.cards.some((card) => !shown.some((before) => before.id === card.id)
+          || !Number.isInteger(card.position) || !Number.isSafeInteger(card.version))) {
+      await refreshBoardAfterOrder(context, operation,
+        "Ответ сервера не подтвердил новый порядок. Доска перечитана; проверьте результат.");
+      return;
+    }
+    const byId = new Map(column.cards.map((card) => [card.id, card]));
+    const draft = state.taskDraft;
+    if (draft?.kind === "edit" && draft.dirty) {
+      const oldVersion = byId.get(draft.cardId)?.version;
+      const newVersion = result.cards.find((card) => card.id === draft.cardId)?.version;
+      if (newVersion !== undefined && oldVersion !== newVersion) draft.conflict = true;
+    }
+    column.cards = result.cards.map((item) => {
+      const card = byId.get(item.id);
+      card.version = item.version;
+      state.currentBoard.storedPositions[item.id] = item.position;
+      return card;
+    });
+    delete state.taskOperations[context.projectId];
+    renderBoardColumns();
+    setBoardMessage(draft?.conflict
+      ? "Порядок изменён. Черновик сохранён; сравните его с новой версией задачи перед сохранением."
+      : "Порядок задач обновлён сервером.");
+    syncTaskControls();
+  } catch (error) {
+    if (state.taskOperations[context.projectId] !== operation) return;
+    if (!isCurrentBoardContext(context)) { operation.phase = "unknown"; return; }
+    const message = error.status === 400
+      ? "Сервер отклонил запрос порядка. Черновик сохранён; проверьте данные перед новым действием."
+      : error.status === 404
+      ? "Задача или колонка больше не доступна. Черновик сохранён."
+      : error.status === 409
+      ? "Порядок изменён другим действием. Повторное перемещение не выполнялось. Черновик сохранён."
+      : "Результат изменения порядка неизвестен. Проверьте фактический порядок перед новым действием. Черновик сохранён.";
+    await refreshBoardAfterOrder(context, operation, message);
+  }
 }
 
 function adjacentColumnKey(columnKey, offset) {
