@@ -111,7 +111,7 @@ class ArchitectureSchemaMigrationIntegrationTest {
     @Test
     void allRepositoriesPersistNullableFieldsAndSetsAndReadsDoNotWrite() throws Exception {
         String url = memoryUrl();
-        try (Connection connection = setup(url, true)) { script(connection, "V004__architecture_security.sql"); script(connection, "V005__architecture_passport_instance.sql"); }
+        try (Connection connection = setup(url, true)) { script(connection, "V004__architecture_security.sql"); script(connection, "V005__architecture_passport_instance.sql"); script(connection, "V006__board_card_version.sql"); }
         try (var context = new SpringApplicationBuilder(ProjectManagerApplication.class)
             .web(WebApplicationType.NONE).run("--spring.datasource.url=" + url,
                 "--spring.jpa.hibernate.ddl-auto=validate", "--spring.profiles.active=default", "--logging.level.root=ERROR")) {

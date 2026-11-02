@@ -54,7 +54,7 @@ function board(projectId, model, cards = []) {
 
 function card(id = 'card-a') {
   return { id, title: id, description: 'Description', owner: 'QA', dueDate: '2026-10-20',
-    columnKey: 'review', priority: 'medium', labels: '', estimate: 2, blocked: false };
+    columnKey: 'review', priority: 'medium', labels: '', estimate: 2, blocked: false, version: 0 };
 }
 
 function formData(overrides = {}) {
@@ -69,7 +69,7 @@ function harness() {
     get(target, key) { return target[key] ??= node(); }
   });
   const state = { activeView: 'project-card', projects: [{ id: 'A', name: 'A' }, { id: 'B', name: 'B' }],
-    taskOperations: {}, taskDraft: null, createdBoards: [], projectsRequest: 0, boardCatalogLoaded: false, boardCatalogLoading: false, boardCatalogError: false,
+    taskOperations: {}, taskDraft: null, taskConflict: null, createdBoards: [], projectsRequest: 0, boardCatalogLoaded: false, boardCatalogLoading: false, boardCatalogError: false,
     boardFilters: { query: '', priority: 'all', blocked: false },
     selectedProjectId: null, activeBoardModel: 'kanban', boardDrilledIn: false,
     boardRequest: 0, boardLoading: false, boardProjectSelectionRequired: false,
@@ -386,6 +386,7 @@ function draftFor(h, kind = 'edit') {
     h.elements.boardColumns.querySelector('[data-card-id="card-a"]').selectors.set('form', form);
   }
   h.state.taskDraft = { kind, ...h.context.activeBoardContext(), cardId: kind === 'edit' ? 'card-a' : null,
+    expectedVersion: kind === 'edit' ? 0 : null,
     baseline: { title: 'Original', columnKey: 'review', blocked: false },
     values: { title: 'Draft title', columnKey: 'review', blocked: false }, dirty: true };
   return form;
@@ -418,6 +419,28 @@ test('PUT blocks another PUT, DELETE and POST until definitive error; form remai
   assert.equal(form.elements[0].value, 'Draft title');
   assert.equal(h.state.taskDraft.dirty, true);
   assert.match(h.messages.at(-1), /Введённые данные сохранены/);
+});
+
+test('409 keeps edit draft and original version, offers reread and never retries automatically', async () => {
+  const h = await loadedBoard(); const form = draftFor(h);
+  const save = h.context.saveBoardCard('card-a', formData());
+  assert.equal(JSON.parse(h.calls[1].options.body).expectedVersion, 0);
+  h.calls[1].reject(Object.assign(Error('Version conflict'), {
+    status: 409, code: 'BOARD_CARD_VERSION_CONFLICT', currentVersion: 1
+  }));
+  await save;
+  assert.equal(h.calls.length, 2);
+  assert.equal(h.state.taskDraft.expectedVersion, 0);
+  assert.equal(h.state.taskDraft.conflict, true);
+  assert.equal(form.elements[0].value, 'Draft title');
+  assert.equal(h.elements.taskReload.classList.contains('hidden'), false);
+  assert.match(h.messages.at(-1), /Черновик сохранён/);
+  const fresh = card(); fresh.version = 1; fresh.title = 'Other editor';
+  const reread = h.context.loadBoard('A', 'kanban');
+  h.calls[2].resolve(board('A', 'kanban', [fresh])); await reread;
+  assert.equal(h.state.taskDraft.expectedVersion, 0);
+  await h.context.saveBoardCard('card-a', formData());
+  assert.equal(h.calls.length, 3);
 });
 
 test('DELETE repeat is blocked before a second confirmation and request', async () => {

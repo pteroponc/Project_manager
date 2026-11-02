@@ -77,6 +77,7 @@ class ArchitectureBrowserServerTest {
         try (var connection = setup(url, true)) {
             script(connection, "V004__architecture_security.sql");
             script(connection, "V005__architecture_passport_instance.sql");
+            script(connection, "V006__board_card_version.sql");
             jdbc(connection).update("update projects set name='C4 Fictional Atlas', owner='Review Owner', quarter='Q1' where id='zero'");
         }
         try (var context = new SpringApplicationBuilder(ProjectManagerApplication.class, HttpEvidence.class).run(

@@ -82,6 +82,7 @@ class ProjectSchemaMigrationIntegrationTest {
             ScriptUtils.executeSqlScript(connection,
                 new FileSystemResource("db/manual/V004__architecture_security.sql"));
             ScriptUtils.executeSqlScript(connection, new FileSystemResource("db/manual/V005__architecture_passport_instance.sql"));
+            ScriptUtils.executeSqlScript(connection, new FileSystemResource("db/manual/V006__board_card_version.sql"));
         }
 
         try (var context = new SpringApplicationBuilder(ProjectManagerApplication.class)

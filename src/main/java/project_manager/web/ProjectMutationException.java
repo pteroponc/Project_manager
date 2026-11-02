@@ -46,6 +46,11 @@ public class ProjectMutationException extends RuntimeException {
             "Project version does not match", null, currentVersion);
     }
 
+    public static ProjectMutationException boardCardVersionConflict(long currentVersion) {
+        return new ProjectMutationException(HttpStatus.CONFLICT, "BOARD_CARD_VERSION_CONFLICT",
+            "Board card version does not match", null, currentVersion);
+    }
+
     public HttpStatus getStatus() { return status; }
     public String getCode() { return code; }
     public Map<String, String> getFieldErrors() { return fieldErrors; }

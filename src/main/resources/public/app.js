@@ -55,6 +55,7 @@ const state = {
   trainMutationPending: false,
   taskOperations: {},
   taskDraft: null,
+  taskConflict: null,
   taskModalReturnFocus: null,
   boardRequest: 0,
   boardLoading: false,
@@ -1073,6 +1074,7 @@ async function loadBoard(projectId, boardModel = state.activeBoardModel) {
     state.boardLoading = false;
     state.currentBoard = board;
     if (canReconcile && state.taskOperations?.[projectId] === operationAtStart) delete state.taskOperations[projectId];
+    if (state.taskConflict?.projectId === projectId) state.taskConflict = null;
     rememberBoardVisit(board);
     renderBoardProjectPicker();
     elements.boardTitle.textContent = `${board.projectName} - ${board.boardTitle}`;
@@ -1092,6 +1094,9 @@ async function loadBoard(projectId, boardModel = state.activeBoardModel) {
       setBoardMessage("На доске пока нет задач. Создайте первую задачу.");
     }
     if (canReconcile) setBoardMessage("Доска перечитана. Проверьте результат предыдущей операции перед повторным сохранением.");
+    if (state.taskDraft?.conflict) {
+      setBoardMessage("Доска перечитана. Ваш черновик сохранён; сравните его с текущими данными задачи перед новым редактированием.", true);
+    }
     return true;
   } catch (error) {
     if (!isCurrentBoardRequest(request, projectId, boardModel)) return;
@@ -1438,7 +1443,8 @@ async function moveBoardCard(cardId, columnKey, expectedContext = activeBoardCon
     priority: found.card.priority,
     labels: found.card.labels,
     estimate: Number(found.card.estimate || 0),
-    blocked: Boolean(found.card.blocked)
+    blocked: Boolean(found.card.blocked),
+    expectedVersion: found.card.version
   };
   if (!discardTaskDraft()) return;
   return runTaskMutation("move", cardId, expectedContext, boardCardUrl(cardId, expectedContext),
@@ -1527,6 +1533,14 @@ function startEditBoardCard(card, columnKey, restoring = false) {
   cardElement.innerHTML = `
     <form class="board-card-form" data-card-form="${escapeAttr(card.id)}">
       <p class="hint-text">Открытая форма остаётся видимой независимо от фильтров.</p>
+      ${restoring && state.taskDraft?.conflict ? state.taskDraft.cardMissing
+        ? '<p class="hint-text" role="status">Задача удалена. Черновик доступен для копирования; сохранение отключено.</p>'
+        : `<details class="hint-text" open><summary>Текущая задача, версия ${Number(card.version)}</summary>
+            <p>Название: ${escapeHtml(card.title)}; описание: ${escapeHtml(card.description)}; владелец: ${escapeHtml(card.owner)};</p>
+            <p>Срок: ${escapeHtml(card.dueDate)}; приоритет: ${escapeHtml(card.priority)}; колонка: ${escapeHtml(columnKey)};</p>
+            <p>Теги: ${escapeHtml(card.labels ?? "")}; оценка: ${Number(card.estimate)}; блокировка: ${card.blocked ? "да" : "нет"}.</p>
+            <p>Поля формы ниже — ваш сохранённый черновик. Сравните их и начните новое редактирование после закрытия формы.</p>
+          </details>` : ""}
       <label>
         <span>Колонка</span>
         <select name="columnKey" required>${columnOptions}</select>
@@ -1573,7 +1587,8 @@ function startEditBoardCard(card, columnKey, restoring = false) {
   `;
 
   const form = cardElement.querySelector("form");
-  if (!restoring) state.taskDraft = { kind: "edit", ...context, cardId: card.id, originalCard: { ...card }, originalColumn: columnKey, returnFocus,
+  if (!restoring) state.taskDraft = { kind: "edit", ...context, cardId: card.id, originalCard: { ...card }, originalColumn: columnKey,
+    expectedVersion: card.version, returnFocus,
     baseline: taskFormValues(form), values: taskFormValues(form), dirty: false };
   form.addEventListener("input", captureTaskDraft);
   form.addEventListener("change", captureTaskDraft);
@@ -1597,14 +1612,22 @@ async function deleteBoardCard(card) {
   const context = activeBoardContext();
   if (!context || !findBoardCard(card.id) || taskOperationBlocked()) return;
   if (!window.confirm(`Удалить задачу "${card.title}"?`) || !discardTaskDraft()) return;
-  if (!isCurrentBoardContext(context) || !findBoardCard(card.id)) return;
-  return runTaskMutation("delete", card.id, context, boardCardUrl(card.id, context), "DELETE", null,
+  const current = findBoardCard(card.id);
+  if (!isCurrentBoardContext(context) || !current) return;
+  return runTaskMutation("delete", card.id, context,
+    `${boardCardUrl(card.id, context)}&expectedVersion=${encodeURIComponent(current.card.version)}`, "DELETE", null,
     `Задача "${card.title}" удалена`);
 }
 
 async function saveBoardCard(cardId, formData, context = activeBoardContext()) {
   if (!isCurrentBoardContext(context) || !findBoardCard(cardId)) return;
+  if (state.taskDraft?.kind === "edit" && state.taskDraft.cardId === cardId && state.taskDraft.conflict) {
+    setBoardMessage("Черновик сохранён. Перечитайте и сравните текущую задачу; новое сохранение начните после явного закрытия этой формы.", true);
+    return;
+  }
   const payload = boardCardPayload(formData);
+  payload.expectedVersion = state.taskDraft?.kind === "edit" && state.taskDraft.cardId === cardId
+    ? state.taskDraft.expectedVersion : findBoardCard(cardId).card.version;
   if (!state.currentBoard.columns.some((column) => column.key === payload.columnKey)) return;
   return runTaskMutation("save", cardId, context, boardCardUrl(cardId, context), "PUT", payload, "Задача обновлена");
 }
@@ -1657,6 +1680,7 @@ function restoreTaskDraft() {
   if (draft.kind === "edit") {
     const found = findBoardCard(draft.cardId);
     if (!found) {
+      draft.cardMissing = true;
       setBoardMessage("Задача больше не доступна. Черновик сохранён; подтвердите сброс перед сменой контекста.", true);
       if (!draft.originalCard) return;
       const holder = document.createElement("article");
@@ -1666,6 +1690,7 @@ function restoreTaskDraft() {
       startEditBoardCard(draft.originalCard, draft.originalColumn, true);
       holder.querySelector('[type="submit"]').disabled = true;
     } else {
+      draft.cardMissing = false;
       startEditBoardCard(found.card, found.columnKey, true);
     }
   } else {
@@ -1705,7 +1730,8 @@ function syncTaskControls() {
   elements.taskModalEdit.disabled = blocked;
   elements.taskModalDelete.disabled = blocked;
   elements.boardColumns?.setAttribute("aria-busy", String(Boolean(operation?.phase === "pending" || state.boardLoading)));
-  elements.taskReload?.classList.toggle("hidden", operation?.phase !== "unknown");
+  elements.taskReload?.classList.toggle("hidden", operation?.phase !== "unknown"
+    && !state.taskConflict && !state.taskDraft?.conflict);
   if (elements.taskReload) elements.taskReload.disabled = state.boardLoading;
 }
 
@@ -1732,7 +1758,14 @@ async function runTaskMutation(kind, cardId, context, url, method, payload, succ
     if (unknown || !isCurrentBoardContext(context)) operation.phase = "unknown";
     else delete state.taskOperations[context.projectId];
     if (isCurrentBoardContext(context)) {
-      setBoardMessage(unknown
+      const conflict = error.status === 409 && error.code === "BOARD_CARD_VERSION_CONFLICT";
+      if (conflict) {
+        state.taskConflict = { projectId: context.projectId, cardId };
+        if (draft?.kind === "edit" && draft.cardId === cardId) draft.conflict = true;
+      }
+      setBoardMessage(conflict
+        ? "Задача изменена другим действием. Черновик сохранён. Перечитайте доску и сравните текущие данные; повторное сохранение не выполняется автоматически."
+        : unknown
         ? "Результат операции неизвестен. Перечитайте доску перед повторным действием. Черновик сохранён."
         : `${error.message || "Не удалось сохранить задачу"}. Введённые данные сохранены.`, true);
       syncTaskControls();

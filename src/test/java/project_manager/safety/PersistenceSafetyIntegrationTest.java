@@ -57,12 +57,12 @@ class PersistenceSafetyIntegrationTest {
             // Explicit mutations still work; deleted cards must not return on GET.
             var boards = context.getBean(BoardService.class);
             var created = boards.createCard("p", new BoardCardRequest("Task", "Text", "Owner", "2030-01-01", "backlog", "low", "tag", 1, false));
-            boards.updateCard("p", created.id(), new BoardCardRequest("Edited", "Text", "Owner", "2030-01-02", "done", "high", "tag", 2, true));
-            boards.deleteCard("p", created.id());
+            var updated = boards.updateCard("p", created.id(), new BoardCardRequest("Edited", "Text", "Owner", "2030-01-02", "done", "high", "tag", 2, true).withExpectedVersion(created.version()));
+            boards.deleteCard("p", created.id(), Long.toString(updated.version()));
             var deletedTemplate = strings(new BoardCardEntity());
             deletedTemplate.setId("p-risk"); deletedTemplate.setProjectId("p"); deletedTemplate.setColumnKey("ready");
             context.getBean(BoardCardRepository.class).save(deletedTemplate);
-            boards.deleteCard("p", "p-risk");
+            boards.deleteCard("p", "p-risk", "0");
             expected = snapshot(jdbc);
             verifyReads(context, expected);
         }

@@ -67,7 +67,7 @@ class ProjectDeletionDependenciesIntegrationTest {
             if (url==null || !url.startsWith("jdbc:h2:mem:pmtest_")) throw new IllegalStateException("Memory tests only");
             try (var connection=java.sql.DriverManager.getConnection(url,"sa","")) {
                 org.springframework.jdbc.datasource.init.ScriptUtils.executeSqlScript(connection,new org.springframework.core.io.ClassPathResource("pm002a-old-schema.sql"));
-                for (String file : List.of("V002__project_model_and_milestones.sql","V003__board_cards_project_fk.sql","V004__architecture_security.sql","V005__architecture_passport_instance.sql"))
+                for (String file : List.of("V002__project_model_and_milestones.sql","V003__board_cards_project_fk.sql","V004__architecture_security.sql","V005__architecture_passport_instance.sql","V006__board_card_version.sql"))
                     org.springframework.jdbc.datasource.init.ScriptUtils.executeSqlScript(connection,new org.springframework.core.io.FileSystemResource("db/manual/"+file));
             } catch (java.sql.SQLException error) { throw new IllegalStateException("Memory schema setup failed",error); }
         }
@@ -184,7 +184,7 @@ class ProjectDeletionDependenciesIntegrationTest {
         CountDownLatch written=new CountDownLatch(1),release=new CountDownLatch(1);
         try (var executor=Executors.newFixedThreadPool(2)) {
             var first=executor.submit(() -> new TransactionTemplate(manager).execute(status -> {
-                if (transferFirst) boards.transferCard("p","r",card,cardRequest("Moved"));
+                if (transferFirst) boards.transferCard("p","r",card,cardRequest("Moved").withExpectedVersion(0));
                 else { unchecked(delete("/api/projects/"+deleted),null,deletionStatus);if (deletionStatus==409) status.setRollbackOnly(); }
                 written.countDown();await(release);return true;
             }));
@@ -192,7 +192,7 @@ class ProjectDeletionDependenciesIntegrationTest {
                 assertThat(written.await(5,TimeUnit.SECONDS)).isTrue();
                 var second=executor.submit(() -> {
                     if (transferFirst) return (Object)unchecked(delete("/api/projects/"+deleted),null,deletionStatus);
-                    try { return (Object)boards.transferCard("p","r",card,cardRequest("Moved")); }
+                    try { return (Object)boards.transferCard("p","r",card,cardRequest("Moved").withExpectedVersion(0)); }
                     catch (project_manager.web.ProjectMutationException error) { return error; }
                 });
                 blocked("projects",second);release.countDown();first.get(5,TimeUnit.SECONDS);Object result=second.get(5,TimeUnit.SECONDS);
@@ -212,8 +212,8 @@ class ProjectDeletionDependenciesIntegrationTest {
     }
     @Test void bothTransferDirectionsTakeProjectLocksInStableIdOrder() {
         String card=boards.createCard("p",cardRequest("Original")).id();clearInvocations(locks);
-        boards.transferCard("p","r",card,cardRequest("Forward"));
-        boards.transferCard("r","p",card,cardRequest("Back"));
+        boards.transferCard("p","r",card,cardRequest("Forward").withExpectedVersion(0));
+        boards.transferCard("r","p",card,cardRequest("Back").withExpectedVersion(1));
         var order=inOrder(locks);
         order.verify(locks).requireBoth("p","r");order.verify(locks).require("p");order.verify(locks).require("r");
         order.verify(locks).requireBoth("r","p");order.verify(locks).require("p");order.verify(locks).require("r");

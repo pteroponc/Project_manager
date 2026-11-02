@@ -62,6 +62,7 @@ class ArchitecturePortfolioSummaryIntegrationTest {
             try (var connection = setup(url, true)) {
                 script(connection, "V004__architecture_security.sql");
                 script(connection, "V005__architecture_passport_instance.sql");
+                script(connection, "V006__board_card_version.sql");
             } catch (Exception e) { throw new IllegalStateException("Cannot prepare isolated D1 test schema",e); }
         }
     }

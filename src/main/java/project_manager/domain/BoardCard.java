@@ -9,6 +9,7 @@ public record BoardCard(
     String priority,
     String labels,
     int estimate,
-    boolean blocked
+    boolean blocked,
+    long version
 ) {
 }

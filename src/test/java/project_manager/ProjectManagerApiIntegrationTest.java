@@ -232,7 +232,8 @@ class ProjectManagerApiIntegrationTest {
               "priority": "%s",
               "labels": "release, verification",
               "estimate": %d,
-              "blocked": false
+              "blocked": false,
+              "expectedVersion": 0
             }
             """.formatted(columnKey, priority, estimate);
     }

@@ -38,7 +38,8 @@ class BoardModelsIntegrationTest {
 
     private Map<String, Object> card(String column) {
         return Map.of("title", "Shared task", "description", "One server task in all models", "owner", "Review",
-            "dueDate", "2026-12-20", "columnKey", column, "priority", "medium", "labels", "review", "estimate", 3, "blocked", false);
+            "dueDate", "2026-12-20", "columnKey", column, "priority", "medium", "labels", "review", "estimate", 3, "blocked", false,
+            "expectedVersion", 0);
     }
 
     @Test

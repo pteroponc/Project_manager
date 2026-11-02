@@ -172,7 +172,8 @@ class BoardCardValidationIntegrationTest {
                 .contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsBytes(valid)))
             .andExpect(status().isOk()).andExpect(jsonPath("$.id").value(id))
             .andExpect(jsonPath("$.title").value("changed"));
-        mvc.perform(delete("/api/projects/{project}/board/cards/{id}", project, id))
+        mvc.perform(delete("/api/projects/{project}/board/cards/{id}", project, id)
+                .param("expectedVersion", "1"))
             .andExpect(status().isNoContent());
         assertThat(cardCount(project)).isZero();
     }
@@ -208,6 +209,7 @@ class BoardCardValidationIntegrationTest {
         body.put("labels", "review");
         body.put("estimate", 1);
         body.put("blocked", false);
+        body.put("expectedVersion", 0);
         return body;
     }
 

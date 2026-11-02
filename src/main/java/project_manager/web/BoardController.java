@@ -7,6 +7,7 @@ import project_manager.web.dto.BoardCardRequest;
 import project_manager.web.dto.ProjectMutationError;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
+import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -67,8 +68,16 @@ public class BoardController {
 
     @DeleteMapping("/projects/{projectId}/board/cards/{cardId}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    public void deleteBoardCard(@PathVariable String projectId, @PathVariable String cardId) {
-        boardService.deleteCard(projectId, cardId);
+    public void deleteBoardCard(@PathVariable String projectId, @PathVariable String cardId,
+                                @RequestParam(required = false) String expectedVersion) {
+        boardService.deleteCard(projectId, cardId, expectedVersion);
+    }
+
+    @ExceptionHandler(ObjectOptimisticLockingFailureException.class)
+    @ResponseStatus(HttpStatus.CONFLICT)
+    public ProjectMutationError handleCardOptimisticConflict(ObjectOptimisticLockingFailureException exception) {
+        return new ProjectMutationError("BOARD_CARD_VERSION_CONFLICT",
+            "Board card version does not match; reread the board", null, null);
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)

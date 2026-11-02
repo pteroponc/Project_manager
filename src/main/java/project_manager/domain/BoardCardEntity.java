@@ -4,6 +4,8 @@ import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import jakarta.persistence.Version;
+import org.hibernate.annotations.ColumnDefault;
 
 @Entity
 @Table(name = "board_cards")
@@ -39,6 +41,11 @@ public class BoardCardEntity {
     private Integer estimate;
 
     private Boolean blocked;
+
+    @Version
+    @ColumnDefault("0")
+    @Column(nullable = false)
+    private Long version;
 
     public String getId() {
         return id;
@@ -134,5 +141,13 @@ public class BoardCardEntity {
 
     public void setBlocked(Boolean blocked) {
         this.blocked = blocked;
+    }
+
+    public Long getVersion() {
+        return version;
+    }
+
+    public void setVersion(Long version) {
+        this.version = version;
     }
 }

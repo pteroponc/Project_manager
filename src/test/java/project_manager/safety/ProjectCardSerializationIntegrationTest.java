@@ -110,10 +110,10 @@ class ProjectCardSerializationIntegrationTest {
             BoardService boards = context.getBean(BoardService.class);
             JdbcTemplate jdbc = context.getBean(JdbcTemplate.class);
             String cardId = boards.createCard("p1", request("Move me")).id();
-            boards.transferCard("p1", "p2", cardId, request("Moved"));
+            boards.transferCard("p1", "p2", cardId, request("Moved").withExpectedVersion(0));
             assertThat(jdbc.queryForObject("select project_id from board_cards where id=?", String.class, cardId))
                 .isEqualTo("p2");
-            assertThatThrownBy(() -> boards.transferCard("p2", "missing", cardId, request("Bad")))
+            assertThatThrownBy(() -> boards.transferCard("p2", "missing", cardId, request("Bad").withExpectedVersion(1)))
                 .isInstanceOf(ProjectMutationException.class);
             assertThat(jdbc.queryForObject("select project_id from board_cards where id=?", String.class, cardId))
                 .isEqualTo("p2");
@@ -125,12 +125,12 @@ class ProjectCardSerializationIntegrationTest {
                 var left = executor.submit(() -> {
                     ready.countDown();
                     await(go);
-                    boards.transferCard("p2", "p1", cardId, request("Left"));
+                    boards.transferCard("p2", "p1", cardId, request("Left").withExpectedVersion(1));
                 });
                 var right = executor.submit(() -> {
                     ready.countDown();
                     await(go);
-                    boards.transferCard("p1", "p2", oppositeId, request("Right"));
+                    boards.transferCard("p1", "p2", oppositeId, request("Right").withExpectedVersion(0));
                 });
                 assertThat(ready.await(5, TimeUnit.SECONDS)).isTrue();
                 go.countDown();
@@ -154,6 +154,7 @@ class ProjectCardSerializationIntegrationTest {
             ScriptUtils.executeSqlScript(connection, new FileSystemResource("db/manual/V003__board_cards_project_fk.sql"));
             ScriptUtils.executeSqlScript(connection, new FileSystemResource("db/manual/V004__architecture_security.sql"));
             ScriptUtils.executeSqlScript(connection, new FileSystemResource("db/manual/V005__architecture_passport_instance.sql"));
+            ScriptUtils.executeSqlScript(connection, new FileSystemResource("db/manual/V006__board_card_version.sql"));
             JdbcTemplate jdbc = new JdbcTemplate(new SingleConnectionDataSource(connection, true));
             for (String id : new String[]{"p1", "p2"}) {
                 jdbc.update("insert into projects(id,name,owner,status,health,delivery_model,budget,progress,quarter,"

@@ -13,6 +13,16 @@ public record BoardCardRequest(
     @NotBlank @Size(max = 255) String priority,
     @Size(max = 255) String labels,
     @Min(0) int estimate,
-    boolean blocked
+    boolean blocked,
+    Long expectedVersion
 ) {
+    public BoardCardRequest(String title, String description, String owner, String dueDate,
+                            String columnKey, String priority, String labels, int estimate, boolean blocked) {
+        this(title, description, owner, dueDate, columnKey, priority, labels, estimate, blocked, null);
+    }
+
+    public BoardCardRequest withExpectedVersion(long version) {
+        return new BoardCardRequest(title, description, owner, dueDate, columnKey, priority,
+            labels, estimate, blocked, version);
+    }
 }

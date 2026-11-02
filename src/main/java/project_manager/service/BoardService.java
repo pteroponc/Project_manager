@@ -1,5 +1,6 @@
 package project_manager.service;
 
+import jakarta.persistence.EntityManager;
 import project_manager.domain.BoardCard;
 import project_manager.domain.BoardCardEntity;
 import project_manager.domain.BoardColumn;
@@ -24,12 +25,14 @@ public class BoardService {
     private final ProjectService projectService;
     private final BoardCardRepository boardCardRepository;
     private final ProjectWriteLock projectWriteLock;
+    private final EntityManager entityManager;
 
     public BoardService(ProjectService projectService, BoardCardRepository boardCardRepository,
-                        ProjectWriteLock projectWriteLock) {
+                        ProjectWriteLock projectWriteLock, EntityManager entityManager) {
         this.projectService = projectService;
         this.boardCardRepository = boardCardRepository;
         this.projectWriteLock = projectWriteLock;
+        this.entityManager = entityManager;
     }
 
     public ProjectBoard getBoard(String projectId) {
@@ -116,6 +119,8 @@ public class BoardService {
         BoardCardEntity card = boardCardRepository.findById(cardId)
             .filter(item -> item.getProjectId().equals(projectId))
             .orElseThrow(ProjectMutationException::boardCardNotFound);
+        long expectedVersion = requireExpectedVersion(request.expectedVersion());
+        checkVersion(card, expectedVersion);
         List<BoardColumn> columns = columnsFor(project, boardModel);
         validateColumn(columns, request.columnKey());
 
@@ -130,7 +135,7 @@ public class BoardService {
             card.setPosition(nextPosition);
         }
         applyCardRequest(card, request);
-        return toCard(boardCardRepository.saveAndFlush(card));
+        return toCard(saveWithVersionBump(card, expectedVersion));
     }
 
     /** Service-level transfer for callers that move a card between projects. */
@@ -145,6 +150,8 @@ public class BoardService {
         BoardCardEntity card = boardCardRepository.findById(cardId)
             .filter(item -> item.getProjectId().equals(sourceProjectId))
             .orElseThrow(ProjectMutationException::boardCardNotFound);
+        long expectedVersion = requireExpectedVersion(request.expectedVersion());
+        checkVersion(card, expectedVersion);
         int nextPosition = boardCardRepository
             .findByProjectIdAndColumnKeyOrderByPositionAsc(targetProjectId, request.columnKey())
             .stream().mapToInt(BoardCardEntity::getPosition).max().orElse(-1) + 1;
@@ -152,16 +159,53 @@ public class BoardService {
         card.setColumnKey(request.columnKey());
         card.setPosition(nextPosition);
         applyCardRequest(card, request);
-        return toCard(boardCardRepository.saveAndFlush(card));
+        return toCard(saveWithVersionBump(card, expectedVersion));
     }
 
     @Transactional
-    public void deleteCard(String projectId, String cardId) {
+    public void deleteCard(String projectId, String cardId, String expectedVersionText) {
         projectWriteLock.require(projectId);
         BoardCardEntity card = boardCardRepository.findById(cardId)
             .filter(item -> item.getProjectId().equals(projectId))
             .orElseThrow(ProjectMutationException::boardCardNotFound);
+        checkVersion(card, parseExpectedVersion(expectedVersionText));
         boardCardRepository.delete(card);
+        boardCardRepository.flush();
+    }
+
+    private BoardCardEntity saveWithVersionBump(BoardCardEntity card, long expectedVersion) {
+        BoardCardEntity saved = boardCardRepository.saveAndFlush(card);
+        if (saved.getVersion() == expectedVersion) {
+            if (boardCardRepository.incrementVersionIfCurrent(saved.getId(), expectedVersion) != 1) {
+                throw ProjectMutationException.boardCardVersionConflict(saved.getVersion());
+            }
+            entityManager.refresh(saved);
+        }
+        return saved;
+    }
+
+    private long requireExpectedVersion(Long version) {
+        if (version == null || version < 0) {
+            throw ProjectMutationException.invalid("expectedVersion", "Required nonnegative version");
+        }
+        return version;
+    }
+
+    private long parseExpectedVersion(String version) {
+        if (version == null || !version.matches("[0-9]+")) {
+            throw ProjectMutationException.invalid("expectedVersion", "Required nonnegative version");
+        }
+        try {
+            return Long.parseLong(version);
+        } catch (NumberFormatException exception) {
+            throw ProjectMutationException.invalid("expectedVersion", "Required nonnegative version");
+        }
+    }
+
+    private void checkVersion(BoardCardEntity card, long expectedVersion) {
+        if (card.getVersion() != expectedVersion) {
+            throw ProjectMutationException.boardCardVersionConflict(card.getVersion());
+        }
     }
 
     private void applyCardRequest(BoardCardEntity card, BoardCardRequest request) {
@@ -287,7 +331,8 @@ public class BoardService {
             normalizePriority(entity.getPriority()),
             normalizeLabels(entity.getLabels()),
             entity.getEstimate() == null ? 0 : entity.getEstimate(),
-            Boolean.TRUE.equals(entity.getBlocked())
+            Boolean.TRUE.equals(entity.getBlocked()),
+            entity.getVersion()
         );
     }
 
