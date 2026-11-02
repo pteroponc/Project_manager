@@ -1105,7 +1105,9 @@ async function loadBoard(projectId, boardModel = state.activeBoardModel) {
       setBoardMessage("На доске пока нет задач. Создайте первую задачу.");
     }
     if (canReconcile) setBoardMessage("Доска перечитана. Проверьте результат предыдущей операции перед повторным сохранением.");
-    if (state.taskDraft?.conflict) {
+    if (state.taskDraft?.cardMissing) {
+      setBoardMessage("Задача удалена другим пользователем. Ваш черновик сохранён для копирования. Сохранение недоступно", true);
+    } else if (state.taskDraft?.conflict) {
       setBoardMessage("Доска перечитана. Ваш черновик сохранён; сравните его с текущими данными задачи перед новым редактированием.", true);
     }
     return true;
@@ -1672,7 +1674,7 @@ function startEditBoardCard(card, columnKey, restoring = false) {
   cardElement.innerHTML = `
     <form class="board-card-form" data-card-form="${escapeAttr(card.id)}">
       <p class="hint-text">Открытая форма остаётся видимой независимо от фильтров.</p>
-      ${restoring && state.taskDraft?.conflict ? state.taskDraft.cardMissing
+      ${restoring && (state.taskDraft?.conflict || state.taskDraft?.cardMissing) ? state.taskDraft.cardMissing
         ? '<p class="hint-text" role="status">Задача удалена. Черновик доступен для копирования; сохранение отключено.</p>'
         : `<details class="hint-text" open><summary>Текущая задача, версия ${Number(card.version)}</summary>
             <p>Название: ${escapeHtml(card.title)}; описание: ${escapeHtml(card.description)}; владелец: ${escapeHtml(card.owner)};</p>
@@ -1823,7 +1825,7 @@ function restoreTaskDraft() {
       setBoardMessage("Задача больше не доступна. Черновик сохранён; подтвердите сброс перед сменой контекста.", true);
       if (!draft.originalCard) return;
       const holder = document.createElement("article");
-      holder.className = "board-card";
+      holder.className = "board-card board-card-draft-recovery";
       holder.dataset.cardId = draft.cardId;
       elements.boardColumns.appendChild(holder);
       startEditBoardCard(draft.originalCard, draft.originalColumn, true);

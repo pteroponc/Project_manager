@@ -466,6 +466,61 @@ test('conflict reread shows the server card beside the retained draft through bo
   assert.equal(h.state.taskDraft.values.title, 'Draft title');
 });
 
+test('deleted card recovery preserves the draft in a separate full-width area and disables save', async () => {
+  const h = await loadedBoard(); const form = draftFor(h);
+  h.state.taskDraft.originalCard = card();
+  h.state.taskDraft.originalColumn = 'review';
+  h.state.taskDraft.conflict = true;
+  const before = { ...h.state.taskDraft.values };
+  const reread = h.context.loadBoard('A', 'kanban');
+  h.calls[1].resolve(board('A', 'kanban')); await reread;
+  const recovered = h.elements.boardColumns.childNodes.at(-1);
+  assert.match(recovered.className, /board-card-draft-recovery/);
+  assert.equal(recovered.dataset.cardId, 'card-a');
+  assert.equal(recovered.querySelector('[type="submit"]').disabled, true);
+  assert.equal(JSON.stringify(h.state.taskDraft.values), JSON.stringify(before));
+  assert.equal(form.elements[0].value, 'Draft title');
+  assert.equal(h.state.taskDraft.cardMissing, true);
+  assert.equal(h.messages.at(-1), 'Задача удалена другим пользователем. Ваш черновик сохранён для копирования. Сохранение недоступно');
+  h.window.confirm = () => false;
+  assert.equal(h.context.openProjectBoard('B', 'scrum'), false);
+  assert.equal(h.state.taskDraft.values.title, 'Draft title');
+});
+
+test('version conflict keeps comparison message and existing edit layout', async () => {
+  const h = await loadedBoard(); draftFor(h);
+  h.state.taskDraft.conflict = true;
+  const latest = card(); latest.version = 2;
+  const reread = h.context.loadBoard('A', 'kanban');
+  h.calls[1].resolve(board('A', 'kanban', [latest])); await reread;
+  assert.match(h.messages.at(-1), /сравните его с текущими данными задачи/);
+  assert.equal(h.state.taskDraft.cardMissing, false);
+  assert.equal(h.elements.boardColumns.childNodes.some((item) => /board-card-draft-recovery/.test(item.className)), false);
+});
+
+test('removed card without a preceding version conflict still reports deletion and preserves the draft', async () => {
+  const h = await loadedBoard(); const form = draftFor(h);
+  h.state.taskDraft.originalCard = card();
+  h.state.taskDraft.originalColumn = 'review';
+  const reread = h.context.loadBoard('A', 'kanban');
+  h.calls[1].resolve(board('A', 'kanban')); await reread;
+  assert.equal(h.state.taskDraft.conflict, undefined);
+  assert.equal(h.state.taskDraft.cardMissing, true);
+  assert.equal(h.messages.at(-1), 'Задача удалена другим пользователем. Ваш черновик сохранён для копирования. Сохранение недоступно');
+  assert.equal(form.elements[0].value, 'Draft title');
+  assert.equal(h.elements.boardColumns.childNodes.at(-1).querySelector('[type="submit"]').disabled, true);
+  assert.match(h.elements.boardColumns.querySelector('[data-card-id="card-a"]').innerHTML, /Задача удалена/);
+});
+
+test('recovered draft layout spans Kanban columns and headings keep whole words', () => {
+  const css = fs.readFileSync(path.join(__dirname, '../../main/resources/public/styles.css'), 'utf8');
+  assert.match(css, /\.board-card-draft-recovery\s*\{[^}]*grid-column:\s*1\s*\/\s*-1/);
+  assert.match(css, /\.board-card-draft-recovery \.board-card-form\s*\{[^}]*grid-template-columns:\s*repeat\(2/);
+  assert.match(css, /@media \(max-width:\s*520px\)\s*\{\s*\.board-card-draft-recovery \.board-card-form\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\)/);
+  assert.match(css, /\.board-column h3\s*\{[^}]*overflow-wrap:\s*normal;[^}]*word-break:\s*normal/);
+  assert.match(css, /@media \(min-width:\s*781px\) and \(max-width:\s*1100px\)\s*\{\s*\.board-column header\s*\{[^}]*flex-wrap:\s*wrap/);
+});
+
 test('stale move sends the read version and requires a new read before a fresh move', async () => {
   const h = await loadedBoard();
   const move = h.context.moveBoardCard('card-a', 'done');
