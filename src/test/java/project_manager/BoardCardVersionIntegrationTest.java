@@ -118,13 +118,112 @@ class BoardCardVersionIntegrationTest {
         }
     }
 
+    @Test
+    void moveAndNetworkReplayAdvanceOnlyTheMovedCardOnce() throws Exception {
+        String project = project();
+        String moved = create(project);
+        String neighbor = create(project);
+        List<Map<String, Object>> neighborBefore = row(neighbor);
+        ObjectNode request = card("Moved", 0);
+        request.put("columnKey", "ready");
+        mvc.perform(put("/api/projects/{project}/board/cards/{id}", project, moved)
+                .contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsBytes(request)))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.version").value(1));
+        assertThat(row(moved).getFirst()).containsEntry("COLUMN_KEY", "ready")
+            .containsEntry("POSITION", 0).containsEntry("VERSION", 1L);
+        List<Map<String, Object>> afterMove = row(moved);
+        mvc.perform(put("/api/projects/{project}/board/cards/{id}", project, moved)
+                .contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsBytes(request)))
+            .andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("BOARD_CARD_VERSION_CONFLICT"))
+            .andExpect(jsonPath("$.currentVersion").value(1));
+        ObjectNode staleDifferentColumn = card("Stale move", 0);
+        staleDifferentColumn.put("columnKey", "in-progress");
+        mvc.perform(put("/api/projects/{project}/board/cards/{id}", project, moved)
+                .contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsBytes(staleDifferentColumn)))
+            .andExpect(status().isConflict());
+        assertThat(row(moved)).isEqualTo(afterMove);
+        assertThat(row(neighbor)).isEqualTo(neighborBefore);
+        mvc.perform(get("/api/projects/{id}/board", project))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.columns[1].cards[0].version").value(1))
+            .andExpect(jsonPath("$.storedPositions['" + moved + "']").value(0));
+    }
+
+    @Test
+    void simultaneousMovesToDifferentColumnsHaveOneWinnerAndOneConflict() throws Exception {
+        String project = project();
+        String id = create(project);
+        CountDownLatch ready = new CountDownLatch(2);
+        CountDownLatch start = new CountDownLatch(1);
+        var executor = Executors.newFixedThreadPool(2);
+        try {
+            var first = executor.submit(() -> concurrentPut(project, id, "Ready", "ready", ready, start));
+            var second = executor.submit(() -> concurrentPut(project, id, "Done", "done", ready, start));
+            assertThat(ready.await(5, TimeUnit.SECONDS)).isTrue();
+            start.countDown();
+            assertThat(List.of(first.get(10, TimeUnit.SECONDS), second.get(10, TimeUnit.SECONDS)))
+                .containsExactlyInAnyOrder(200, 409);
+            var winner = row(id).getFirst();
+            assertThat(winner.get("VERSION")).isEqualTo(1L);
+            assertThat(winner.get("POSITION")).isEqualTo(0);
+            assertThat(winner.get("COLUMN_KEY")).isIn("ready", "done");
+            assertThat(winner.get("TITLE")).isEqualTo(
+                winner.get("COLUMN_KEY").equals("ready") ? "Ready" : "Done");
+        } finally {
+            start.countDown();
+            executor.shutdownNow();
+        }
+    }
+
+    @Test
+    void concurrentEditAndDeleteCannotLeaveAStalePartialCard() throws Exception {
+        String project = project();
+        String id = create(project);
+        CountDownLatch ready = new CountDownLatch(2);
+        CountDownLatch start = new CountDownLatch(1);
+        var executor = Executors.newFixedThreadPool(2);
+        try {
+            var edit = executor.submit(() -> concurrentPut(project, id, "Edited", "ready", ready, start));
+            var delete = executor.submit(() -> {
+                ready.countDown();
+                try {
+                    if (!start.await(5, TimeUnit.SECONDS)) throw new AssertionError("Start timeout");
+                    return mvc.perform(delete("/api/projects/{project}/board/cards/{id}", project, id)
+                            .param("expectedVersion", "0")).andReturn().getResponse().getStatus();
+                } catch (Exception exception) {
+                    throw new AssertionError(exception);
+                }
+            });
+            assertThat(ready.await(5, TimeUnit.SECONDS)).isTrue();
+            start.countDown();
+            int editStatus = edit.get(10, TimeUnit.SECONDS);
+            int deleteStatus = delete.get(10, TimeUnit.SECONDS);
+            assertThat(List.of(editStatus, deleteStatus)).isIn(List.of(200, 409), List.of(404, 204));
+            if (editStatus == 200) {
+                assertThat(row(id).getFirst()).containsEntry("TITLE", "Edited")
+                    .containsEntry("COLUMN_KEY", "ready").containsEntry("VERSION", 1L);
+            } else {
+                assertThat(row(id)).isEmpty();
+            }
+        } finally {
+            start.countDown();
+            executor.shutdownNow();
+        }
+    }
+
     private int concurrentPut(String project, String id, String title, CountDownLatch ready,
                               CountDownLatch start) {
+        return concurrentPut(project, id, title, "backlog", ready, start);
+    }
+
+    private int concurrentPut(String project, String id, String title, String columnKey,
+                              CountDownLatch ready, CountDownLatch start) {
         ready.countDown();
         try {
             if (!start.await(5, TimeUnit.SECONDS)) throw new AssertionError("Start timeout");
+            ObjectNode request = card(title, 0);
+            request.put("columnKey", columnKey);
             return mvc.perform(put("/api/projects/{project}/board/cards/{id}", project, id)
-                    .contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsBytes(card(title, 0))))
+                    .contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsBytes(request)))
                 .andReturn().getResponse().getStatus();
         } catch (Exception exception) {
             throw new AssertionError(exception);

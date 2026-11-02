@@ -443,6 +443,64 @@ test('409 keeps edit draft and original version, offers reread and never retries
   assert.equal(h.calls.length, 3);
 });
 
+test('conflict reread shows the server card beside the retained draft through board filters', async () => {
+  const h = await loadedBoard(); const form = draftFor(h);
+  h.state.taskDraft.conflict = true;
+  h.state.boardFilters.query = 'not matching';
+  const latest = card(); latest.version = 3; latest.title = 'Server title';
+  h.state.currentBoard = board('A', 'kanban', [latest]);
+  assert.equal(h.context.matchesBoardFilters(latest), true);
+  h.context.restoreTaskDraft();
+  const markup = h.elements.boardColumns.querySelector('[data-card-id="card-a"]').innerHTML;
+  assert.match(markup, /Текущая задача, версия 3/);
+  assert.match(markup, /Server title/);
+  assert.equal(form.elements[0].value, 'Draft title');
+  assert.equal(h.state.taskDraft.expectedVersion, 0);
+  await h.context.saveBoardCard('card-a', formData());
+  assert.equal(h.calls.length, 1);
+  h.window.confirm = () => false;
+  assert.equal(h.context.openProjectBoard('B', 'scrum'), false);
+  assert.equal(h.state.taskDraft.values.title, 'Draft title');
+});
+
+test('stale move sends the read version and requires a new read before a fresh move', async () => {
+  const h = await loadedBoard();
+  const move = h.context.moveBoardCard('card-a', 'done');
+  assert.equal(JSON.parse(h.calls[1].options.body).expectedVersion, 0);
+  h.calls[1].reject(Object.assign(Error('Conflict'), {
+    status: 409, code: 'BOARD_CARD_VERSION_CONFLICT', currentVersion: 1
+  })); await move;
+  assert.equal(h.calls.length, 2);
+  assert.equal(h.elements.taskReload.classList.contains('hidden'), false);
+  const latest = card(); latest.version = 1; latest.title = 'Other editor';
+  const reread = h.context.loadBoard('A', 'kanban');
+  h.calls[2].resolve(board('A', 'kanban', [latest])); await reread;
+  const freshMove = h.context.moveBoardCard('card-a', 'done');
+  assert.equal(JSON.parse(h.calls[3].options.body).expectedVersion, 1);
+  h.calls[3].reject(Object.assign(Error('Invalid'), { status: 400 })); await freshMove;
+});
+
+test('network-uncertain edit cannot retry blindly and a stale explicit retry gets 409', async () => {
+  const h = await loadedBoard(); const form = draftFor(h);
+  const save = h.context.saveBoardCard('card-a', formData());
+  h.calls[1].reject(Error('connection lost')); await save;
+  assert.equal(h.state.taskOperations.A.phase, 'unknown');
+  await h.context.saveBoardCard('card-a', formData());
+  assert.equal(h.calls.length, 2);
+  const latest = card(); latest.version = 1; latest.title = 'Committed remotely';
+  const reread = h.context.loadBoard('A', 'kanban');
+  h.calls[2].resolve(board('A', 'kanban', [latest])); await reread;
+  assert.equal(form.elements[0].value, 'Draft title');
+  assert.equal(h.state.taskDraft.expectedVersion, 0);
+  const retry = h.context.saveBoardCard('card-a', formData());
+  assert.equal(JSON.parse(h.calls[3].options.body).expectedVersion, 0);
+  h.calls[3].reject(Object.assign(Error('Conflict'), {
+    status: 409, code: 'BOARD_CARD_VERSION_CONFLICT'
+  })); await retry;
+  assert.equal(h.state.taskDraft.conflict, true);
+  assert.equal(form.elements[0].value, 'Draft title');
+});
+
 test('DELETE repeat is blocked before a second confirmation and request', async () => {
   const h = await loadedBoard();
   const first = h.context.deleteBoardCard(card());
