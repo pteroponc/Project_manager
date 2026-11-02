@@ -51,6 +51,11 @@ public class ProjectMutationException extends RuntimeException {
             "Board card version does not match", null, currentVersion);
     }
 
+    public static ProjectMutationException boardOrderConflict() {
+        return new ProjectMutationException(HttpStatus.CONFLICT, "BOARD_ORDER_CONFLICT",
+            "Board order changed; reread column", null, null);
+    }
+
     public HttpStatus getStatus() { return status; }
     public String getCode() { return code; }
     public Map<String, String> getFieldErrors() { return fieldErrors; }
