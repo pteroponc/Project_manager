@@ -1203,6 +1203,7 @@ textarea:focus {
 .boards-panel #board-message { margin: 10px 0; overflow-wrap: anywhere; }
 .boards-panel #board-message[data-tone="error"] { color: var(--danger-text); }
 .board-card, .board-column { min-width: 0; overflow-wrap: anywhere; }
+.board-column .board-card-form { grid-template-columns: minmax(0, 1fr); }
 .board-card-draft-recovery { grid-column: 1 / -1; width: 100%; }
 .board-card-draft-recovery .board-card-form { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .board-card-draft-recovery .board-card-form > .hint-text,

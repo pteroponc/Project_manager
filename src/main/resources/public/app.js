@@ -1656,12 +1656,12 @@ function startCreateBoardCard(columnKey) {
   elements.createTaskTitle.focus();
 }
 
-function startEditBoardCard(card, columnKey, restoring = false) {
+function startEditBoardCard(card, columnKey, restoring = false, recoveryElement = null) {
   const context = activeBoardContext();
   if (!context || (!restoring && findBoardCard(card.id)?.columnKey !== columnKey)) return;
   if (!restoring && (taskOperationBlocked() || !discardTaskDraft())) return;
   const returnFocus = document.activeElement;
-  const cardElement = elements.boardColumns.querySelector(`[data-card-id="${cssEscape(card.id)}"]`);
+  const cardElement = recoveryElement ?? elements.boardColumns.querySelector(`[data-card-id="${cssEscape(card.id)}"]`);
   if (!cardElement) {
     return;
   }
@@ -1738,7 +1738,7 @@ function startEditBoardCard(card, columnKey, restoring = false) {
     await saveBoardCard(card.id, new FormData(form), context);
   });
   cardElement.querySelector('[data-action="cancel-card-edit"]').addEventListener("click", () => {
-    if (isCurrentBoardContext(context) && discardTaskDraft()) renderBoardColumns();
+    if (isCurrentBoardContext(context)) discardTaskDraft();
   });
   if (!restoring) form.querySelector('[name="title"]').focus();
 }
@@ -1809,7 +1809,7 @@ function discardTaskDraft() {
   state.taskDraft = null;
   if (draft?.kind === "create") closeCreateTaskPanel(true);
   if (draft?.kind === "edit" && activeBoardContext()) renderBoardColumns();
-  restoreTaskFocus(draft?.returnFocus);
+  restoreTaskFocus(draft?.returnFocus, draft?.kind === "edit" ? draft.cardId : null);
   return true;
 }
 
@@ -1832,7 +1832,14 @@ function restoreTaskDraft() {
       holder.querySelector('[type="submit"]').disabled = true;
     } else {
       draft.cardMissing = false;
-      startEditBoardCard(found.card, found.columnKey, true);
+      if (draft.conflict) {
+        const holder = document.createElement("article");
+        holder.className = "board-card board-card-draft-recovery";
+        elements.boardColumns.appendChild(holder);
+        startEditBoardCard(found.card, found.columnKey, true, holder);
+      } else {
+        startEditBoardCard(found.card, found.columnKey, true);
+      }
     }
   } else {
     state.createTaskContext = context;
@@ -1929,8 +1936,15 @@ async function runTaskMutation(kind, cardId, context, url, method, payload, succ
   syncTaskControls();
 }
 
-function restoreTaskFocus(target) {
-  if (target?.isConnected && !target.disabled) target.focus();
+function restoreTaskFocus(target, cardId = null) {
+  if (target?.isConnected && !target.disabled) { target.focus(); return; }
+  if (!cardId) return;
+  const action = target?.dataset?.action;
+  const selector = (name) => `[data-action="${name}"][data-card-id="${cssEscape(cardId)}"]`;
+  const replacement = (action && elements.boardColumns.querySelector(selector(action)))
+    || elements.boardColumns.querySelector(selector("edit-card"))
+    || elements.boardColumns.querySelector(selector("open-card"));
+  if (replacement && !replacement.disabled) replacement.focus();
 }
 
 function handleTaskKeydown(event) {
@@ -1952,7 +1966,7 @@ function handleTaskKeydown(event) {
   if (event.key === "Escape" && state.taskDraft) {
     event.preventDefault();
     if (taskOperationBlocked()) return;
-    if (discardTaskDraft()) renderBoardColumns();
+    discardTaskDraft();
   }
 }
 

@@ -454,7 +454,7 @@ test('conflict reread shows the server card beside the retained draft through bo
   h.state.currentBoard = board('A', 'kanban', [latest]);
   assert.equal(h.context.matchesBoardFilters(latest), true);
   h.context.restoreTaskDraft();
-  const markup = h.elements.boardColumns.querySelector('[data-card-id="card-a"]').innerHTML;
+  const markup = h.elements.boardColumns.childNodes.at(-1).innerHTML;
   assert.match(markup, /Текущая задача, версия 3/);
   assert.match(markup, /Server title/);
   assert.equal(form.elements[0].value, 'Draft title');
@@ -487,15 +487,22 @@ test('deleted card recovery preserves the draft in a separate full-width area an
   assert.equal(h.state.taskDraft.values.title, 'Draft title');
 });
 
-test('version conflict keeps comparison message and existing edit layout', async () => {
-  const h = await loadedBoard(); draftFor(h);
+test('version conflict moves comparison and draft to a full-width recovery area without losing values', async () => {
+  const h = await loadedBoard(); const form = draftFor(h);
   h.state.taskDraft.conflict = true;
+  const before = { ...h.state.taskDraft.values };
   const latest = card(); latest.version = 2;
   const reread = h.context.loadBoard('A', 'kanban');
   h.calls[1].resolve(board('A', 'kanban', [latest])); await reread;
   assert.match(h.messages.at(-1), /сравните его с текущими данными задачи/);
   assert.equal(h.state.taskDraft.cardMissing, false);
-  assert.equal(h.elements.boardColumns.childNodes.some((item) => /board-card-draft-recovery/.test(item.className)), false);
+  const recovered = h.elements.boardColumns.childNodes.at(-1);
+  assert.match(recovered.className, /board-card-draft-recovery/);
+  assert.match(recovered.innerHTML, /Текущая задача, версия 2/);
+  assert.equal(JSON.stringify(h.state.taskDraft.values), JSON.stringify(before));
+  assert.equal(form.elements[0].value, 'Draft title');
+  assert.equal(h.state.taskDraft.expectedVersion, 0);
+  assert.equal(h.elements.boardColumns.querySelector('[data-card-id="card-a"]').innerHTML.includes('Текущая задача'), false);
 });
 
 test('removed card without a preceding version conflict still reports deletion and preserves the draft', async () => {
@@ -657,6 +664,44 @@ test('Escape asks before discarding an edit, respects cancellation, then closes 
   assert.equal(h.state.taskDraft.dirty, true);
   h.window.confirm = () => true; h.context.handleTaskKeydown(event);
   assert.equal(h.state.taskDraft, null); assert.equal(prevented, 2);
+});
+
+test('Escape from unchanged inline edit restores focus to the newly rendered card button', async () => {
+  const h = await loadedBoard(); draftFor(h);
+  const oldButton = node(), newButton = node();
+  oldButton.dataset.action = 'edit-card';
+  h.state.taskDraft.returnFocus = oldButton;
+  h.state.taskDraft.baseline = { ...h.state.taskDraft.values };
+  h.elements.taskModal.classList.add('hidden');
+  const selector = '[data-action="edit-card"][data-card-id="card-a"]';
+  h.context.renderBoardColumns = () => {
+    oldButton.isConnected = false;
+    h.elements.boardColumns.selectors.set(selector, newButton);
+  };
+  h.context.handleTaskKeydown({ key: 'Escape', preventDefault() {} });
+  assert.equal(h.state.taskDraft, null);
+  assert.equal(oldButton.focusCount ?? 0, 0);
+  assert.equal(newButton.focusCount, 1);
+  assert.equal(h.confirmations, 0);
+});
+
+test('closing unchanged inline edit by Cancel focuses a rendered card action once', async () => {
+  const h = await loadedBoard(); draftFor(h);
+  const oldButton = node(), newButton = node();
+  oldButton.dataset.action = 'open-card';
+  h.state.taskDraft.returnFocus = oldButton;
+  h.state.taskDraft.baseline = { ...h.state.taskDraft.values };
+  const selector = '[data-action="open-card"][data-card-id="card-a"]';
+  let renders = 0;
+  h.context.renderBoardColumns = () => {
+    renders++;
+    oldButton.isConnected = false;
+    h.elements.boardColumns.selectors.set(selector, newButton);
+  };
+  assert.equal(h.context.discardTaskDraft(), true);
+  assert.equal(renders, 1);
+  assert.equal(newButton.focusCount, 1);
+  assert.equal(h.confirmations, 0);
 });
 
 test('modal traps Tab/Shift+Tab and Escape restores focus to connected trigger', async () => {
