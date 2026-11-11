@@ -21,7 +21,7 @@ import java.util.Set;
 @Service
 public class BoardOrderService {
     private static final Set<String> KANBAN_COLUMNS = Set.of(
-        "backlog", "ready", "in-progress", "review", "done");
+        "backlog", "ready", "in-progress", "done");
     private static final Comparator<BoardCardEntity> ORDER = Comparator
         .comparingInt(BoardCardEntity::getPosition).thenComparing(BoardCardEntity::getId);
 

@@ -278,29 +278,26 @@ public class BoardService {
 
     private List<BoardColumn> kanbanBoard(ProjectEntity project) {
         return List.of(
-            new BoardColumn("backlog", "Backlog", null, List.of()),
-            new BoardColumn("ready", "Ready", 3, List.of()),
-            new BoardColumn("in-progress", "In progress", 3, List.of()),
-            new BoardColumn("review", "Review", 2, List.of()),
-            new BoardColumn("done", "Done", null, List.of()));
+            new BoardColumn("backlog", "Бэклог", null, List.of()),
+            new BoardColumn("ready", "К выполнению", 3, List.of()),
+            new BoardColumn("in-progress", "В работе", 3, List.of()),            new BoardColumn("done", "Готово", null, List.of()));
     }
 
     private List<BoardColumn> scrumBoard(ProjectEntity project) {
         return List.of(
-            new BoardColumn("product-backlog", "Product backlog", null, List.of()),
-            new BoardColumn("sprint-ready", "Sprint ready", 5, List.of()),
-            new BoardColumn("in-sprint", "In sprint", 4, List.of()),
-            new BoardColumn("review", "Sprint review", 3, List.of()),
-            new BoardColumn("retrospective", "Retrospective", null, List.of()));
+            new BoardColumn("product-backlog", "Бэклог", null, List.of()),
+            new BoardColumn("sprint-ready", "К выполнению", 5, List.of()),
+            new BoardColumn("in-sprint", "В работе", 4, List.of()),            new BoardColumn("done", "Готово", null, List.of()));
     }
 
     private List<BoardColumn> waterfallBoard(ProjectEntity project) {
         return List.of(
-            new BoardColumn("initiation", "Initiation", null, List.of()),
-            new BoardColumn("planning", "Planning", null, List.of()),
-            new BoardColumn("execution", "Execution", null, List.of()),
-            new BoardColumn("verification", "Verification", null, List.of()),
-            new BoardColumn("release", "Release", null, List.of()));
+            new BoardColumn("initiation", "Инициация", null, List.of()),
+            new BoardColumn("planning", "Планирование", null, List.of()),
+            new BoardColumn("execution", "Исполнение", null, List.of()),
+            new BoardColumn("verification", "Проверка", null, List.of()),
+            new BoardColumn("release", "Внедрение / релиз", null, List.of()),
+            new BoardColumn("done", "Готово", null, List.of()));
     }
     private List<BoardColumn> mergeCards(List<BoardColumn> templateColumns, List<BoardCardEntity> cards) {
         Map<String, List<BoardCard>> cardsByColumn = cards.stream()
@@ -352,7 +349,7 @@ public class BoardService {
 
     private String boardTitle(String deliveryModel) {
         return switch (deliveryModel) {
-            case "scrum" -> "Scrum-доска";
+            case "scrum" -> "Упрощённая Scrum-доска задач";
             case "waterfall" -> "Waterfall-план";
             default -> "Kanban-доска";
         };

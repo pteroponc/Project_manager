@@ -60,9 +60,9 @@ class BoardOrderIntegrationTest {
         reorder(project, "ready", c, "down", order(project, "ready"), 200);
         assertThat(rows(project)).isEqualTo(beforeLast);
 
-        String only = card(project, "review", "Only");
+        String only = card(project, "in-progress", "Only");
         List<Map<String, Object>> beforeSingle = rows(project);
-        JsonNode single = reorder(project, "review", only, "down", order(project, "review"), 200);
+        JsonNode single = reorder(project, "in-progress", only, "down", order(project, "in-progress"), 200);
         assertThat(single.path("changed").asBoolean()).isFalse();
         assertThat(rows(project)).isEqualTo(beforeSingle);
     }

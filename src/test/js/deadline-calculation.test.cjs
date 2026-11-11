@@ -65,17 +65,38 @@ test('date-only arithmetic ignores browser negative UTC offset and rejects missi
   }
 });
 
-test('terminal columns and missing due dates never mark a task overdue', () => {
-  const { context, state } = harness('2026-10-28T21:30:00Z');
-  const late = { dueDate: '2026-10-28' };
-  for (const [model, final] of [['kanban', 'done'], ['scrum', 'retrospective'], ['waterfall', 'release']]) {
-    state.currentBoard = { deliveryModel: model };
-    assert.equal(context.isTaskOverdue(late, 'review', model), true);
-    assert.equal(context.isTaskOverdue(late, final, model), false);
-    assert.doesNotMatch(context.renderBoardCard(late, final), /Просрочено/);
-    assert.match(context.renderBoardCard(late, 'review'), /Просрочено/);
+test('done is terminal in every model, while legacy states and unknown dates remain explicit', () => {
+  const {context,state}=harness('2026-10-28T21:30:00Z');
+  const late={dueDate:'2026-10-28'};
+  for(const [model,active] of [['kanban','ready'],['scrum','in-sprint'],['waterfall','release']]) {
+    state.currentBoard={deliveryModel:model,columns:[{key:active,cards:[]},{key:'done',cards:[]}]};
+    assert.equal(context.isTaskOverdue(late,'done',model),false);
+    assert.equal(context.isTaskOverdue(late,active,model),true);
+    assert.equal(context.isTaskOverdue({dueDate:'2026-10-29'},active,model),false);
+    for(const dueDate of ['',null,'2026-02-30','not-a-date'])
+      assert.equal(context.isTaskOverdue({dueDate},active,model),null);
+    assert.equal(context.isTaskOverdue(late,'retrospective',model),null);
+    assert.doesNotMatch(context.renderBoardCard(late,'done'),/Просрочено/);
+    assert.match(context.renderBoardCard(late,'done'),/Готово/);
+    assert.match(context.renderBoardCard(late,'retrospective'),/Просрочка неизвестна/);
   }
-  assert.equal(context.isTaskOverdue({ dueDate: '' }, 'review', 'kanban'), false);
+  assert.equal(context.isTaskOverdue(late,'release','waterfall'),true);
+  state.currentBoard={deliveryModel:'kanban',columns:[{key:'ready'},{key:'done'}]};
+  assert.equal(context.isTaskOverdue(late,'release','kanban'),null);
+});
+
+test('partial overdue counter never turns missing dates or unmapped states into known zero', () => {
+  const {context,state,elements}=harness('2026-10-28T21:30:00Z');
+  state.currentBoard={deliveryModel:'kanban',columns:[
+    {key:'ready',cards:[{dueDate:'2026-10-28'},{dueDate:''},{dueDate:'2026-10-29'}]},
+    {key:'done',cards:[{dueDate:'2026-10-28',blocked:true}]}],
+    unassignedColumns:[{key:'retrospective',cards:[{dueDate:'2026-10-28'}]}]};
+  context.renderBoardInsights();
+  assert.equal(elements.boardTaskCount.textContent,5);
+  assert.equal(elements.boardBlockedCount.textContent,1);
+  assert.equal(elements.boardOverdueCount.textContent,'Не менее 1');
+  assert.match(elements.boardTaskQuality.textContent,/2 с неизвестным сроком или несопоставленным состоянием/);
+  assert.match(context.renderBoardCard({dueDate:''},'ready'),/Просрочка неизвестна/);
 });
 
 test('board badge and counter agree after moving into and out of a final column', async () => {
@@ -83,10 +104,10 @@ test('board badge and counter agree after moving into and out of a final column'
   const card = { id: 'c1', title: 'Task', description: '', owner: 'QA', dueDate: '2026-10-28',
     priority: 'medium', estimate: 1, blocked: false };
   const board = (columnKey) => ({ projectId: 'p1', deliveryModel: 'kanban', columns: [
-    { key: 'review', cards: columnKey === 'review' ? [card] : [] },
+    { key: 'ready', cards: columnKey === 'ready' ? [card] : [] },
     { key: 'done', cards: columnKey === 'done' ? [card] : [] }
   ] });
-  let columnKey = 'review';
+  let columnKey = 'ready';
   state.currentBoard = board(columnKey);
   context.findBoardCard = () => ({ card, columnKey });
   context.fetchJson = async (_url, options) => { columnKey = JSON.parse(options.body).columnKey; };
@@ -102,7 +123,7 @@ test('board badge and counter agree after moving into and out of a final column'
   check();
   await context.moveBoardCard('c1', 'done'); check();
   assert.equal(elements.boardOverdueCount.textContent, 0);
-  await context.moveBoardCard('c1', 'review'); check();
+  await context.moveBoardCard('c1', 'ready'); check();
   assert.equal(elements.boardOverdueCount.textContent, 1);
   assert.equal(card.dueDate, '2026-10-28');
 });

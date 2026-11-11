@@ -115,6 +115,7 @@ const elements = {
   boardTaskCount: document.getElementById("board-task-count"),
   boardPointCount: document.getElementById("board-point-count"),
   boardOverdueCount: document.getElementById("board-overdue-count"),
+  boardTaskQuality: document.getElementById("board-task-quality"),
   boardBlockedCount: document.getElementById("board-blocked-count"),
   cancelTaskCreate: document.getElementById("cancel-task-create"),
   summary: document.getElementById("portfolio-summary"),
@@ -447,6 +448,7 @@ function invalidateBoardContext(preserveDraft = false) {
   syncTaskControls();
   elements.createTaskButton.disabled = true;
   elements.boardInsights?.classList.add("hidden");
+  clearBoardTaskQuality();
   elements.boardFilters?.classList.add("hidden");
 }
 
@@ -1070,6 +1072,7 @@ async function loadBoard(projectId, boardModel = state.activeBoardModel) {
   syncTaskControls();
   elements.createTaskButton.disabled = true;
   elements.boardInsights?.classList.add("hidden");
+  clearBoardTaskQuality();
   elements.boardFilters?.classList.add("hidden");
   elements.boardTitle.textContent = "Загружаем доску...";
   elements.boardModel.textContent = boardModel;
@@ -1191,7 +1194,7 @@ function renderBoardColumns() {
     section.className = "panel board-unassigned";
     const count = unassigned.reduce((sum, column) => sum + column.cards.length, 0);
     section.innerHTML = `<h3>Несопоставленные задачи: ${count}</h3>
-      <p>Сохранённые статусы не входят в эту модель. Выберите колонку вручную; автоматический перенос отключён.</p>
+      <p>Сохранённые состояния не входят в эту модель. Завершённость и просрочка этих задач не определены. Выберите колонку вручную; автоматический перенос отключён.</p>
       ${unassigned.map((column) => `<section class="board-unassigned-group"><h4>Сохранённая колонка: ${escapeHtml(column.key)}</h4>
         ${column.cards.filter(matchesBoardFilters).map((card) => renderBoardCard(card, column.key)).join("")
           || '<p class="hint-text">Нет задач по выбранным фильтрам.</p>'}</section>`).join("")}`;
@@ -1312,14 +1315,25 @@ function matchesBoardFilters(card) {
     && (!state.boardFilters.blocked || card.blocked);
 }
 
+function clearBoardTaskQuality() {
+  elements.boardTaskQuality.textContent = "";
+  elements.boardTaskQuality.hidden = true;
+}
+
 function renderBoardInsights() {
   const columns = [...(state.currentBoard?.columns ?? []), ...(state.currentBoard?.unassignedColumns ?? [])];
   const cards = columns.flatMap((column) => column.cards ?? []);
   elements.boardTaskCount.textContent = cards.length;
   elements.boardPointCount.textContent = cards.reduce((sum, card) => sum + Number(card.estimate || 0), 0);
-  elements.boardOverdueCount.textContent = columns
-    .reduce((count, column) => count + (column.cards ?? [])
-      .filter((card) => isTaskOverdue(card, column.key, state.currentBoard.deliveryModel)).length, 0);
+  const deadlines = columns.flatMap((column) => (column.cards ?? [])
+    .map((card) => isTaskOverdue(card, column.key, state.currentBoard.deliveryModel)));
+  const overdue = deadlines.filter((value) => value === true).length;
+  const unknown = deadlines.filter((value) => value === null).length;
+  elements.boardOverdueCount.textContent = unknown ? `Не менее ${overdue}` : overdue;
+  elements.boardTaskQuality.textContent = unknown
+    ? `Просрочка определена не для всех задач: ${unknown} с неизвестным сроком или несопоставленным состоянием. Это не полный подсчёт просроченных. Готово исключено из просрочки.`
+    : "";
+  elements.boardTaskQuality.hidden = !unknown;
   elements.boardBlockedCount.textContent = cards.filter((card) => card.blocked).length;
 }
 
@@ -1331,6 +1345,7 @@ function renderEmptyBoard() {
     elements.createTaskButton.disabled = true;
   }
   elements.boardInsights?.classList.add("hidden");
+  clearBoardTaskQuality();
   elements.boardFilters?.classList.add("hidden");
   if (!state.taskDraft) closeCreateTaskPanel(true);
   else elements.createTaskPanel.classList.add("hidden");
@@ -1348,6 +1363,7 @@ function renderBoardLanding(message) {
     elements.createTaskButton.disabled = true;
   }
   elements.boardInsights?.classList.add("hidden");
+  clearBoardTaskQuality();
   elements.boardFilters?.classList.add("hidden");
   if (!state.taskDraft) closeCreateTaskPanel(true);
   else elements.createTaskPanel.classList.add("hidden");
@@ -1432,7 +1448,8 @@ function renderBoardCard(card, columnKey, order = null) {
       <div class="board-card-badges">
         <span class="priority-badge" data-priority="${escapeAttr(card.priority)}">${escapeHtml(card.priority)}</span>
         ${card.blocked ? '<span class="status-badge blocked">Блокер</span>' : ""}
-        ${overdue ? '<span class="status-badge overdue">Просрочено</span>' : ""}
+        ${card && columnKey === "done" ? '<span class="status-badge">Готово</span>' : ""}
+        ${overdue === null ? '<span class="status-badge">Просрочка неизвестна</span>' : overdue ? '<span class="status-badge overdue">Просрочено</span>' : ""}
         <span class="status-badge estimate">${Number(card.estimate || 0)} SP</span>
       </div>
       <div class="board-card-head">
@@ -2475,8 +2492,13 @@ function isProjectOverdue(project) {
 }
 
 function isTaskOverdue(card, columnKey, boardModel) {
-  const finalColumn = { kanban: "done", scrum: "retrospective", waterfall: "release" }[boardModel];
-  return columnKey !== finalColumn && daysUntil(card.dueDate) < 0;
+  if (columnKey === "done") return false;
+  const days = daysUntil(card.dueDate);
+  const mapped = state.currentBoard?.deliveryModel === boardModel
+    && state.currentBoard.columns?.some((column) => column.key === columnKey);
+  // null means unknown, not a known non-overdue task. Use the server-provided columns.
+  if (!mapped || !Number.isFinite(days)) return null;
+  return days < 0;
 }
 
 function progressComment(progress) {

@@ -7,12 +7,12 @@ const vm = require('node:vm');
 const source = fs.readFileSync(path.join(__dirname, '../../main/resources/public/app.js'), 'utf8');
 const names = ['showView', 'invalidateBoardContext', 'isCurrentBoardRequest',
   'activeBoardContext', 'isCurrentBoardContext', 'openProjectBoard', 'onProjectDeleted',
-  'loadProjectCatalog', 'loadBoard', 'renderBoardLanding', 'findBoardCard',
+  'loadProjectCatalog', 'loadBoard', 'renderBoardLanding', 'renderEmptyBoard', 'findBoardCard',
   'moveBoardCard', 'createBoardCard', 'deleteBoardCard', 'saveBoardCard',
   'boardCardPayload', 'boardCardsUrl', 'boardCardUrl', 'selectBoardProject',
   'renderBoardProjectPicker', 'createBoard', 'rememberBoardVisit',
   'loadCreatedBoards', 'saveCreatedBoards', 'adjacentColumnKey',
-  'renderBoardColumns', 'renderBoardCard', 'matchesBoardFilters', 'renderBoardInsights',
+  'renderBoardColumns', 'renderBoardCard', 'matchesBoardFilters', 'renderBoardInsights', 'clearBoardTaskQuality',
   'canonicalBoardCards', 'boardOrderSnapshot', 'sameBoardOrder', 'boardOrderUrl',
   'refreshBoardAfterOrder', 'reorderBoardCard',
   'taskFormValues', 'taskDraftForm', 'captureTaskDraft', 'discardTaskDraft', 'restoreTaskDraft',
@@ -51,18 +51,18 @@ function node() {
 
 function board(projectId, model, cards = []) {
   return { projectId, projectName: projectId, deliveryModel: model, boardTitle: model,
-    columns: [{ key: 'review', cards }, { key: 'done', cards: [] }],
+    columns: [{ key: 'ready', cards }, { key: 'done', cards: [] }],
     storedPositions: Object.fromEntries(cards.map((item, index) => [item.id, index])) };
 }
 
 function card(id = 'card-a') {
   return { id, title: id, description: 'Description', owner: 'QA', dueDate: '2026-10-20',
-    columnKey: 'review', priority: 'medium', labels: '', estimate: 2, blocked: false, version: 0 };
+    columnKey: 'ready', priority: 'medium', labels: '', estimate: 2, blocked: false, version: 0 };
 }
 
 function formData(overrides = {}) {
   const values = { title: 'Updated', description: 'Description', owner: 'QA',
-    dueDate: '2026-10-20', columnKey: 'review', priority: 'medium', estimate: '2',
+    dueDate: '2026-10-20', columnKey: 'ready', priority: 'medium', estimate: '2',
     labels: '', ...overrides };
   return { entries: () => Object.entries(values)[Symbol.iterator](), has: (key) => key in values };
 }
@@ -189,7 +189,7 @@ test('loading another board blocks old-card create, edit, move and delete reques
   await Promise.all([
     h.context.moveBoardCard('card-a', 'done', oldContext),
     h.context.saveBoardCard('card-a', formData(), oldContext),
-    h.context.createBoardCard('review', formData(), oldContext),
+    h.context.createBoardCard('ready', formData(), oldContext),
     h.context.deleteBoardCard(card())
   ]);
   assert.equal(h.calls.length, 2);
@@ -346,13 +346,13 @@ test('unassigned cards are visible, inspectable and move only after explicit sel
   assert.equal(h.calls.length, 1);
   await h.context.saveBoardCard('unmapped', formData({ columnKey: '' }));
   assert.equal(h.calls.length, 1);
-  select.value = 'review';
+  select.value = 'ready';
   const moved = select.listeners.change();
   assert.equal(h.calls[1].options.method, 'PUT');
-  assert.equal(JSON.parse(h.calls[1].options.body).columnKey, 'review');
+  assert.equal(JSON.parse(h.calls[1].options.body).columnKey, 'ready');
   h.calls[1].resolve(card('unmapped')); await new Promise((resolve) => setImmediate(resolve));
   h.calls[2].resolve(board('A', 'scrum', [card('unmapped')])); await moved;
-  assert.equal(h.context.findBoardCard('unmapped').columnKey, 'review');
+  assert.equal(h.context.findBoardCard('unmapped').columnKey, 'ready');
 });
 
 test('catalog error retains previous choices and retry recovers without selecting a board', async () => {
@@ -380,7 +380,7 @@ function draftFor(h, kind = 'edit') {
   const form = node();
   form.elements = [
     { name: 'title', type: 'text', value: 'Draft title' },
-    { name: 'columnKey', type: 'select-one', value: 'review' },
+    { name: 'columnKey', type: 'select-one', value: 'ready' },
     { name: 'blocked', type: 'checkbox', checked: false }
   ];
   if (kind === 'create') h.elements.createTaskForm = form;
@@ -390,20 +390,20 @@ function draftFor(h, kind = 'edit') {
   }
   h.state.taskDraft = { kind, ...h.context.activeBoardContext(), cardId: kind === 'edit' ? 'card-a' : null,
     expectedVersion: kind === 'edit' ? 0 : null,
-    baseline: { title: 'Original', columnKey: 'review', blocked: false },
-    values: { title: 'Draft title', columnKey: 'review', blocked: false }, dirty: true };
+    baseline: { title: 'Original', columnKey: 'ready', blocked: false },
+    values: { title: 'Draft title', columnKey: 'ready', blocked: false }, dirty: true };
   return form;
 }
 
 test('double create submit sends one POST and keeps pending through refresh', async () => {
   const h = await loadedBoard();
-  const first = h.context.createBoardCard('review', formData());
-  await h.context.createBoardCard('review', formData());
+  const first = h.context.createBoardCard('ready', formData());
+  await h.context.createBoardCard('ready', formData());
   assert.equal(h.calls.length, 2);
   assert.equal(h.elements.createTaskButton.disabled, true);
   h.calls[1].resolve(card()); await new Promise(setImmediate);
   assert.equal(h.calls[2].options, undefined);
-  await h.context.createBoardCard('review', formData());
+  await h.context.createBoardCard('ready', formData());
   assert.equal(h.calls.length, 3);
   h.calls[2].resolve(board('A', 'kanban', [card()])); await first;
   assert.equal(h.state.taskOperations.A, undefined);
@@ -415,7 +415,7 @@ test('PUT blocks another PUT, DELETE and POST until definitive error; form remai
   const save = h.context.saveBoardCard('card-a', formData());
   await h.context.saveBoardCard('card-a', formData());
   await h.context.deleteBoardCard(card());
-  await h.context.createBoardCard('review', formData());
+  await h.context.createBoardCard('ready', formData());
   assert.equal(h.calls.length, 2);
   h.calls[1].reject(Object.assign(Error('Invalid'), { status: 400 })); await save;
   assert.equal(h.state.taskOperations.A, undefined);
@@ -469,7 +469,7 @@ test('conflict reread shows the server card beside the retained draft through bo
 test('deleted card recovery preserves the draft in a separate full-width area and disables save', async () => {
   const h = await loadedBoard(); const form = draftFor(h);
   h.state.taskDraft.originalCard = card();
-  h.state.taskDraft.originalColumn = 'review';
+  h.state.taskDraft.originalColumn = 'ready';
   h.state.taskDraft.conflict = true;
   const before = { ...h.state.taskDraft.values };
   const reread = h.context.loadBoard('A', 'kanban');
@@ -508,7 +508,7 @@ test('version conflict moves comparison and draft to a full-width recovery area 
 test('removed card without a preceding version conflict still reports deletion and preserves the draft', async () => {
   const h = await loadedBoard(); const form = draftFor(h);
   h.state.taskDraft.originalCard = card();
-  h.state.taskDraft.originalColumn = 'review';
+  h.state.taskDraft.originalColumn = 'ready';
   const reread = h.context.loadBoard('A', 'kanban');
   h.calls[1].resolve(board('A', 'kanban')); await reread;
   assert.equal(h.state.taskDraft.conflict, undefined);
@@ -577,10 +577,10 @@ test('DELETE repeat is blocked before a second confirmation and request', async 
 
 test('unknown mutation outcome requires successful reread, failed reread cannot unblock', async () => {
   const h = await loadedBoard(); draftFor(h, 'create');
-  const first = h.context.createBoardCard('review', formData());
+  const first = h.context.createBoardCard('ready', formData());
   h.calls[1].reject(Error('connection lost')); await first;
   assert.equal(h.state.taskOperations.A.phase, 'unknown');
-  await h.context.createBoardCard('review', formData()); assert.equal(h.calls.length, 2);
+  await h.context.createBoardCard('ready', formData()); assert.equal(h.calls.length, 2);
   const reread = h.context.loadBoard('A', 'kanban');
   h.calls[2].reject(Error('offline')); await reread;
   assert.equal(h.state.taskOperations.A.phase, 'unknown');
@@ -759,7 +759,7 @@ test('deleted project keeps draft in memory and cannot submit it to another proj
 
 test('card removed by refresh keeps editable values but cannot send PUT for the missing card', async () => {
   const h = await loadedBoard(); const form = draftFor(h);
-  h.state.taskDraft.originalCard = card(); h.state.taskDraft.originalColumn = 'review';
+  h.state.taskDraft.originalCard = card(); h.state.taskDraft.originalColumn = 'ready';
   const refresh = h.context.loadBoard('A', 'kanban');
   h.calls[1].resolve(board('A', 'kanban')); await refresh;
   assert.equal(h.state.taskDraft.values.title, 'Draft title');
@@ -805,14 +805,14 @@ async function loadedOrderBoard(cards = [card('a'), card('b'), card('c')]) {
 }
 
 function orderResponse(h, ids = h.state.currentBoard.columns[0].cards.map((item) => item.id)) {
-  return { projectId: 'A', columnKey: 'review', cards: ids.map((id) => ({
+  return { projectId: 'A', columnKey: 'ready', cards: ids.map((id) => ({
     id, position: h.state.currentBoard.storedPositions[id],
     version: h.state.currentBoard.columns[0].cards.find((item) => item.id === id).version
   })) };
 }
 
 function orderForBoard(value) {
-  return { projectId: value.projectId, columnKey: 'review', cards: value.columns[0].cards.map((item) => ({
+  return { projectId: value.projectId, columnKey: 'ready', cards: value.columns[0].cards.map((item) => ({
     id: item.id, position: value.storedPositions[item.id], version: item.version
   })) };
 }
@@ -822,24 +822,24 @@ test('Kanban renders canonical position/id order with keyboard buttons and corre
   h.state.currentBoard.storedPositions = { a: 4, b: 4, c: 9 };
   assert.deepEqual(Array.from(h.context.canonicalBoardCards(h.state.currentBoard.columns[0]), (item) => item.id),
     ['a', 'b', 'c']);
-  const first = h.context.renderBoardCard(card('a'), 'review', { index: 0, count: 3, orderAvailable: true });
-  const middle = h.context.renderBoardCard(card('b'), 'review', { index: 1, count: 3, orderAvailable: true });
-  const last = h.context.renderBoardCard(card('c'), 'review', { index: 2, count: 3, orderAvailable: true });
+  const first = h.context.renderBoardCard(card('a'), 'ready', { index: 0, count: 3, orderAvailable: true });
+  const middle = h.context.renderBoardCard(card('b'), 'ready', { index: 1, count: 3, orderAvailable: true });
+  const last = h.context.renderBoardCard(card('c'), 'ready', { index: 2, count: 3, orderAvailable: true });
   assert.match(first, /data-action="order-up"[^>]*disabled/);
   assert.doesNotMatch(middle, /data-action="order-up"[^>]*disabled/);
   assert.match(last, /data-action="order-down"[^>]*disabled/);
   assert.match(middle, /aria-label="Переместить задачу b вверх в колонке"/);
-  const single = h.context.renderBoardCard(card('a'), 'review', { index: 0, count: 1, orderAvailable: true });
+  const single = h.context.renderBoardCard(card('a'), 'ready', { index: 0, count: 1, orderAvailable: true });
   assert.match(single, /data-action="order-up"[^>]*disabled/);
   assert.match(single, /data-action="order-down"[^>]*disabled/);
-  await h.context.reorderBoardCard('a', 'review', 'up');
+  await h.context.reorderBoardCard('a', 'ready', 'up');
   assert.equal(h.calls.length, 1);
 });
 
 test('up and down send a complete GET snapshot and display only server-confirmed order and versions', async () => {
   const h = await loadedOrderBoard();
-  const up = h.context.reorderBoardCard('b', 'review', 'up');
-  assert.match(h.calls[1].url, /\/columns\/review\/order$/);
+  const up = h.context.reorderBoardCard('b', 'ready', 'up');
+  assert.match(h.calls[1].url, /\/columns\/ready\/order$/);
   assert.equal(h.calls.length, 2);
   h.calls[1].resolve(orderResponse(h)); await new Promise(setImmediate);
   assert.equal(h.calls[2].options.method, 'POST');
@@ -848,16 +848,16 @@ test('up and down send a complete GET snapshot and display only server-confirmed
     direction: 'up', expectedOrder: orderResponse(h).cards
   });
   assert.deepEqual(Array.from(h.state.currentBoard.columns[0].cards, (item) => item.id), ['a', 'b', 'c']);
-  h.calls[2].resolve({ projectId: 'A', columnKey: 'review', changed: true, cards: [
+  h.calls[2].resolve({ projectId: 'A', columnKey: 'ready', changed: true, cards: [
     { id: 'b', position: 0, version: 1 }, { id: 'a', position: 1, version: 1 },
     { id: 'c', position: 2, version: 0 }
   ] }); await up;
   assert.deepEqual(Array.from(h.state.currentBoard.columns[0].cards, (item) => item.id), ['b', 'a', 'c']);
   assert.equal(h.state.currentBoard.columns[0].cards[0].version, 1);
-  const down = h.context.reorderBoardCard('b', 'review', 'down');
+  const down = h.context.reorderBoardCard('b', 'ready', 'down');
   h.calls[3].resolve(orderResponse(h, ['b', 'a', 'c'])); await new Promise(setImmediate);
   assert.equal(JSON.parse(h.calls[4].options.body).direction, 'down');
-  h.calls[4].resolve({ projectId: 'A', columnKey: 'review', changed: true, cards: [
+  h.calls[4].resolve({ projectId: 'A', columnKey: 'ready', changed: true, cards: [
     { id: 'a', position: 0, version: 2 }, { id: 'b', position: 1, version: 2 },
     { id: 'c', position: 2, version: 0 }
   ] }); await down;
@@ -874,20 +874,20 @@ test('hidden cards disable ordering and never turn a filtered view into expected
   assert.match(html, /фильтр скрывает часть карточек/);
   assert.match(html, /data-action="order-up"[^>]*disabled/);
   assert.match(html, /data-action="order-down"[^>]*disabled/);
-  await h.context.reorderBoardCard('a', 'review', 'down');
+  await h.context.reorderBoardCard('a', 'ready', 'down');
   assert.equal(h.calls.length, 1);
 });
 
 test('repeated press is blocked during GET and POST, with no optimistic move', async () => {
   const h = await loadedOrderBoard();
-  const pending = h.context.reorderBoardCard('b', 'review', 'up');
-  await h.context.reorderBoardCard('b', 'review', 'up');
+  const pending = h.context.reorderBoardCard('b', 'ready', 'up');
+  await h.context.reorderBoardCard('b', 'ready', 'up');
   assert.equal(h.calls.length, 2);
   h.calls[1].resolve(orderResponse(h)); await new Promise(setImmediate);
-  await h.context.reorderBoardCard('b', 'review', 'up');
+  await h.context.reorderBoardCard('b', 'ready', 'up');
   assert.equal(h.calls.length, 3);
   assert.deepEqual(Array.from(h.state.currentBoard.columns[0].cards, (item) => item.id), ['a', 'b', 'c']);
-  h.calls[2].resolve({ projectId: 'A', columnKey: 'review', changed: true, cards: [
+  h.calls[2].resolve({ projectId: 'A', columnKey: 'ready', changed: true, cards: [
     { id: 'b', position: 0, version: 1 }, { id: 'a', position: 1, version: 1 },
     { id: 'c', position: 2, version: 0 }
   ] }); await pending;
@@ -895,7 +895,7 @@ test('repeated press is blocked during GET and POST, with no optimistic move', a
 
 test('stale GET snapshot rereads the board without POST or automatic retry', async () => {
   const h = await loadedOrderBoard();
-  const pending = h.context.reorderBoardCard('b', 'review', 'up');
+  const pending = h.context.reorderBoardCard('b', 'ready', 'up');
   h.calls[1].resolve(orderResponse(h, ['a', 'c', 'b'])); await new Promise(setImmediate);
   assert.equal(h.calls.length, 3);
   assert.equal(h.calls[2].options, undefined);
@@ -911,7 +911,7 @@ test('409 and 404 refresh current board, preserve dirty draft, and never retry r
   for (const status of [409, 404]) {
     const h = await loadedOrderBoard();
     const form = draftFor(h);
-    const pending = h.context.reorderBoardCard('b', 'review', 'up');
+    const pending = h.context.reorderBoardCard('b', 'ready', 'up');
     h.calls[1].resolve(orderResponse(h)); await new Promise(setImmediate);
     h.calls[2].reject(Object.assign(Error('conflict'), { status })); await new Promise(setImmediate);
     assert.equal(h.calls.length, 4);
@@ -927,9 +927,9 @@ test('409 and 404 refresh current board, preserve dirty draft, and never retry r
 test('400, 404, 409, network error and invalid response block repeat until reread succeeds', async () => {
   for (const status of [400, 404, 409, undefined, 'invalid-response']) {
     const h = await loadedOrderBoard(); draftFor(h);
-    const pending = h.context.reorderBoardCard('b', 'review', 'up');
+    const pending = h.context.reorderBoardCard('b', 'ready', 'up');
     h.calls[1].resolve(orderResponse(h)); await new Promise(setImmediate);
-    if (status === 'invalid-response') h.calls[2].resolve({ projectId: 'A', columnKey: 'review', changed: false, cards: [] });
+    if (status === 'invalid-response') h.calls[2].resolve({ projectId: 'A', columnKey: 'ready', changed: false, cards: [] });
     else h.calls[2].reject(Object.assign(Error('failure'), { status }));
     await new Promise(setImmediate);
     assert.equal(h.calls.length, 4);
@@ -937,7 +937,7 @@ test('400, 404, 409, network error and invalid response block repeat until rerea
     assert.equal(h.state.taskOperations.A.phase, 'unknown');
     assert.equal(h.state.currentBoard, null);
     assert.equal(h.state.taskDraft.values.title, 'Draft title');
-    await h.context.reorderBoardCard('b', 'review', 'up');
+    await h.context.reorderBoardCard('b', 'ready', 'up');
     assert.equal(h.calls.length, 4);
     const fresh = board('A', 'kanban', [card('a'), card('b'), card('c')]);
     const reread = h.context.loadBoard('A', 'kanban');
@@ -946,7 +946,7 @@ test('400, 404, 409, network error and invalid response block repeat until rerea
     h.calls[5].resolve(orderForBoard(fresh)); await reread;
     assert.equal(h.state.taskOperations.A, undefined);
     assert.equal(h.state.taskDraft.values.title, 'Draft title');
-    const retry = h.context.reorderBoardCard('b', 'review', 'up');
+    const retry = h.context.reorderBoardCard('b', 'ready', 'up');
     assert.equal(h.calls.length, 7);
     h.calls[6].reject(Object.assign(Error('bad'), { status: 400 }));
     await new Promise(setImmediate);
@@ -956,7 +956,7 @@ test('400, 404, 409, network error and invalid response block repeat until rerea
 
 test('board refresh alone cannot unlock reorder when authoritative order GET fails', async () => {
   const h = await loadedOrderBoard();
-  const pending = h.context.reorderBoardCard('b', 'review', 'up');
+  const pending = h.context.reorderBoardCard('b', 'ready', 'up');
   h.calls[1].resolve(orderResponse(h)); await new Promise(setImmediate);
   h.calls[2].reject(Object.assign(Error('invalid'), { status: 400 })); await new Promise(setImmediate);
   const fresh = board('A', 'kanban', [card('a'), card('b'), card('c')]);
@@ -964,7 +964,7 @@ test('board refresh alone cannot unlock reorder when authoritative order GET fai
   h.calls[4].reject(Error('order unavailable')); await pending;
   assert.equal(h.state.taskOperations.A.phase, 'unknown');
   assert.equal(h.state.currentBoard, null);
-  await h.context.reorderBoardCard('b', 'review', 'up');
+  await h.context.reorderBoardCard('b', 'ready', 'up');
   assert.equal(h.calls.length, 5);
   const retry = h.context.loadBoard('A', 'kanban');
   h.calls[5].resolve(fresh); await new Promise(setImmediate);
@@ -974,12 +974,12 @@ test('board refresh alone cannot unlock reorder when authoritative order GET fai
 
 test('late POST after project switch never changes new board or its message', async () => {
   const h = await loadedOrderBoard();
-  const pending = h.context.reorderBoardCard('b', 'review', 'up');
+  const pending = h.context.reorderBoardCard('b', 'ready', 'up');
   h.calls[1].resolve(orderResponse(h)); await new Promise(setImmediate);
   const switching = h.context.openProjectBoard('B', 'scrum');
   h.calls[3].resolve(board('B', 'scrum')); await switching;
   const messageCount = h.messages.length;
-  h.calls[2].resolve({ projectId: 'A', columnKey: 'review', changed: true, cards: [
+  h.calls[2].resolve({ projectId: 'A', columnKey: 'ready', changed: true, cards: [
     { id: 'b', position: 0, version: 1 }, { id: 'a', position: 1, version: 1 },
     { id: 'c', position: 2, version: 0 }
   ] }); await pending;
@@ -989,7 +989,7 @@ test('late POST after project switch never changes new board or its message', as
 
 test('late order GET after board switch never sends POST', async () => {
   const h = await loadedOrderBoard();
-  const pending = h.context.reorderBoardCard('b', 'review', 'up');
+  const pending = h.context.reorderBoardCard('b', 'ready', 'up');
   const switching = h.context.openProjectBoard('B', 'scrum');
   h.calls[2].resolve(board('B', 'scrum')); await switching;
   h.calls[1].resolve(orderResponse(h, [])); await pending;
@@ -1000,9 +1000,9 @@ test('late order GET after board switch never sends POST', async () => {
 test('successful reorder retains an edited card draft and marks its old version for comparison', async () => {
   const h = await loadedOrderBoard([card('card-a'), card('b')]);
   const form = draftFor(h);
-  const pending = h.context.reorderBoardCard('b', 'review', 'up');
+  const pending = h.context.reorderBoardCard('b', 'ready', 'up');
   h.calls[1].resolve(orderResponse(h)); await new Promise(setImmediate);
-  h.calls[2].resolve({ projectId: 'A', columnKey: 'review', changed: true, cards: [
+  h.calls[2].resolve({ projectId: 'A', columnKey: 'ready', changed: true, cards: [
     { id: 'b', position: 0, version: 1 }, { id: 'card-a', position: 1, version: 1 }
   ] }); await pending;
   assert.equal(h.state.taskDraft.values.title, 'Draft title');
@@ -1011,4 +1011,72 @@ test('successful reorder retains an edited card draft and marks its old version 
   assert.equal(h.state.taskDraft.conflict, true);
   await h.context.saveBoardCard('card-a', formData());
   assert.equal(h.calls.length, 3);
+});
+
+// Deadline classification itself is exercised by deadline-calculation.test.cjs;
+// here missing dates drive the real warning renderer through context transitions.
+async function openUncertainBoard(h, project, count = 1) {
+  h.context.isTaskOverdue = item => item.dueDate ? false : null;
+  const pending = h.context.openProjectBoard(project, 'kanban');
+  h.calls.at(-1).resolve(board(project, 'kanban', Array.from({length:count}, (_,i) =>
+    ({...card(project+'-'+i),dueDate:''}))));
+  await pending;
+}
+function assertQualityCleared(h) {
+  assert.equal(h.elements.boardTaskQuality.textContent, '');
+  assert.equal(h.elements.boardTaskQuality.hidden, true);
+}
+
+test('uncertain warning is cleared on deselection, model landing and empty board, then uses the new response', async () => {
+  const h=harness();
+  await openUncertainBoard(h,'A');
+  assert.match(h.elements.boardTaskQuality.textContent,/1 с неизвестным/);
+  assert.equal(h.elements.boardTaskQuality.hidden,false);
+  h.context.selectBoardProject('');
+  assertQualityCleared(h);
+  await openUncertainBoard(h,'A');
+  h.context.renderBoardLanding();
+  assertQualityCleared(h);
+  await openUncertainBoard(h,'A');
+  h.context.renderEmptyBoard();
+  assertQualityCleared(h);
+  await openUncertainBoard(h,'B',2);
+  assert.match(h.elements.boardTaskQuality.textContent,/2 с неизвестным/);
+  assert.equal(h.elements.boardTaskQuality.hidden,false);
+});
+
+test('another project loading or failing never displays the previous quality warning; retry uses current data', async () => {
+  const h=harness();
+  await openUncertainBoard(h,'A');
+  const pending=h.context.openProjectBoard('B','kanban');
+  assertQualityCleared(h);
+  h.calls.at(-1).reject(Error('offline'));
+  await pending;
+  assertQualityCleared(h);
+  await openUncertainBoard(h,'B',2);
+  assert.match(h.elements.boardTaskQuality.textContent,/2 с неизвестным/);
+  const known=h.context.openProjectBoard('B','kanban');
+  assertQualityCleared(h);
+  h.calls.at(-1).resolve(board('B','kanban',[card()]));
+  await known;
+  assertQualityCleared(h);
+});
+
+test('late board success or failure cannot resurrect or replace a current quality warning', async () => {
+  for(const fails of [false,true]) {
+    const h=harness();
+    await openUncertainBoard(h,'A');
+    const stale=h.context.openProjectBoard('A','kanban');
+    const old=h.calls.at(-1);
+    h.context.selectBoardProject('');
+    assertQualityCleared(h);
+    await openUncertainBoard(h,'B',2);
+    const current=h.elements.boardTaskQuality.textContent;
+    if(fails) old.reject(Error('late failure'));
+    else old.resolve(board('A','kanban',Array.from({length:7},(_,i)=>({...card('old-'+i),dueDate:''}))));
+    await stale;
+    assert.equal(h.elements.boardTaskQuality.textContent,current);
+    assert.equal(h.elements.boardTaskQuality.hidden,false);
+    assert.equal(h.state.currentBoard.projectId,'B');
+  }
 });
