@@ -7,7 +7,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="/styles.css?v=pm0063d7fix" />
+    <link rel="stylesheet" href="/styles.css?v=pm006-blue-v3" />
   </head>
   <body>
     <div class="page-shell">
@@ -36,27 +36,18 @@
         <div class="app-main">
       <header class="overview-header view-section active" data-view-section="overview">
         <div class="overview-header-copy">
-          <p class="eyebrow">Портфель проектов</p>
-          <h1>Обзор</h1>
+          <h1>Портфель проектов</h1>
         </div>
+        <div class="overview-header-actions"><button class="btn btn-primary" type="button" data-view="projects">Открыть проекты</button>
         <button class="btn btn-ghost btn-small overview-refresh" type="button" id="refresh-button">
-          <span>Обновить</span><span aria-hidden="true">↻</span>
-        </button>
+          <span>Обновить</span>
+        </button></div>
         <p class="overview-as-of" id="overview-as-of">Состояние портфеля — загружаем расчётную дату</p>
       </header>
 
       <main class="workspace">
-        <section class="panel overview-filters view-section active" data-view-section="overview">
-          <form class="filters-form" id="filters-form" onsubmit="return false">
-            <label>Квартал<select name="quarter" id="quarter-filter"><option value="all">Все кварталы</option></select></label>
-            <label>Статус<select name="status" id="status-filter"><option value="all">Все статусы</option></select></label>
-            <label>Состояние<select name="health" id="health-filter"><option value="all">Все состояния</option></select></label>
-            <button class="btn btn-ghost btn-small" type="button" id="reset-overview-filters">Сбросить</button>
-          </form>
-          <p class="portfolio-summary" id="portfolio-summary" role="status" aria-live="polite">Загружаем портфель…</p>
-        </section>
         <section class="view-section active overview-content" id="overview-content" data-view-section="overview" aria-busy="true">
-          <h2>Сводка портфеля</h2>
+
           <div class="stats-grid" id="stats-grid">
             <article class="metric-card panel">
               <div class="metric-card-head"><span class="metric-label">Всего проектов</span><span class="metric-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 7h6l2 2h8v10H4zM4 7V5h6l2 2" /></svg></span></div>
@@ -75,7 +66,18 @@
               <strong class="metric-value" data-stat="averageProgress">—</strong><small id="overview-progress-coverage"></small>
             </article>
           </div>
-          <div class="overview-insights-grid">
+          <h2 class="overview-projects-heading">Проекты</h2>
+        <section class="panel overview-filters view-section active" data-view-section="overview">
+          <form class="filters-form" id="filters-form" onsubmit="return false">
+            <label>Квартал<select name="quarter" id="quarter-filter"><option value="all">Все кварталы</option></select></label>
+            <label>Статус<select name="status" id="status-filter"><option value="all">Все статусы</option></select></label>
+            <label>Состояние<select name="health" id="health-filter"><option value="all">Все состояния</option></select></label>
+            <button class="btn btn-ghost btn-small" type="button" id="reset-overview-filters">Сбросить</button>
+          </form>
+          <p class="portfolio-summary" id="portfolio-summary" role="status" aria-live="polite">Загружаем портфель…</p>
+        </section>
+          <div id="overview-all-projects" aria-label="Проекты портфеля">Загружаем проекты…</div>
+          <div class="overview-support-grid"><div class="overview-insights-grid">
             <section class="panel portfolio-health-panel">
               <div class="section-head"><h2>Состояние портфеля</h2></div>
               <div class="portfolio-health-bar" id="overview-health-bar" aria-label="Распределение проектов по состоянию"></div>
@@ -89,7 +91,7 @@
             </section>
           </div>
           <div class="overview-work-grid">
-            <section class="panel overview-attention-panel">
+            <section class="panel overview-attention-panel" id="overview-attention-panel">
               <div class="section-head"><h2>Требуют внимания</h2><span class="pill" id="overview-problem-count">—</span></div>
               <div id="overview-project-list">Загружаем проекты…</div>
             </section>
@@ -98,6 +100,7 @@
               <h3 class="overview-subheading">Контрольные точки</h3>
               <div id="portfolio-slice-table">Загружаем сроки…</div>
             </section>
+          </div>
           </div>
         </section>
         <section class="panel release-checks-panel view-section" id="release-checks-panel" data-view-section="release">
@@ -615,7 +618,7 @@
       </section>
     </div>
 
-    <script src="/app.js?v=pm0063d7fix" defer></script>
+    <script src="/app.js?v=pm006-blue-v3" defer></script>
     <script src="/navigation-ui.js" defer></script>
     <script src="/architecture-editor-validation.js?v=pm003c3e" defer></script>
     <script src="/architecture-child-editor.js?v=pm003c3e" defer></script>

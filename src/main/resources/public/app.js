@@ -609,12 +609,20 @@ async function loadOverview() {
     }).format(new Date());
     populateOverviewFilters(snapshot);
     renderStats(snapshot);
+    renderOverviewProjects(snapshot.projects, snapshot);
     renderProjectOverview(snapshot);
     renderPortfolioSlice(snapshot);
     setSummary("Данные портфеля обновлены " + state.overviewLoadedAt + ".", "quiet");
     renderOverviewQuality(snapshot);
   } catch (error) {
     if (request !== state.overviewRequest) return;
+    if (!state.overview) {
+      const unavailable = '<p class="empty-state compact">Данные недоступны. Нажмите «Обновить», чтобы повторить загрузку.</p>';
+      document.getElementById("overview-all-projects").innerHTML = unavailable;
+      elements.overviewProjectList.innerHTML = unavailable;
+      elements.portfolioSliceTable.innerHTML = unavailable;
+      elements.overviewDataQuality.innerHTML = "<h2>Качество данных</h2>" + unavailable;
+    }
     setSummary("Не удалось загрузить портфель. Нажмите «Обновить». " +
       (state.overview ? "Показан предыдущий снимок; последнее обновление " +
         state.overviewLoadedAt + ". Текущие фильтры ещё не применены." : "Данные недоступны."),
@@ -639,6 +647,7 @@ function populateOverviewFilters(snapshot) {
 }
 
 function renderStats(snapshot) {
+  document.getElementById("overview-attention-panel").classList.toggle("no-attention", snapshot.attentionCount === 0);
   elements.statProjectCount.textContent = formatNumber(snapshot.projectCount);
   elements.statActiveCount.textContent = formatNumber(snapshot.activeCount);
   elements.statRiskyCount.textContent = formatNumber(snapshot.attentionCount);
@@ -2546,3 +2555,18 @@ function cssEscape(value) {
   return String(value).replaceAll('"', '\\"');
 }
 
+
+function renderOverviewProjects(projects, snapshot) {
+  const container = document.getElementById("overview-all-projects");
+  container.innerHTML = projects.length ? projects.map(project => {
+    const progress = Number.isFinite(project.progress) ? Math.min(100, Math.max(0, project.progress)) : null;
+    return '<article class="portfolio-project-row"><div>' + overviewProjectLink(project) +
+      '<div class="portfolio-project-badges"><span>' + escapeHtml(LABELS.status[project.status] || 'Статус не указан') +
+      '</span><span data-health="' + escapeHtml(project.health || 'unknown') + '">' +
+      escapeHtml(LABELS.health[project.health] || 'Состояние не указано') + '</span></div></div>' +
+      '<div class="portfolio-project-progress">' + (progress == null ? '<span>Прогресс не указан</span>' :
+        '<progress max="100" value="' + progress + '" aria-label="Прогресс проекта ' + escapeHtml(project.name) + '"></progress><strong>' + progress + '%</strong>') +
+      '</div><div class="portfolio-project-deadline"><span>Срок</span><time>' + escapeHtml(overviewDate(project.deadline)) + '</time></div></article>';
+  }).join('') : '<p class="empty-state compact">' + overviewEmpty(snapshot, 'Проектов нет.') + '</p>';
+  bindOverviewLinks(container);
+}

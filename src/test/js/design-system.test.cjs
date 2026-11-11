@@ -16,9 +16,9 @@ const contrast = (a, b) => {
 };
 
 test('approved palette and Manrope are centralized in design tokens', () => {
-  for (const [name, value] of Object.entries({ '--primary': '#21A038', '--primary-hover': '#1B8A31',
-    '--sidebar': '#12261A', '--bg': '#F4F7F4', '--mint': '#EAF7EE', '--text': '#1C1F1D',
-    '--muted': '#5F6B63', '--warning': '#C58A1A', '--danger': '#C93C32' })) {
+  for (const [name, value] of Object.entries({ '--primary': '#2563EB', '--primary-hover': '#1D4ED8',
+    '--sidebar': '#142D4E', '--bg': '#F7F9FC', '--mint': '#EAF2FF', '--text': '#111827',
+    '--muted': '#526176', '--warning': '#C58A1A', '--danger': '#C93C32' })) {
     assert.equal(resolve(name).toUpperCase(), value);
   }
   assert.match(resolve('--font-family'), /^"Manrope"/);
@@ -41,7 +41,7 @@ test('text tokens meet 4.5:1 for normal, hover, semantic and disabled states', (
     ['--danger-text', '--danger-soft'], ['--panel', '--danger'],
     ['--info-text', '--info-soft'], ['--sidebar-text', '--sidebar'],
     ['--sidebar-text', '--sidebar-active'], ['--sidebar-muted', '--sidebar'],
-    ['--disabled-text', '--disabled-bg']];
+    ['--disabled-text', '--disabled-bg'], ['--navigation-active', '--sidebar']];
   for (const [text, background] of pairs) {
     assert.ok(contrast(text, background) >= 4.5, `${text} / ${background}: ${contrast(text, background)}`);
   }

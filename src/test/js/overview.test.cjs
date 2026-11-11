@@ -7,7 +7,7 @@ const path = require('node:path');
 const source = fs.readFileSync(path.join(__dirname, '../../main/resources/public/app.js'), 'utf8');
 const html = fs.readFileSync(path.join(__dirname, '../../main/resources/public/index.html'), 'utf8');
 const css = fs.readFileSync(path.join(__dirname, '../../main/resources/public/styles.css'), 'utf8');
-const names = ['loadDashboard', 'loadOverview', 'populateOverviewFilters', 'renderStats',
+const names = ['renderOverviewProjects', 'loadDashboard', 'loadOverview', 'populateOverviewFilters', 'renderStats',
   'overviewProjectLink', 'overviewDate', 'bindOverviewLinks', 'overviewEmpty', 'renderProjectOverview',
   'renderPortfolioSlice', 'renderOverviewQuality', 'openProjectFromOverview', 'showView',
   'formatNumber', 'formatCurrency', 'displayLabel', 'escapeHtml', 'setSummary', 'loadTrainSnapshot'];
@@ -45,7 +45,7 @@ function snapshot(overrides = {}) {
   return { calculationDate: '2026-09-19', totalProjectCount: 1, projectCount: 1, activeCount: 1,
     attentionCount: 0, totalBudget: 0, budgetCoverage: 1, averageProgress: 0, progressCoverage: 1,
     quarters: ['Q3', 'Q4'], statuses: ['active', 'done'], healthValues: ['green', 'red'],
-    statusCounts: { active: 1 }, healthCounts: { green: 1 }, attentionProjects: [], milestones: [], dueSoonCount: 0, dataQualityProjects: [], ...overrides };
+    statusCounts: { active: 1 }, healthCounts: { green: 1 }, projects: [], attentionProjects: [], milestones: [], dueSoonCount: 0, dataQualityProjects: [], ...overrides };
 }
 
 test('view navigation waits for passport discard confirmation before changing the screen',()=>{
@@ -86,6 +86,8 @@ test('failed first load reports unavailable data and retry recovers', async () =
   const { context, state, elements, get } = setup();
   await context.loadOverview();
   assert.match(elements.summary.textContent, /Данные недоступны/);
+  assert.match(get('overview-all-projects').innerHTML, /Данные недоступны/);
+  assert.doesNotMatch(get('overview-all-projects').innerHTML, /Загружаем/);
   assert.equal(state.overview, undefined);
   assert.equal(get('overview-content').attrs['aria-busy'], 'false');
   context.fetchJson = async () => snapshot();
@@ -167,6 +169,7 @@ test('train failure does not block a successful overview snapshot', async () => 
   context.loadProjectCatalog = async () => {};
   context.fetchJson = async url => {
     if (url.includes('/portfolio/overview')) return snapshot();
+    if (url.startsWith('/api/projects?')) return [];
     throw Error('HTTP 500');
   };
   await context.loadDashboard();
@@ -180,7 +183,7 @@ test('HTML contains approved overview heading and keeps GitHub outside overview'
   assert.match(html, /Состояние портфеля/);
   assert.match(html, /Качество данных/);
   assert.doesNotMatch(html, /Указанный бюджет/);
-  assert.match(html, /<h1>Обзор<\/h1>/);
+  assert.match(html, /<h1>Портфель проектов<\/h1>/);
   assert.match(html, /id="overview-as-of">Состояние портфеля/);
   assert.match(html, /id="release-checks-panel" data-view-section="release"/);
   assert.doesNotMatch(html, /id="release-checks-panel"[^>]+data-view-section="overview"/);
@@ -202,11 +205,27 @@ test('portfolio distribution explicitly renders unknown health and status', () =
 });
 
 test('approved desktop and mobile overview layout rules are present', () => {
-  assert.match(css, /grid-template-columns:\s*214px minmax\(0, 1fr\)/);
+  assert.match(css, /\.app-layout\s*\{\s*display: block;/);
   assert.match(css, /background:\s*var\(--sidebar\)/);
   assert.match(css, /background:\s*var\(--sidebar-active\)/);
   assert.match(css, /grid-template-columns:\s*repeat\(4, minmax\(0, 1fr\)\)/);
   assert.match(css, /border:\s*1px solid var\(--line\)/);
   assert.match(css, /@media \(max-width: 520px\)[\s\S]*grid-template-columns:\s*repeat\(2, minmax\(0, 1fr\)\)/);
   assert.doesNotMatch(css, /\.metric-card-budget\s*\{\s*grid-column:\s*1 \/ -1/);
+});
+
+ test('portfolio rows use actual fields, distinguish missing progress and escape names', () => {
+ const {context,get}=setup(); context.renderOverviewProjects([{id:'x',name:'<unsafe>',status:'active',health:'yellow',progress:47,deadline:'2026-12-01'}, {id:'y',name:'Missing',progress:null}],snapshot());
+ const markup=get('overview-all-projects').innerHTML;
+ assert.match(markup,/47%/);assert.match(markup,/01.12.2026/);assert.match(markup,/Прогресс не указан/);assert.match(markup,/&lt;unsafe&gt;/);assert.doesNotMatch(markup,/<unsafe>/);
+ });
+
+test('overview rows and metrics come from one atomic portfolio response', async () => {
+  const {context,get}=setup(); const calls=[];
+  context.fetchJson = async url => { calls.push(url); return snapshot({projects:[{id:'one',name:'Snapshot project',status:'active',health:'green',progress:35,deadline:'2026-12-01'}]}); };
+  await context.loadOverview();
+  assert.equal(calls.length,1);
+  assert.match(calls[0],/^\/api\/portfolio\/overview\?/);
+  assert.match(get('overview-all-projects').innerHTML,/Snapshot project/);
+  assert.match(get('overview-all-projects').innerHTML,/35%/);
 });
