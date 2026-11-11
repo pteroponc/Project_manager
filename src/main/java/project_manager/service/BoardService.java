@@ -230,7 +230,7 @@ public class BoardService {
         return columnsFor(deliveryModel, project);
     }
 
-    private List<BoardColumn> columnsFor(String deliveryModel, ProjectEntity project) {
+    List<BoardColumn> columnsFor(String deliveryModel, ProjectEntity project) {
         return switch (deliveryModel) {
             case "scrum" -> scrumBoard(project);
             case "waterfall" -> waterfallBoard(project);
@@ -355,7 +355,7 @@ public class BoardService {
         };
     }
 
-    private String normalizeDeliveryModel(String deliveryModel) {
+    String normalizeDeliveryModel(String deliveryModel) {
         if (deliveryModel == null || deliveryModel.isBlank()) {
             return "kanban";
         }

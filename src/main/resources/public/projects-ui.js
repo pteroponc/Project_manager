@@ -15,6 +15,8 @@
   let filters = readFilters(window.location.search);
   let registry = null;
   let card = null;
+  let projectSnapshot = null;
+  let receivedAt = null;
   let editOriginal = null;
   let registryRequest = 0;
   let cardRequest = 0;
@@ -182,17 +184,23 @@
     updateUrl("project-card", id);
     const request = ++cardRequest;
     const sameCard = card?.id === id;
-    if (!sameCard) card = null;
+    if (!sameCard) { card = null; projectSnapshot = null; receivedAt = null; }
+    const refreshOpener = document.activeElement;
     detail.parentElement.setAttribute("aria-busy", "true");
     if (!sameCard) detail.innerHTML = '<p class="empty-state compact">Загружаем карточку…</p>';
     try {
-      const loaded = await fetchJson(`/api/projects/${encodeURIComponent(id)}/card`);
+      const loaded = await fetchJson(`/api/projects/${encodeURIComponent(id)}/dashboard`);
       if (request !== cardRequest || state.activeView !== "project-card") return;
-      card = loaded;
+      if (!window.PMProjectSummary.valid(loaded, id)) throw new Error("Некорректный снимок проекта");
+      card = loaded.project;
+      projectSnapshot = loaded;
+      receivedAt = new Date().toISOString();
       renderCard();
+      if (document.activeElement === refreshOpener && refreshOpener?.hasAttribute("data-refresh-card"))
+        detail.querySelector("[data-refresh-card]")?.focus();
     } catch (error) {
       if (request !== cardRequest) return;
-      if (sameCard) showCardNotice("Показана устаревшая карточка. Не удалось обновить данные.", "warning");
+      if (sameCard) showCardNotice("Показана устаревшая карточка и сводка. Не удалось обновить данные. Нажмите «Обновить», чтобы повторить.", "warning");
       else detail.innerHTML = `<div class="empty-state compact">${error.status === 404 ? "Проект не найден." : "Не удалось загрузить карточку."} <button class="text-link" type="button" data-retry-card="${escapeAttr(id)}">Повторить</button></div>`;
     } finally {
       if (request === cardRequest) detail.parentElement.setAttribute("aria-busy", "false");
@@ -217,9 +225,10 @@
       <dl class="project-detail-facts">
         <div><dt>Квартал</dt><dd>${text(project.quarter)}</dd></div><div><dt>Статус</dt><dd>${statusLabel(project.status)}</dd></div>
         <div><dt>Состояние</dt><dd>${healthLabel(project.health)}</dd></div><div><dt>Начало</dt><dd>${date(project.startDate)}</dd></div>
-        <div><dt>Срок завершения</dt><dd>${date(project.deadline)}</dd></div><div><dt>Прогресс</dt><dd>${progress(project.progress)}</dd></div>
+        <div><dt>Срок завершения</dt><dd>${date(project.deadline)}</dd></div><div><dt>Прогресс · ручная оценка</dt><dd>${progress(project.progress)}</dd></div>
         <div><dt>Задачи</dt><dd>${taskCount(project.board?.taskCount)}</dd></div><div><dt>Владелец</dt><dd>${text(project.owner)}</dd></div>
       </dl>
+      ${window.PMProjectSummary.render(projectSnapshot, receivedAt)}
       ${project.assessment?.requiresAttention ? `<section class="project-attention"><h2>Требует внимания</h2>${reasons(project.assessment)}</section>` : ""}
       ${project.assessment?.dataQualityIssues?.length ? `<section class="project-attention"><h2>Качество данных</h2><ul class="assessment-reasons">${project.assessment.dataQualityIssues.map(issue => `<li>${escapeHtml(issue)}</li>`).join("")}</ul></section>` : ""}
       <section class="project-milestones"><div class="section-head"><h2>Контрольные точки</h2><span class="pill">${project.milestoneCount}</span></div>
@@ -239,7 +248,7 @@
   }
 
   function milestoneRow(m) {
-    return `<article class="milestone-row"><div><strong>${escapeHtml(m.name)}</strong>
+    return `<article class="milestone-row" data-milestone-id="${escapeAttr(m.id)}" tabindex="-1"><div><strong>${escapeHtml(m.name)}</strong>
       <p>${date(m.plannedDate)} · ${m.completed ? "Выполнена" : "Не выполнена"}${m.completedDate ? " · Факт: " + date(m.completedDate) : ""}</p></div>
       <div class="milestone-actions"><button type="button" class="text-link" data-milestone-action="edit" data-id="${escapeAttr(m.id)}">Редактировать</button>
       <button type="button" class="text-link" data-milestone-action="complete" data-id="${escapeAttr(m.id)}">${m.completed ? "Снять отметку" : "Отметить выполненной"}</button>
@@ -325,6 +334,7 @@
     if (!editor.reportValidity()) return;
     const values = readProjectForm();
     const updating = Boolean(editOriginal);
+    const request = cardRequest, originView = state.activeView, editingId = editOriginal?.id;
     const body = updating ? changedFields(editOriginal, values) : values;
     if (updating && Object.keys(body).length === 1) {
       elements.submitMessage.textContent = "Изменений нет.";
@@ -335,19 +345,23 @@
       const saved = await fetchJson(updating ? `/api/projects/${encodeURIComponent(editOriginal.id)}` : "/api/projects", {
         method: updating ? "PATCH" : "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body)
       });
+      if (request !== cardRequest || state.activeView !== originView || editOriginal?.id !== editingId) return;
       closeProjectForm();
       resetFormMode();
       ++registryRequest;
       registry = null;
       if (updating) {
         card = saved;
+        projectSnapshot = null;
         showView("project-card");
         updateUrl("project-card", card.id);
         renderCard();
+        await openCard(saved.id, "history");
       } else {
         await openCard(saved.id, "registry");
       }
     } catch (error) {
+      if (request !== cardRequest || state.activeView !== originView || editOriginal?.id !== editingId) return;
       showFieldErrors(editor, error.fieldErrors);
       if (error.status === 409) conflictMessage(elements.submitMessage, editOriginal.id);
       else elements.submitMessage.textContent = error.message || "Не удалось сохранить проект.";
@@ -357,6 +371,7 @@
   async function submitMilestone(event) {
     event.preventDefault();
     const milestoneForm = event.currentTarget;
+    const projectId = card.id, request = cardRequest;
     clearFieldErrors(milestoneForm);
     if (!milestoneForm.reportValidity()) return;
     const data = new FormData(milestoneForm);
@@ -365,12 +380,15 @@
       plannedDate: data.get("plannedDate"), position: Number(data.get("position")),
       completed: data.get("completed") === "on", completedDate: data.get("completedDate") || null };
     try {
-      const updated = await fetchJson(`/api/projects/${encodeURIComponent(card.id)}/milestones${id ? "/" + encodeURIComponent(id) : ""}`, {
+      const updated = await fetchJson(`/api/projects/${encodeURIComponent(projectId)}/milestones${id ? "/" + encodeURIComponent(id) : ""}`, {
         method: id ? "PATCH" : "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload)
       });
+      if (request !== cardRequest || card?.id !== projectId || state.activeView !== "project-card") return;
       card = updated;
+      projectSnapshot = null;
       renderCard();
-    } catch (error) { milestoneError(error, milestoneForm); }
+      await openCard(projectId, "history");
+    } catch (error) { if (request === cardRequest && card?.id === projectId) milestoneError(error, milestoneForm); }
   }
 
   function milestoneError(error, milestoneForm = detail.querySelector("#milestone-form")) {
@@ -381,14 +399,18 @@
   }
 
   async function mutateMilestone(id, method, payload) {
+    const projectId = card.id, request = cardRequest;
     try {
-      const updated = await fetchJson(`/api/projects/${encodeURIComponent(card.id)}/milestones/${encodeURIComponent(id)}` +
+      const updated = await fetchJson(`/api/projects/${encodeURIComponent(projectId)}/milestones/${encodeURIComponent(id)}` +
         (method === "DELETE" ? `?expectedVersion=${card.version}` : ""), {
         method, ...(payload ? { headers: { "Content-Type": "application/json" }, body: JSON.stringify({ expectedVersion: card.version, ...payload }) } : {})
       });
+      if (request !== cardRequest || card?.id !== projectId || state.activeView !== "project-card") return;
       card = updated;
+      projectSnapshot = null;
       renderCard();
-    } catch (error) { milestoneError(error); }
+      await openCard(projectId, "history");
+    } catch (error) { if (request === cardRequest && card?.id === projectId) milestoneError(error); }
   }
 
   function openDialog(title, content, action, opener, allowedAction = true) {
@@ -492,6 +514,17 @@
   detail.addEventListener("click", event => {
     const target = event.target.closest("button");
     if (!target) return;
+    if (target.dataset.summaryMilestone) {
+      const row = [...detail.querySelectorAll("[data-milestone-id]")]
+        .find(item => item.dataset.milestoneId === target.dataset.summaryMilestone);
+      row?.scrollIntoView({ block: "center" });
+      row?.focus();
+      return;
+    }
+    if (target.dataset.summaryTask) {
+      void window.PMBoardContext.openTask(card.id, projectSnapshot.model, target.dataset.summaryTask);
+      return;
+    }
     if (target.dataset.retryCard) return openCard(target.dataset.retryCard, "history");
     if (target.hasAttribute("data-refresh-card")) return openCard(card.id, "history");
     if (target.dataset.reloadConflict) {
@@ -503,7 +536,7 @@
     if (target.dataset.cardAction === "architecture") return window.PMArchitectureUI?.open(card.id);
     if (target.dataset.cardAction === "delete") return deleteProject(card, target);
     if (target.dataset.cardAction === "board") {
-      window.PMBoardContext.openProjectBoard(card.id, card.deliveryModel || "kanban");
+      window.PMBoardContext.openProjectBoard(card.id, projectSnapshot?.model || card.deliveryModel || "kanban");
       return;
     }
     if (target.hasAttribute("data-cancel-milestone")) return renderCard();

@@ -6,7 +6,7 @@ const vm = require('node:vm');
 
 const source = fs.readFileSync(path.join(__dirname, '../../main/resources/public/app.js'), 'utf8');
 const names = ['showView', 'invalidateBoardContext', 'isCurrentBoardRequest',
-  'activeBoardContext', 'isCurrentBoardContext', 'openProjectBoard', 'onProjectDeleted',
+  'activeBoardContext', 'isCurrentBoardContext', 'openProjectBoard', 'openBoardTask', 'onProjectDeleted',
   'loadProjectCatalog', 'loadBoard', 'renderBoardLanding', 'renderEmptyBoard', 'findBoardCard',
   'moveBoardCard', 'createBoardCard', 'deleteBoardCard', 'saveBoardCard',
   'boardCardPayload', 'boardCardsUrl', 'boardCardUrl', 'selectBoardProject',
@@ -1079,4 +1079,18 @@ test('late board success or failure cannot resurrect or replace a current qualit
     assert.equal(h.elements.boardTaskQuality.hidden,false);
     assert.equal(h.state.currentBoard.projectId,'B');
   }
+});
+
+
+test('task drilldown waits for accepted board load, ignores stale context and missing IDs', async () => {
+ const h=harness();let accept;let opened=[];
+ h.context.openProjectBoard=()=>new Promise(r=>{accept=r;});h.context.openTaskModal=(...args)=>opened.push(args);
+ h.context.cssEscape=String;h.state.activeView='boards';h.state.selectedProjectId='A';h.state.activeBoardModel='kanban';h.state.boardDrilledIn=true;
+ h.state.currentBoard=board('A','kanban',[card()]);
+ const pending=h.context.openBoardTask('A','kanban','card-a');assert.equal(opened.length,0);accept(true);await pending;
+ assert.equal(opened.length,1);assert.equal(opened[0][0].id,'card-a');
+ h.context.openProjectBoard=async()=>false;assert.equal(await h.context.openBoardTask('A','kanban','card-a'),false);
+ h.context.openProjectBoard=async()=>true;h.state.selectedProjectId='B';
+ assert.equal(await h.context.openBoardTask('A','kanban','card-a'),false);
+ h.state.selectedProjectId='A';assert.equal(await h.context.openBoardTask('A','kanban','missing'),false);assert.equal(opened.length,1);
 });

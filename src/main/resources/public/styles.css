@@ -2530,3 +2530,27 @@ progress::-moz-progress-bar { background: var(--progress); }
 
 @media (max-width: 1023px) { .overview-content .metric-card:nth-child(2) { border-right: 0; } .overview-content .metric-card:nth-child(3) { padding-left: 0; } .sidebar-brand { flex: 1 1 auto; } }
 @media (max-width: 600px) { .sidebar-brand strong { font-size: 13px; } .sidebar-brand { gap: 8px; } .brand-mark { width: 32px; height: 32px; } }
+
+/* Project card summary: shares existing blue tokens and record editors. */
+.project-summary { margin: 24px 0; padding-block: 20px; border-block: 1px solid var(--line); min-width: 0; }
+.project-summary h2 { font-size: 22px; margin-bottom: 10px; }
+.project-summary h3 { font-size: 16px; margin-block: 16px 8px; }
+.project-summary .hint-text { font-size: 14px; line-height: 1.5; }
+.summary-counts { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 16px; margin: 20px 0; }
+.summary-counts > div { border-left: 2px solid var(--line); padding-left: 12px; min-width: 0; }
+.summary-counts dt { color: var(--muted); font-size: 14px; }
+.summary-counts dd { margin: 6px 0 0; font-size: 22px; font-weight: 750; overflow-wrap: anywhere; }
+.summary-warning { padding: 10px 12px; background: var(--warning-soft); color: var(--warning-text); border-radius: var(--radius-sm); font-size: 14px; }
+.summary-distribution { display: flex; flex-wrap: wrap; gap: 8px; padding: 0; list-style: none; }
+.summary-distribution li { padding: 7px 10px; background: var(--surface); border-radius: var(--radius-sm); font-size: 14px; overflow-wrap: anywhere; }
+.summary-distribution strong { margin-left: 8px; }
+.summary-lists { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 0 24px; }
+.summary-lists > section { min-width: 0; }
+.summary-records { list-style: none; padding: 0; margin: 0; }
+.summary-records li { display: grid; gap: 6px; padding: 12px 0; border-bottom: 1px solid var(--line); }
+.summary-records .text-link { text-align: left; overflow-wrap: anywhere; white-space: normal; max-width: 100%; font-size: 15px; }
+.summary-records span { color: var(--muted); font-size: 14px; }
+@media (max-width: 600px) {
+  .summary-counts { grid-template-columns: repeat(2,minmax(0,1fr)); }
+  .summary-lists { grid-template-columns: minmax(0,1fr); }
+}

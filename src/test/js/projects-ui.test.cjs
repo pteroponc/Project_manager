@@ -83,6 +83,7 @@ function harness(search = '') {
     async fetchJson(url, options) { calls.push({ url, options }); throw Error('offline'); }
   });
   vm.runInContext(architectureScript, context);
+  vm.runInContext(fs.readFileSync(path.join(__dirname, '../../main/resources/public/project-summary-ui.js'), 'utf8'), context);
   vm.runInContext(script, context);
   return { ui: window.PMProjectsUI, architecture: window.PMArchitectureUI, context, state, window, get, calls, editor, editorFields,
     registryForm, registryFields, milestoneForm, milestoneFields };
@@ -95,6 +96,10 @@ const card = (overrides = {}) => ({ ...item(), version: 0, owner: 'Команд�
   startDate: null, milestone: 'Legacy', risk: 'Риск', dependency: 'Зависимость',
   kpiName: 'KPI', kpiTarget: 'Цель', board: { viewAvailable: true, taskCount: 0 },
   milestoneCount: 0, milestones: [], ...overrides });
+const dashboard = (overrides = {}) => ({ project: card(overrides), model: overrides.deliveryModel || 'kanban',
+ calculationDate:'2026-11-11',timeZone:'Europe/Moscow',generatedAt:'2026-11-11T10:00:00Z',
+ tasks:{total:0,done:0,blocked:0,overdue:0,uncertain:0,unknownDates:0,unmapped:0,unknownBlocked:0,
+ columns:[],unassigned:[],blockedTasks:[],overdueTasks:[]},milestones:{overdue:[],dueSoon:[],unknownDates:0} });
 const formProject = (overrides = {}) => ({ name: 'Проект', owner: 'Команда', status: 'active',
   health: 'red', deliveryModel: 'kanban', progress: '', startDate: '', quarter: 'Q3',
   deadline: '2026-10-20', milestone: 'Legacy', risk: 'Риск', dependency: 'Зависимость',
@@ -104,7 +109,7 @@ const snapshot = (items = [item()]) => ({ totalCount: items.length, filteredCoun
 
 test('dashboard summary opens the existing card and returns to dashboards', async () => {
   const h = harness();
-  h.context.fetchJson = async () => card();
+  h.context.fetchJson = async () => dashboard();
   await h.ui.openCard('p1', 'dashboards');
   assert.equal(h.state.activeView, 'project-card');
   assert.match(h.get('back-to-registry').textContent, /дашбордам/);
@@ -187,7 +192,7 @@ test('registry row opens the full card only on selection and keeps filters on re
   const calls = [];
   h.context.fetchJson = async url => {
     calls.push(url);
-    return url.endsWith('/card') ? card() : snapshot([item({ taskCount: 2 })]);
+    return url.endsWith('/dashboard') ? dashboard() : snapshot([item({ taskCount: 2 })]);
   };
   h.ui.onView('projects');
   await new Promise(resolve => setImmediate(resolve));
@@ -196,7 +201,7 @@ test('registry row opens the full card only on selection and keeps filters on re
     closest: selector => selector === '[data-open-project]' ? { dataset: { openProject: 'p1' } } : null
   } });
   await new Promise(resolve => setImmediate(resolve));
-  assert.equal(calls.filter(url => url.endsWith('/card')).length, 1);
+  assert.equal(calls.filter(url => url.endsWith('/dashboard')).length, 1);
   h.get('back-to-registry').listeners.click();
   assert.equal(h.state.activeView, 'projects');
   for (const value of ['query=crm', 'health=red', 'sort=progress', 'direction=desc']) {
@@ -248,7 +253,7 @@ test('create POST omits budget and preserves an unspecified progress value', asy
   let posted;
   h.context.fetchJson = async (url, options) => {
     if (options?.method === 'POST') { posted = JSON.parse(options.body); return { id: 'p1' }; }
-    if (url.includes('/card')) return card();
+    if (url.includes('/dashboard')) return dashboard();
     return snapshot();
   };
   await h.ui.submitProject({ preventDefault() {} });
@@ -291,7 +296,7 @@ test('milestone CRUD consumes each returned project version', async () => {
   let version = 0;
   const requests = [];
   h.context.fetchJson = async (url, options) => {
-    if (!options) return card({ version, milestoneCount: version ? 1 : 0,
+    if (!options) return dashboard({ version, milestoneCount: version ? 1 : 0,
       milestones: version ? [{ id: 'm1', name: 'Точка', plannedDate: '2026-10-20', completed: false, completedDate: null, position: 0 }] : [] });
     requests.push({ url, method: options.method, body: options.body ? JSON.parse(options.body) : null });
     version++;
@@ -327,7 +332,7 @@ test('project card opens its own board through the guarded board context', async
   const h = harness();
   const opened = [];
   h.window.PMBoardContext = { openProjectBoard: (...args) => opened.push(args) };
-  h.context.fetchJson = async () => card({ id: 'p1', deliveryModel: 'scrum' });
+  h.context.fetchJson = async () => dashboard({ id: 'p1', deliveryModel: 'scrum' });
   await h.ui.openCard('p1');
   const button = { dataset: { cardAction: 'board' }, closest() { return this; }, hasAttribute() { return false; } };
   h.get('project-detail-content').listeners.click({ target: button });
@@ -379,7 +384,7 @@ test('missing project and unknown values are explicit in the card', async () => 
   h.context.fetchJson = async () => { throw Object.assign(Error('missing'), { status: 404 }); };
   await h.ui.openCard('missing');
   assert.match(h.get('project-detail-content').innerHTML, /Проект не найден/);
-  h.context.fetchJson = async () => card({ status: 'legacy', health: 'purple', progress: null,
+  h.context.fetchJson = async () => dashboard({ status: 'legacy', health: 'purple', progress: null,
     assessment: { dataQualityIssues: ['Done + red'] } });
   await h.ui.openCard('p1');
   assert.match(h.get('project-detail-content').innerHTML, /Неизвестный статус: legacy/);
@@ -411,7 +416,7 @@ function architectureTab(h, index) {
 test('architecture entry and return preserve every registry filter and use GET only', async () => {
   const h = harness('?view=projects&query=crm&quarter=Q3&status=active&health=red&attention=only&sort=progress&direction=desc');
   const calls = [];
-  h.context.fetchJson = async (url, options) => { calls.push({url,options}); return url.endsWith('/architecture') ? architecture() : card(); };
+  h.context.fetchJson = async (url, options) => { calls.push({url,options}); return url.endsWith('/architecture') ? architecture() : dashboard(); };
   await h.ui.openCard('p1');
   assert.match(h.get('project-detail-content').innerHTML,/data-card-action="architecture"/);
   const target = node(); target.dataset.cardAction = 'architecture';
@@ -600,7 +605,7 @@ test('leaving architecture invalidates requests, including reopen of the same pr
 
 test('late project card failures do not replace architecture navigation',async()=>{
   const h=harness(); let reject;
-  h.context.fetchJson=url=>url.endsWith('/card')?new Promise((_r,j)=>{reject=j;}):Promise.resolve(architecture('p2'));
+  h.context.fetchJson=url=>url.endsWith('/dashboard')?new Promise((_r,j)=>{reject=j;}):Promise.resolve(architecture('p2'));
   const old=h.ui.openCard('p1'); await h.architecture.open('p2'); reject(Object.assign(Error('late'),{status:404})); await old;
   assert.equal(h.state.activeView,'project-architecture');
   assert.doesNotMatch(h.get('project-detail-content').innerHTML,/Проект не найден/);
@@ -637,7 +642,7 @@ test('wrong-project architecture payload is rejected with a generic error',async
 });
 
 test('history rollback preserves a dirty passport and waits for explicit discard even before rollback completes',async()=>{
-  const h=harness();h.context.fetchJson=async url=>url.endsWith('/architecture')?architecture():card();
+  const h=harness();h.context.fetchJson=async url=>url.endsWith('/architecture')?architecture():dashboard();
   await h.ui.openCard('p1');await h.architecture.open('p1');
   let continuation,blocked=true;
   h.window.PMPassportEditor={needsWarning:()=>blocked,allowNavigation:action=>{if(!blocked)return true;continuation=()=>{blocked=false;action();};return false;}};
@@ -660,4 +665,57 @@ test('old editor response cannot replace another project or a newer read of the 
     accept(architecture('p1',{project:{id:'p1',name:'Устаревшая запись'}}));
     assert.equal(h.get('architecture-content').innerHTML,expected);
   }
+});
+
+
+test('project snapshot rejects wrong or incomplete reads, retries and keeps a stale successful snapshot', async () => {
+ const h=harness();let calls=[];h.context.fetchJson=async url=>{calls.push(url);throw Error('offline');};
+ await h.ui.openCard('p1');assert.match(h.get('project-detail-content').innerHTML,/Не удалось загрузить/);
+ assert.doesNotMatch(h.get('project-detail-content').innerHTML,/Всего задач/);
+ h.context.fetchJson=async()=>dashboard({name:'Актуальный'});await h.ui.openCard('p1');
+ const good=h.get('project-detail-content').innerHTML;assert.match(good,/ручная оценка/);assert.match(good,/Всего задач/);
+ h.context.fetchJson=async()=>dashboard({id:'other'});await h.ui.openCard('p1');
+ assert.equal(h.get('project-detail-content').innerHTML,good);assert.match(h.get('project-card-notice').textContent,/устаревшая/);
+ h.context.fetchJson=async()=>dashboard({name:'Повтор'});await h.ui.openCard('p1');
+ assert.match(h.get('project-detail-content').innerHTML,/Повтор/);assert.ok(calls.every(url=>url.endsWith('/dashboard')));
+});
+
+test('late project A success and error cannot change project B snapshot', async () => {
+ for(const fail of [false,true]) {
+ const h=harness();let resolve,reject;h.context.fetchJson=url=>url.includes('/A/')?new Promise((r,j)=>{resolve=r;reject=j;}):Promise.resolve(dashboard({id:'B',name:'Проект B'}));
+ const a=h.ui.openCard('A');await h.ui.openCard('B');const content=h.get('project-detail-content').innerHTML;
+ if(fail)reject(Error('late'));else resolve(dashboard({id:'A',name:'Проект A'}));await a;
+ assert.equal(h.get('project-detail-content').innerHTML,content);assert.match(content,/Проект B/);
+ }
+});
+
+test('snapshot lists link to the existing milestone and guarded task entry using the project model', async () => {
+ const h=harness(), data=dashboard();data.tasks.total=2;data.tasks.blocked=1;data.tasks.overdue=1;
+ data.tasks.uncertain=1;data.tasks.unknownDates=1;data.tasks.blockedTasks=[{id:'t1',title:'<Задача>',owner:null,dueDate:null}];
+ data.milestones.overdue=[{id:'m1',name:'Веха',plannedDate:'2026-11-10'}];
+ h.context.fetchJson=async()=>data;await h.ui.openCard('p1');
+ const content=h.get('project-detail-content').innerHTML;assert.match(content,/Не менее 1/);assert.match(content,/&lt;Задача>/);
+ const row=node();row.dataset.milestoneId='m1';row.scrollIntoView=()=>{row.scrolled=true;};
+ h.get('project-detail-content').querySelectorAll=()=>[row];const button=node();button.dataset.summaryMilestone='m1';
+ h.get('project-detail-content').listeners.click({target:button});assert.ok(row.focused&&row.scrolled);
+ let args;h.window.PMBoardContext={openTask:(...values)=>{args=values;}};button.dataset={summaryTask:'t1'};
+ h.get('project-detail-content').listeners.click({target:button});assert.deepEqual(args,['p1','kanban','t1']);
+ const bad=dashboard();delete bad.tasks.total;assert.equal(h.window.PMProjectSummary.valid(bad,'p1'),false);
+});
+
+test('late milestone write cannot change a subsequently opened project', async () => {
+ const h=harness();let resolve;h.context.fetchJson=async()=>dashboard();await h.ui.openCard('p1');
+ h.context.fetchJson=(url,options)=>options?new Promise(r=>{resolve=r;}):Promise.resolve(dashboard({id:'p2',name:'Другой проект'}));
+ h.milestoneForm.data={name:'Новая веха',plannedDate:'2026-11-11',position:'0'};
+ const pending=h.milestoneForm.listeners.submit({preventDefault(){},currentTarget:h.milestoneForm});
+ await h.ui.openCard('p2');const content=h.get('project-detail-content').innerHTML;resolve(card({name:'Старый ответ'}));await pending;
+ assert.equal(h.get('project-detail-content').innerHTML,content);
+});
+
+
+test('late project PATCH cannot replace a subsequently opened card', async () => {
+ const h=harness();h.ui.startEditProject(card());h.editor.data=formProject({name:'Changed'});
+ let resolve;h.context.fetchJson=(url,options)=>options?new Promise(r=>{resolve=r;}):Promise.resolve(dashboard({id:'p2',name:'New context'}));
+ const pending=h.ui.submitProject({preventDefault(){}});await h.ui.openCard('p2');const content=h.get('project-detail-content').innerHTML;
+ resolve(card({name:'Late write'}));await pending;assert.equal(h.get('project-detail-content').innerHTML,content);
 });

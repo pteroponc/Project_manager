@@ -277,7 +277,7 @@ elements.viewButtons.forEach((button) => {
   });
 });
 
-window.PMBoardContext = { openProjectBoard, onProjectDeleted };
+window.PMBoardContext = { openProjectBoard, openTask: openBoardTask, onProjectDeleted };
 
 document.getElementById("filters-form")?.addEventListener("change", async (event) => {
   state.filters[event.target.name] = event.target.value;
@@ -2591,4 +2591,17 @@ function renderOverviewProjects(projects, snapshot) {
       '</div><div class="portfolio-project-deadline"><span>Срок</span><time>' + escapeHtml(overviewDate(project.deadline)) + '</time></div></article>';
   }).join('') : '<p class="empty-state compact">' + overviewEmpty(snapshot, 'Проектов нет.') + '</p>';
   bindOverviewLinks(container);
+}
+
+async function openBoardTask(projectId, model, cardId) {
+  const loaded = await openProjectBoard(projectId, model);
+  if (!loaded) return false;
+  const context = activeBoardContext();
+  if (!context || context.projectId !== projectId || context.model !== model) return false;
+  const found = findBoardCard(cardId);
+  if (!found) { setBoardMessage("Задача больше недоступна. Проверьте актуальные данные доски.", true); return false; }
+  const trigger = elements.boardColumns.querySelector('[data-action="open-card"][data-card-id="' + cssEscape(cardId) + '"]');
+  trigger?.focus();
+  openTaskModal(found.card, found.columnTitle);
+  return true;
 }
