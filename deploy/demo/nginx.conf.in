@@ -1,0 +1,60 @@
+# Include inside nginx http{} (for example /etc/nginx/conf.d/).
+# Bootstrap mode never proxies requests to Java.
+server {
+    listen 80;
+    __HTTP_IPV6__
+    server_name __DOMAIN__;
+    if ($host != __DOMAIN__) { return 404; }
+
+    location ^~ /.well-known/acme-challenge/ {
+        auth_basic off;
+        root __ACME_WEBROOT__;
+        autoindex off;
+        try_files $uri =404;
+    }
+    location / {
+        __HTTP_ACTION__
+    }
+}
+
+# BEGIN TLS
+server {
+    listen 443 ssl;
+    __HTTPS_IPV6__
+    server_name __DOMAIN__;
+    if ($host != __DOMAIN__) { return 404; }
+
+    ssl_certificate __TLS_CERT__;
+    ssl_certificate_key __TLS_KEY__;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_session_cache shared:PMDemoTLS:10m;
+    ssl_session_timeout 1d;
+
+    # Inherited by ALL application locations and methods, including /api/.
+    auth_basic "Project Manager closed pilot";
+    auth_basic_user_file __AUTH_FILE__;
+    client_max_body_size 1m;
+
+    location ~* ^/(?:h2-console|actuator|error|debug|metrics|prometheus|swagger-ui|v3/api-docs|api/(?:health|actuator|internal|debug|metrics|prometheus))(?:/|;|$) {
+        return 404;
+    }
+    location ~ /\. {
+        return 404;
+    }
+    location / {
+        proxy_pass http://127.0.0.1:__PORT__;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_set_header X-Forwarded-Proto https;
+        proxy_set_header X-Forwarded-Port 443;
+        proxy_set_header Authorization "";
+        proxy_set_header Connection "";
+        proxy_cache off;
+        proxy_next_upstream off;
+        proxy_connect_timeout 5s;
+        proxy_read_timeout 60s;
+    }
+}
+# END TLS

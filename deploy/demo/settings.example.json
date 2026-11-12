@@ -1,0 +1,13 @@
+{
+  "domain": "pm-demo.example.com",
+  "app_root": "/opt/project-manager-demo",
+  "app_user": "pm-demo",
+  "app_group": "pm-demo",
+  "java_bin": "/usr/bin/java",
+  "env_file": "/etc/project-manager-demo/demo.env",
+  "auth_file": "/etc/nginx/project-manager-demo.htpasswd",
+  "acme_webroot": "/var/lib/letsencrypt",
+  "tls_cert": "/etc/letsencrypt/live/pm-demo.example.com/fullchain.pem",
+  "tls_key": "/etc/letsencrypt/live/pm-demo.example.com/privkey.pem",
+  "ipv6": false
+}

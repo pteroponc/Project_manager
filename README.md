@@ -71,3 +71,8 @@ GitHub Actions запускает Maven-проверку для каждого p
 git tag v0.1.0
 git push origin v0.1.0
 ```
+
+## Закрытый demo на VPS
+
+Подготовка пакета systemd/Nginx, TLS и Basic Auth: [deploy/demo](deploy/demo/README.md).
+Развёртывание выполняется отдельным заданием после ревью; demo использует только H2 in-memory.
