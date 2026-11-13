@@ -11,6 +11,13 @@ import subprocess
 import tempfile
 import zipfile
 
+SUPPORT_FILES = (
+    "package.py", "check_local.py", "bind_check.py", "operations.py", "verify_https.py",
+    "https-transaction.sh", "nginx-deploy-hook.sh.in", "nginx.conf.in",
+    "project-manager-demo.service.in", "settings.example.json", "demo.env.example", "README.md",
+    "test_package.py", "test_bind_check.py", "test_rollback.py", "test_operations.py",
+)
+
 BASE_SHA = "900113b54e14658ee7a0fc3ccae13e877ad78192"
 HERE = Path(__file__).resolve().parent
 FIELDS = {"domain", "app_root", "app_user", "app_group", "java_bin", "env_file",
@@ -97,6 +104,17 @@ def render(settings_path, env_path, output, bootstrap=False):
         {"mode": "bootstrap-acme-only" if bootstrap else "https-basic-auth",
          "settings": settings, "environment": env}, ensure_ascii=False, indent=2
     ) + "\n"
+    bootstrap_value = re.sub(r"# BEGIN TLS\n.*?# END TLS\n?", "",
+                             (HERE / "nginx.conf.in").read_text(encoding="utf-8"), flags=re.S)
+    for key, replacement in dict(replacements, HTTP_ACTION="return 404;").items():
+        bootstrap_value = bootstrap_value.replace("__" + key + "__", replacement)
+    rendered["bootstrap.conf"] = bootstrap_value
+    rendered["settings.json"] = json.dumps(settings, sort_keys=True, indent=2) + "\n"
+    for name in SUPPORT_FILES:
+        rendered[name] = (HERE / name).read_text(encoding="utf-8")
+    rendered["SHA256SUMS"] = "".join(
+        hashlib.sha256(value.encode("utf-8")).hexdigest() + "  " + name + "\n"
+        for name, value in sorted(rendered.items()))
     output = Path(output)
     output.mkdir(parents=True, exist_ok=True)
     if any((output / name).exists() for name in rendered):

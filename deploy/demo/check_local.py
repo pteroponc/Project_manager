@@ -15,6 +15,7 @@ import urllib.error
 import urllib.request
 import zipfile
 import package as tool
+from bind_check import validate_listeners, validate_windows_listeners
 
 
 def request(base, path, method="GET", data=None):
@@ -34,23 +35,26 @@ def process_stats(pid, port):
     if os.name == "nt":
         script = (
             f"$jproc=Get-Process -Id {pid};"
-            f"$bound=@(Get-NetTCPConnection -LocalPort {port} -State Listen "
-            f"-ErrorAction Stop | Where-Object OwningProcess -eq {pid} "
-            "| Select-Object -ExpandProperty LocalAddress);"
+            "$bound=@(Get-NetTCPConnection -State Listen -ErrorAction Stop | "
+            "Select-Object LocalAddress,LocalPort,OwningProcess);"
             "@{rssBytes=$jproc.WorkingSet64;peakRssBytes=$jproc.PeakWorkingSet64;"
-            "cpuSeconds=$jproc.CPU;threads=$jproc.Threads.Count;addresses=$bound}"
-            "|ConvertTo-Json -Compress"
+            "cpuSeconds=$jproc.CPU;threads=$jproc.Threads.Count;listeners=$bound}"
+            "|ConvertTo-Json -Depth 4 -Compress"
         )
         result = subprocess.run(["powershell.exe", "-NoProfile", "-Command", script],
                                 capture_output=True, text=True, check=True)
-        return json.loads(result.stdout)
+        values = json.loads(result.stdout)
+        values["listener"] = validate_windows_listeners(values.pop("listeners"), pid, port)
+        values["addresses"] = ["127.0.0.1"]
+        return values
     values = {}
     for line in Path(f"/proc/{pid}/status").read_text().splitlines():
         if line.startswith(("VmRSS:", "VmHWM:")):
             key, amount, _unit = line.split()
             values["rssBytes" if key == "VmRSS:" else "peakRssBytes"] = int(amount) * 1024
-    result = subprocess.check_output(["ss", "-H", "-ltnp", "sport = :" + str(port)], text=True)
-    values["addresses"] = [line.split()[3].rsplit(":", 1)[0] for line in result.splitlines()]
+    result = subprocess.check_output(["ss", "-H", "-ltnp"], text=True)
+    values["listener"] = validate_listeners(result, pid, port)
+    values["addresses"] = ["127.0.0.1"]
     return values
 
 
@@ -65,6 +69,8 @@ def stop(process):
 
 
 def check(unit, env_file, jar, java, output):
+    if not __debug__:
+        raise ValueError("Safety checks must not run under Python -O")
     env = tool.read_environment(env_file)
     port = env["PM_DEMO_PORT"]
     with socket.socket() as probe:
@@ -207,6 +213,8 @@ def check(unit, env_file, jar, java, output):
 
 
 if __name__ == "__main__":
+    if not __debug__:
+        raise SystemExit("Safety checks must not run under Python -O")
     parser = argparse.ArgumentParser(description="Verify a rendered demo locally; no VPS/proxy actions")
     parser.add_argument("--unit", required=True)
     parser.add_argument("--env", required=True)

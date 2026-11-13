@@ -11,6 +11,7 @@ Group=__APP_GROUP__
 WorkingDirectory=__APP_ROOT__
 EnvironmentFile=__ENV_FILE__
 ExecStart=__JAVA_BIN__ -Xms128m -Xmx__UNIT_HEAP__m -XX:+ExitOnOutOfMemoryError -Djava.io.tmpdir=/run/project-manager-demo -jar __APP_ROOT__/current/project-manager.jar --spring.config.location=classpath:/ --spring.profiles.active=demo --spring.datasource.url=jdbc:h2:mem:pmdemo_vps --spring.h2.console.enabled=false --spring.jpa.hibernate.ddl-auto=create-drop --spring.sql.init.mode=never --server.address=127.0.0.1 --server.port=__UNIT_PORT__ --server.forward-headers-strategy=none --server.error.include-stacktrace=never --server.error.include-message=never --server.error.include-binding-errors=never
+SuccessExitStatus=143
 Restart=on-failure
 RestartSec=5s
 TimeoutStopSec=30s

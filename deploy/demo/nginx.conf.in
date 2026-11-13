@@ -35,7 +35,7 @@ server {
     auth_basic_user_file __AUTH_FILE__;
     client_max_body_size 1m;
 
-    location ~* ^/(?:h2-console|actuator|error|debug|metrics|prometheus|swagger-ui|v3/api-docs|api/(?:health|actuator|internal|debug|metrics|prometheus))(?:/|;|$) {
+    location ~* "^/(?:h2-console|actuator|error|debug|metrics|prometheus|swagger-ui|v3/api-docs|api/(?:health|actuator|internal|debug|metrics|prometheus))(?:/|;|$)" {
         return 404;
     }
     location ~ /\. {

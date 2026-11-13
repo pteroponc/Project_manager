@@ -1,0 +1,5 @@
+#!/bin/sh
+set -eu
+__NGINX_BIN__ -t
+__SYSTEMCTL_BIN__ reload __NGINX_SERVICE__
+__LOGGER_BIN__ -t project-manager-demo-tls 'PM_DEMO_TLS_DEPLOY_HOOK_RELOAD_OK'

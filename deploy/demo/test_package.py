@@ -1,7 +1,12 @@
 #!/usr/bin/env python3
-# Focused configuration regression checks; no network, systemd, nginx or application launches.
+# Configuration checks. Optional nginx -t parses isolated files without starting a server.
 import json
 from pathlib import Path
+import re
+import shutil
+import socket
+import subprocess
+import sys
 import tempfile
 import unittest
 import package as tool
@@ -44,11 +49,84 @@ class DeploymentPackageTest(unittest.TestCase):
         self.assertIn("location ^~ /.well-known/acme-challenge/", config)
         self.assertIn("return 404;", config)
 
+    def test_all_four_modes_ship_complete_tools_and_correct_listens(self):
+        for ipv6 in [False, True]:
+            self.settings["ipv6"] = ipv6
+            self.write_settings()
+            for bootstrap in [False, True]:
+                with self.subTest(ipv6=ipv6, bootstrap=bootstrap):
+                    result = tool.render(self.config, self.env,
+                                         self.root / f"matrix-{ipv6}-{bootstrap}", bootstrap)
+                    config = result["project-manager-demo.conf"]
+                    self.assertEqual("listen [::]:80;" in config, ipv6)
+                    self.assertEqual("listen 443 ssl;" in config, not bootstrap)
+                    self.assertEqual("listen [::]:443 ssl;" in config, ipv6 and not bootstrap)
+                    self.assertNotIn("proxy_pass", result["bootstrap.conf"])
+                    self.assertTrue(set(tool.SUPPORT_FILES).issubset(result))
+                    self.assertIn("SHA256SUMS", result)
+
     def test_diagnostics_and_hidden_files_are_denied(self):
         tls = self.output()["project-manager-demo.conf"].split("# BEGIN TLS", 1)[1]
         for token in ["h2-console", "actuator", "error", "api/(?:health", "return 404;"]:
             self.assertIn(token, tls)
         self.assertIn(r"location ~ /\.", tls)
+
+    def test_diagnostic_regex_is_one_quoted_nginx_argument(self):
+        tls = self.output()["project-manager-demo.conf"].split("# BEGIN TLS", 1)[1]
+        match = re.search(r'location ~\* "([^"]+)" \{\n\s+return 404;\n\s+\}', tls)
+        self.assertIsNotNone(match, "Semicolon in the regex must not terminate location")
+        pattern = re.compile(match[1], re.IGNORECASE)
+        for path in ["/h2-console/", "/H2-CONSOLE;x", "/actuator", "/api/health",
+                     "/api/health;x", "/v3/api-docs/", "/error"]:
+            with self.subTest(path=path):
+                self.assertIsNotNone(pattern.search(path))
+        for path in ["/", "/app.js", "/api/projects", "/api/projects/123/dashboard"]:
+            with self.subTest(path=path):
+                self.assertIsNone(pattern.search(path))
+
+    @unittest.skipUnless(shutil.which("nginx") and shutil.which("openssl"),
+                         "nginx/openssl unavailable: syntax NOT VERIFIED here")
+    def test_generated_configs_pass_nginx_parser_and_old_regex_fails(self):
+        cert, key = self.root / "test.crt", self.root / "test.key"
+        subprocess.run(["openssl", "req", "-x509", "-newkey", "rsa:2048", "-nodes",
+                        "-days", "1", "-subj", "/CN=syntax-test.invalid",
+                        "-keyout", str(key), "-out", str(cert)], check=True, capture_output=True)
+        self.settings["tls_cert"], self.settings["tls_key"] = str(cert), str(key)
+        candidate = self.root / "candidate.conf"
+        wrapper = self.root / "nginx.conf"
+        wrapper.write_text(f'error_log stderr;\npid {self.root}/nginx.pid;\n'
+                           f'events {{}}\nhttp {{ access_log off; include {candidate}; }}\n',
+                           encoding="utf-8")
+        command = [shutil.which("nginx"), "-t", "-e", "stderr", "-p", str(self.root),
+                   "-c", str(wrapper)]
+        # nginx -t may open listen sockets. Use unprivileged loopback ports in this
+        # parser test; the exact deployment file is checked separately as root.
+        def free_port():
+            with socket.socket() as listener:
+                listener.bind(("127.0.0.1", 0))
+                return listener.getsockname()[1]
+        http_port, https_port = free_port(), free_port()
+        for ipv6 in [False, True]:
+            self.settings["ipv6"] = ipv6
+            self.write_settings()
+            for bootstrap in [False, True]:
+                with self.subTest(ipv6=ipv6, bootstrap=bootstrap):
+                    config = tool.render(self.config, self.env,
+                                         self.root / f"syntax-{ipv6}-{bootstrap}", bootstrap)["project-manager-demo.conf"]
+                    config = config.replace("listen 80;", f"listen 127.0.0.1:{http_port};")
+                    config = config.replace("listen 443 ssl;", f"listen 127.0.0.1:{https_port} ssl;")
+                    config = config.replace("listen [::]:80;", f"listen [::1]:{http_port};")
+                    config = config.replace("listen [::]:443 ssl;", f"listen [::1]:{https_port} ssl;")
+                    candidate.write_text(config, encoding="utf-8")
+                    result = subprocess.run(command, capture_output=True, text=True)
+                    self.assertEqual(result.returncode, 0, result.stderr)
+                    if not bootstrap:
+                        broken = re.sub(r'location ~\* "([^"]+)"', r'location ~* \1', config)
+                        self.assertNotEqual(broken, config)
+                        candidate.write_text(broken, encoding="utf-8")
+                        result = subprocess.run(command, capture_output=True, text=True)
+                        self.assertNotEqual(result.returncode, 0)
+                        self.assertIn('has no opening "{"', result.stderr)
 
     def test_unit_pins_isolation_and_never_launches_a_shell(self):
         unit = self.output()["project-manager-demo.service"]
@@ -62,6 +140,17 @@ class DeploymentPackageTest(unittest.TestCase):
         self.assertNotIn("/bin/sh", unit)
         self.assertNotIn("jdbc:h2:file", unit)
         self.assertNotIn("--spring.datasource.hikari", unit)
+
+    @unittest.skipUnless(sys.platform == "linux" and shutil.which("systemd-analyze")
+                         and shutil.which("java"), "Linux/systemd/Java unavailable: NOT VERIFIED")
+    def test_systemd_unit_verifies_on_available_linux(self):
+        self.settings["java_bin"] = str(Path(shutil.which("java")).resolve())
+        self.write_settings()
+        self.output()
+        unit = self.root / "tls/project-manager-demo.service"
+        result = subprocess.run(["systemd-analyze", "verify", str(unit)],
+                                capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
     def test_env_has_two_shared_nonsecret_parameters(self):
         result = self.output()
