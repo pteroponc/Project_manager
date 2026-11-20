@@ -289,6 +289,7 @@ test('409 exposes reload action without retrying the mutation', async () => {
   await h.ui.submitProject({ preventDefault() {} });
   assert.equal(patches, 1);
   assert.match(h.get('submitMessage').innerHTML, /Загрузить актуальную версию/);
+  assert.equal(h.editor.data.name, 'Несохранённое имя');
 });
 
 test('milestone CRUD consumes each returned project version', async () => {

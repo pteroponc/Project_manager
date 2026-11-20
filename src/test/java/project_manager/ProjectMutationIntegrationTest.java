@@ -117,6 +117,23 @@ class ProjectMutationIntegrationTest {
     }
 
     @Test
+    void invalidProjectVersionsAndMixedInvalidChangesLeaveDataUnchanged() throws Exception {
+        String id = project("green");
+        var before = storedProject(id);
+        for (String body : List.of(
+                "{\"name\":\"Rejected\"}",
+                "{\"expectedVersion\":-1,\"name\":\"Rejected\"}",
+                "{\"expectedVersion\":null,\"name\":\"Rejected\"}",
+                "{\"expectedVersion\":\"0\",\"name\":\"Rejected\"}",
+                "{\"expectedVersion\":0,\"name\":\"Rejected\",\"progress\":101}")) {
+            mvc.perform(patch("/api/projects/{id}", id).contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
+            assertThat(storedProject(id)).isEqualTo(before);
+        }
+    }
+
+    @Test
     void sequentialClientsWithSameVersionGetConflictAndNoPartialChange() throws Exception {
         String id = project("green");
         mvc.perform(patch("/api/projects/{id}", id).contentType(MediaType.APPLICATION_JSON)

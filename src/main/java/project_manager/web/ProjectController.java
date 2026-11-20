@@ -19,7 +19,6 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
-import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -91,11 +90,6 @@ public class ProjectController {
     @ResponseStatus(HttpStatus.CREATED)
     public ProjectResponse create(@Valid @RequestBody ProjectRequest request) {
         return projectService.createProject(request);
-    }
-
-    @PutMapping("/projects/{id}")
-    public ProjectResponse update(@PathVariable String id, @Valid @RequestBody ProjectRequest request) {
-        return projectService.updateProject(id, request);
     }
 
     @PatchMapping("/projects/{id}")
