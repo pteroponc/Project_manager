@@ -82,7 +82,10 @@ class ArchitecturePassportInstanceMigrationIntegrationTest {
     @Test
     void restartValidatesMigratedSchemaAndRetainsInstanceAndRejectsOldInstanceAfterRecreation() throws Exception {
         String url=memoryUrl(); String instanceB; String instanceA;
-        try (Connection connection=setup(url,true)) { fillV004(connection); script(connection,V005); script(connection,"V006__board_card_version.sql"); }
+        try (Connection connection=setup(url,true)) {
+            fillV004(connection); script(connection,V005); script(connection,"V006__board_card_version.sql");
+            jdbc(connection).execute("alter table board_cards alter column project_id drop not null");
+        }
         var json=new ObjectMapper();
         try (var context=start(url)) {
             var reads=context.getBean(ArchitectureReadService.class);

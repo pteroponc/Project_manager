@@ -31,6 +31,22 @@ class BoardOrderIntegrationTest {
     @Autowired JdbcTemplate jdbc;
 
     @Test
+    void personalCardCannotBeReorderedThroughAProject() throws Exception {
+        String project = project();
+        jdbc.update("insert into board_cards(id,project_id,column_key,position,title,description,owner,due_date,version) "
+            + "values ('personal-order',null,'ready',11,'Personal','Description','Owner','2026-12-31',2)");
+        var before = jdbc.queryForList("select * from board_cards where id='personal-order'");
+        JsonNode snapshot = order(project, "ready");
+        assertThat(snapshot.path("cards")).isEmpty();
+        ObjectNode request = json.createObjectNode();
+        request.put("direction", "up");
+        request.putArray("expectedOrder").addObject()
+            .put("id", "personal-order").put("position", 11).put("version", 2);
+        reorderBody(project, "ready", "personal-order", request, 404, "BOARD_CARD_NOT_FOUND");
+        assertThat(jdbc.queryForList("select * from board_cards where id='personal-order'")).isEqualTo(before);
+    }
+
+    @Test
     void emptyColumnAndNormalUpDownBoundaryAndSingleCard() throws Exception {
         String project = project();
         assertThat(order(project, "ready").path("cards")).isEmpty();

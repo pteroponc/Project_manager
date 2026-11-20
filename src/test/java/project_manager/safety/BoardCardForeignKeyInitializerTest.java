@@ -3,6 +3,7 @@ package project_manager.safety;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.SQLException;
+import java.sql.DatabaseMetaData;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
 import javax.sql.DataSource;
@@ -31,6 +32,7 @@ class BoardCardForeignKeyInitializerTest {
                 .listeners((ApplicationListener<ApplicationStartedEvent>) event -> {
                     try (var connection = event.getApplicationContext().getBean(DataSource.class).getConnection()) {
                         assertForeignKey(connection);
+                        assertNullable(connection);
                         assertThat(count(connection, "SELECT COUNT(*) FROM BOARD_CARDS")).isZero();
                         checkedBeforeRunners.set(true);
                     } catch (SQLException error) {
@@ -59,6 +61,10 @@ class BoardCardForeignKeyInitializerTest {
             initialize(url, "create-drop");
             initialize(url, "validate");
             assertForeignKey(connection);
+            assertNullable(connection);
+            execute(connection, "INSERT INTO BOARD_CARDS VALUES ('personal', NULL)");
+            execute(connection, "INSERT INTO PROJECTS VALUES ('empty')");
+            execute(connection, "DELETE FROM PROJECTS WHERE ID='empty'");
 
             for (String sql : new String[]{
                     "INSERT INTO BOARD_CARDS VALUES ('other', 'missing')",
@@ -66,23 +72,42 @@ class BoardCardForeignKeyInitializerTest {
                     "DELETE FROM PROJECTS WHERE ID='parent'",
                     "UPDATE PROJECTS SET ID='other' WHERE ID='parent'"}) {
                 assertThatThrownBy(() -> execute(connection, sql)).isInstanceOf(SQLException.class);
-                assertThat(count(connection, "SELECT COUNT(*) FROM BOARD_CARDS")).isEqualTo(1);
+                assertThat(count(connection, "SELECT COUNT(*) FROM BOARD_CARDS")).isEqualTo(2);
                 assertThat(count(connection, "SELECT COUNT(*) FROM BOARD_CARDS WHERE ID='card' AND PROJECT_ID='parent'")).isEqualTo(1);
                 assertThat(count(connection, "SELECT COUNT(*) FROM PROJECTS WHERE ID='parent'")).isEqualTo(1);
             }
+            assertThat(count(connection, "SELECT COUNT(*) FROM BOARD_CARDS WHERE ID='personal' AND PROJECT_ID IS NULL"))
+                .isEqualTo(1);
         }
     }
 
-    @ParameterizedTest
-    @ValueSource(strings = {"NULL", "'missing'"})
-    void invalidExistingReferencesPreventDdl(String projectId) throws Exception {
+    @Test
+    void orphanReferencesPreventDdl() throws Exception {
         String url = memoryUrl();
         try (var connection = DriverManager.getConnection(url, "sa", "")) {
             setup(connection, false);
-            execute(connection, "INSERT INTO BOARD_CARDS VALUES ('card', " + projectId + ")");
-            assertThatThrownBy(() -> initialize(url, "update")).hasMessageContaining("NULL or orphan");
+            execute(connection, "INSERT INTO BOARD_CARDS VALUES ('card', 'missing')");
+            assertThatThrownBy(() -> initialize(url, "update")).hasMessageContaining("orphan project");
             assertNoForeignKey(connection);
             assertThat(count(connection, "SELECT COUNT(*) FROM BOARD_CARDS")).isEqualTo(1);
+            assertNullable(connection);
+        }
+    }
+
+    @Test
+    void existingPersonalCardSurvivesNullableAlterationAndFkCreation() throws Exception {
+        String url = memoryUrl();
+        try (var connection = DriverManager.getConnection(url, "sa", "")) {
+            setup(connection, false);
+            execute(connection, "INSERT INTO BOARD_CARDS VALUES ('personal', NULL)");
+            execute(connection, "INSERT INTO BOARD_CARDS VALUES ('project', 'parent')");
+            initialize(url, "update");
+            initialize(url, "update");
+            assertNullable(connection);
+            assertForeignKey(connection);
+            assertThat(count(connection, "SELECT COUNT(*) FROM BOARD_CARDS")).isEqualTo(2);
+            assertThat(count(connection, "SELECT COUNT(*) FROM BOARD_CARDS WHERE ID='personal' AND PROJECT_ID IS NULL"))
+                .isEqualTo(1);
         }
     }
 
@@ -106,8 +131,55 @@ class BoardCardForeignKeyInitializerTest {
         String url = memoryUrl();
         try (var connection = DriverManager.getConnection(url, "sa", "")) {
             setup(connection, true);
+            assertThatThrownBy(() -> initialize(url, "validate")).hasMessageContaining("must allow NULL in validate");
+            assertNoForeignKey(connection);
+            assertNotNullable(connection);
+        }
+    }
+
+    @Test
+    void validateModeRejectsMissingForeignKeyOnNullableColumnWithoutDdl() throws Exception {
+        String url = memoryUrl();
+        try (var connection = DriverManager.getConnection(url, "sa", "")) {
+            setup(connection, false);
             assertThatThrownBy(() -> initialize(url, "validate")).hasMessageContaining("missing in validate");
             assertNoForeignKey(connection);
+            assertNullable(connection);
+        }
+    }
+
+    @Test
+    void validateModeRejectsExistingFkOnNotNullableColumnWithoutDdl() throws Exception {
+        String url = memoryUrl();
+        try (var connection = DriverManager.getConnection(url, "sa", "")) {
+            setup(connection, true);
+            execute(connection, "ALTER TABLE BOARD_CARDS ADD CONSTRAINT EXISTING_FK FOREIGN KEY (PROJECT_ID) REFERENCES PROJECTS (ID) ON DELETE NO ACTION ON UPDATE NO ACTION");
+            assertThatThrownBy(() -> initialize(url, "validate")).hasMessageContaining("must allow NULL in validate");
+            assertNotNullable(connection);
+            assertForeignKey(connection);
+        }
+    }
+
+    @Test
+    void orphanOnNotNullableColumnPreventsNullableAlteration() throws Exception {
+        String url = memoryUrl();
+        try (var connection = DriverManager.getConnection(url, "sa", "")) {
+            setup(connection, true);
+            execute(connection, "INSERT INTO BOARD_CARDS VALUES ('orphan', 'missing')");
+            assertThatThrownBy(() -> initialize(url, "update")).hasMessageContaining("orphan project");
+            assertNotNullable(connection);
+            assertNoForeignKey(connection);
+        }
+    }
+
+    @Test
+    void incompatibleFkDoesNotTriggerNullableAlteration() throws Exception {
+        String url = memoryUrl();
+        try (var connection = DriverManager.getConnection(url, "sa", "")) {
+            setup(connection, true);
+            execute(connection, "ALTER TABLE BOARD_CARDS ADD CONSTRAINT EXISTING_FK FOREIGN KEY (PROJECT_ID) REFERENCES PROJECTS (ID) ON DELETE CASCADE");
+            assertThatThrownBy(() -> initialize(url, "update")).hasMessageContaining("incompatible existing");
+            assertNotNullable(connection);
         }
     }
 
@@ -159,6 +231,21 @@ class BoardCardForeignKeyInitializerTest {
     private static void assertNoForeignKey(Connection connection) throws SQLException {
         try (var keys = connection.getMetaData().getImportedKeys(null, "PUBLIC", "BOARD_CARDS")) {
             assertThat(keys.next()).isFalse();
+        }
+    }
+
+    private static void assertNullable(Connection connection) throws SQLException {
+        assertThat(projectColumnNullable(connection)).isEqualTo(DatabaseMetaData.columnNullable);
+    }
+
+    private static void assertNotNullable(Connection connection) throws SQLException {
+        assertThat(projectColumnNullable(connection)).isEqualTo(DatabaseMetaData.columnNoNulls);
+    }
+
+    private static int projectColumnNullable(Connection connection) throws SQLException {
+        try (var columns = connection.getMetaData().getColumns(null, "PUBLIC", "BOARD_CARDS", "PROJECT_ID")) {
+            assertThat(columns.next()).isTrue();
+            return columns.getInt("NULLABLE");
         }
     }
 }

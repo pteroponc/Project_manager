@@ -51,7 +51,7 @@ public class BoardOrderService {
         Request request = parseRequest(cardId, body);
         projectWriteLock.require(projectId);
         BoardCardEntity target = cards.findById(cardId)
-            .filter(card -> card.getProjectId().equals(projectId))
+            .filter(card -> projectId.equals(card.getProjectId()))
             .orElseThrow(ProjectMutationException::boardCardNotFound);
         if (!target.getColumnKey().equals(columnKey)) throw ProjectMutationException.boardOrderConflict();
 

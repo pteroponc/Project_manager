@@ -69,6 +69,9 @@ class ProjectDeletionDependenciesIntegrationTest {
                 org.springframework.jdbc.datasource.init.ScriptUtils.executeSqlScript(connection,new org.springframework.core.io.ClassPathResource("pm002a-old-schema.sql"));
                 for (String file : List.of("V002__project_model_and_milestones.sql","V003__board_cards_project_fk.sql","V004__architecture_security.sql","V005__architecture_passport_instance.sql","V006__board_card_version.sql"))
                     org.springframework.jdbc.datasource.init.ScriptUtils.executeSqlScript(connection,new org.springframework.core.io.FileSystemResource("db/manual/"+file));
+                try (var statement = connection.createStatement()) {
+                    statement.executeUpdate("alter table board_cards alter column project_id drop not null");
+                }
             } catch (java.sql.SQLException error) { throw new IllegalStateException("Memory schema setup failed",error); }
         }
     }
@@ -130,7 +133,7 @@ class ProjectDeletionDependenciesIntegrationTest {
     @Test void v003MetadataAndConstraintsExistOnManuallyMigratedMemorySchema() {
         var fk=jdbc.queryForList("select r.delete_rule from information_schema.referential_constraints r join information_schema.table_constraints c on c.constraint_name=r.constraint_name and c.constraint_schema=r.constraint_schema where c.table_schema='PUBLIC' and c.table_name='BOARD_CARDS' and c.constraint_name='FK_BOARD_CARDS_PROJECT'");
         assertThat(fk).hasSize(1);assertThat(fk.get(0).get("DELETE_RULE")).isIn("NO ACTION","RESTRICT");
-        assertThat(jdbc.queryForObject("select is_nullable from information_schema.columns where table_schema='PUBLIC' and table_name='BOARD_CARDS' and column_name='PROJECT_ID'",String.class)).isEqualTo("NO");
+        assertThat(jdbc.queryForObject("select is_nullable from information_schema.columns where table_schema='PUBLIC' and table_name='BOARD_CARDS' and column_name='PROJECT_ID'",String.class)).isEqualTo("YES");
         assertThat(jdbc.queryForObject("select count(*) from information_schema.index_columns where table_schema='PUBLIC' and table_name='BOARD_CARDS' and index_name='IDX_BOARD_CARDS_PROJECT' and column_name='PROJECT_ID' and ordinal_position=1",Long.class)).isEqualTo(1);
         org.assertj.core.api.Assertions.assertThatThrownBy(() -> jdbc.update("insert into board_cards(id,project_id,column_key,position,title,description,owner,due_date) values ('orphan','missing','backlog',0,'Task','','','')")).isInstanceOf(Exception.class);
         noOrphans();

@@ -13,7 +13,7 @@ public class BoardCardEntity {
     @Id
     private String id;
 
-    @Column(nullable = false)
+    @Column(nullable = true)
     private String projectId;
 
     @Column(nullable = false)

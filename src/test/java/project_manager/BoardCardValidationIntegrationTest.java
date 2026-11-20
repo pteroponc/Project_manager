@@ -147,6 +147,23 @@ class BoardCardValidationIntegrationTest {
     }
 
     @Test
+    void personalCardCannotBeAccessedThroughProjectBoardRoutes() throws Exception {
+        String project = project();
+        jdbc.update("insert into board_cards(id,project_id,column_key,position,title,description,owner,due_date,version) "
+            + "values ('personal-validation',null,'backlog',37,'Personal','Description','Owner','2026-12-31',4)");
+        var before = jdbc.queryForList("select * from board_cards where id='personal-validation'");
+        mvc.perform(get("/api/projects/{project}/board", project))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.storedPositions.personal-validation").doesNotExist());
+        mvc.perform(put("/api/projects/{project}/board/cards/personal-validation", project)
+                .contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsBytes(card())))
+            .andExpect(status().isNotFound()).andExpect(jsonPath("$.code").value("BOARD_CARD_NOT_FOUND"));
+        mvc.perform(delete("/api/projects/{project}/board/cards/personal-validation", project)
+                .param("expectedVersion", "4"))
+            .andExpect(status().isNotFound()).andExpect(jsonPath("$.code").value("BOARD_CARD_NOT_FOUND"));
+        assertThat(jdbc.queryForList("select * from board_cards where id='personal-validation'")).isEqualTo(before);
+    }
+
+    @Test
     void invalidPutRollsBackAndSuccessfulLifecycleKeepsExistingStatuses() throws Exception {
         String project = project();
         String id = createdCard(project);

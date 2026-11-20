@@ -156,6 +156,7 @@ class ProjectCardSerializationIntegrationTest {
             ScriptUtils.executeSqlScript(connection, new FileSystemResource("db/manual/V005__architecture_passport_instance.sql"));
             ScriptUtils.executeSqlScript(connection, new FileSystemResource("db/manual/V006__board_card_version.sql"));
             JdbcTemplate jdbc = new JdbcTemplate(new SingleConnectionDataSource(connection, true));
+            jdbc.execute("alter table board_cards alter column project_id drop not null");
             for (String id : new String[]{"p1", "p2"}) {
                 jdbc.update("insert into projects(id,name,owner,status,health,delivery_model,budget,progress,quarter,"
                     + "deadline,milestone,risk,dependency,kpi_name,kpi_target,summary,version) "

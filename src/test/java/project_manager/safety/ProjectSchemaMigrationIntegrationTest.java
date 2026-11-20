@@ -83,6 +83,7 @@ class ProjectSchemaMigrationIntegrationTest {
                 new FileSystemResource("db/manual/V004__architecture_security.sql"));
             ScriptUtils.executeSqlScript(connection, new FileSystemResource("db/manual/V005__architecture_passport_instance.sql"));
             ScriptUtils.executeSqlScript(connection, new FileSystemResource("db/manual/V006__board_card_version.sql"));
+            jdbc.execute("alter table board_cards alter column project_id drop not null");
         }
 
         try (var context = new SpringApplicationBuilder(ProjectManagerApplication.class)

@@ -118,6 +118,12 @@ class BoardCardsProjectFkMigrationIntegrationTest {
                 new FileSystemResource("db/manual/V004__architecture_security.sql"));
             ScriptUtils.executeSqlScript(setup, new FileSystemResource("db/manual/V005__architecture_passport_instance.sql"));
             ScriptUtils.executeSqlScript(setup, new FileSystemResource("db/manual/V006__board_card_version.sql"));
+            // V003/V006 remain historical; the subsequent in-memory schema step is explicit.
+            var beforeNullableChange = rows(jdbc(setup));
+            jdbc(setup).execute("alter table board_cards alter column project_id drop not null");
+            assertThat(nullable(jdbc(setup))).isEqualTo("YES");
+            assertThat(rows(jdbc(setup))).isEqualTo(beforeNullableChange);
+            insertCard(jdbc(setup), "personal-after-v006", null);
         }
         try (var context = new SpringApplicationBuilder(ProjectManagerApplication.class)
             .web(WebApplicationType.NONE).run(
@@ -126,6 +132,12 @@ class BoardCardsProjectFkMigrationIntegrationTest {
                 "--spring.profiles.active=default",
                 "--logging.level.root=ERROR")) {
             assertFkMetadata(context.getBean(JdbcTemplate.class));
+            assertThat(context.getBean(JdbcTemplate.class).queryForObject(
+                "select count(*) from board_cards where id='old-card' and position=47 and version=0", Integer.class))
+                .isEqualTo(1);
+            assertThat(context.getBean(JdbcTemplate.class).queryForObject(
+                "select count(*) from board_cards where id='personal-after-v006' and project_id is null and position=47 and version=0",
+                Integer.class)).isEqualTo(1);
         }
     }
 

@@ -117,7 +117,7 @@ public class BoardService {
         validateRequest(request);
         ProjectEntity project = projectWriteLock.require(projectId);
         BoardCardEntity card = boardCardRepository.findById(cardId)
-            .filter(item -> item.getProjectId().equals(projectId))
+            .filter(item -> projectId.equals(item.getProjectId()))
             .orElseThrow(ProjectMutationException::boardCardNotFound);
         long expectedVersion = requireExpectedVersion(request.expectedVersion());
         checkVersion(card, expectedVersion);
@@ -148,7 +148,7 @@ public class BoardService {
         List<BoardColumn> columns = columnsFor(target);
         validateColumn(columns, request.columnKey());
         BoardCardEntity card = boardCardRepository.findById(cardId)
-            .filter(item -> item.getProjectId().equals(sourceProjectId))
+            .filter(item -> sourceProjectId.equals(item.getProjectId()))
             .orElseThrow(ProjectMutationException::boardCardNotFound);
         long expectedVersion = requireExpectedVersion(request.expectedVersion());
         checkVersion(card, expectedVersion);
@@ -166,7 +166,7 @@ public class BoardService {
     public void deleteCard(String projectId, String cardId, String expectedVersionText) {
         projectWriteLock.require(projectId);
         BoardCardEntity card = boardCardRepository.findById(cardId)
-            .filter(item -> item.getProjectId().equals(projectId))
+            .filter(item -> projectId.equals(item.getProjectId()))
             .orElseThrow(ProjectMutationException::boardCardNotFound);
         checkVersion(card, parseExpectedVersion(expectedVersionText));
         boardCardRepository.delete(card);

@@ -73,13 +73,22 @@ public class BoardCardForeignKeyInitializer implements InitializingBean {
             try (var invalidCards = statement.executeQuery("""
                 SELECT COUNT(*) FROM PUBLIC.BOARD_CARDS B
                 LEFT JOIN PUBLIC.PROJECTS P ON P.ID = B.PROJECT_ID
-                WHERE B.PROJECT_ID IS NULL OR P.ID IS NULL
+                WHERE B.PROJECT_ID IS NOT NULL AND P.ID IS NULL
                 """)) {
                 invalidCards.next();
-                if (invalidCards.getLong(1) != 0) throw invalid("NULL or orphan project references");
+                if (invalidCards.getLong(1) != 0) throw invalid("orphan project references");
             }
-            if (child.nullable() != DatabaseMetaData.columnNoNulls) {
-                throw invalid("BOARD_CARDS.PROJECT_ID must be NOT NULL");
+            if (child.nullable() == DatabaseMetaData.columnNullableUnknown) {
+                throw invalid("unknown BOARD_CARDS.PROJECT_ID nullability");
+            }
+            if (child.nullable() == DatabaseMetaData.columnNoNulls) {
+                if (!allowDdl) throw invalid("BOARD_CARDS.PROJECT_ID must allow NULL in validate mode");
+                // Only an approved in-memory H2 connection reaches this DDL.
+                statement.executeUpdate("ALTER TABLE PUBLIC.BOARD_CARDS ALTER COLUMN PROJECT_ID DROP NOT NULL");
+                if (column(metadata, "BOARD_CARDS", "PROJECT_ID").nullable()
+                        != DatabaseMetaData.columnNullable) {
+                    throw invalid("BOARD_CARDS.PROJECT_ID remains NOT NULL after alteration");
+                }
             }
             if (exists) return;
             if (!allowDdl) throw invalid("required foreign key missing in validate mode");
