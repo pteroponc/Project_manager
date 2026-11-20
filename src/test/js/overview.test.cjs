@@ -229,3 +229,20 @@ test('overview rows and metrics come from one atomic portfolio response', async 
   assert.match(get('overview-all-projects').innerHTML,/Snapshot project/);
   assert.match(get('overview-all-projects').innerHTML,/35%/);
 });
+
+test('pilot startup and release panel do not request release checks', async () => {
+  const init = source.match(/^async function init\(\) \{[\s\S]*?^\}/m)[0];
+  const calls = [];
+  const startup = vm.runInNewContext(init + '\ninit()', {
+    showView() {},
+    state: { activeView: 'overview' },
+    loadDeliveryModels() { calls.push('delivery-models'); },
+    loadDashboard() { calls.push('dashboard'); },
+    loadReleaseChecks() { calls.push('release-checks'); }
+  });
+  await startup;
+  assert.deepEqual(calls, ['delivery-models', 'dashboard']);
+  assert.doesNotMatch(source, /\/api\/release-checks/);
+  assert.doesNotMatch(html, /id="refresh-release-checks"/);
+  assert.match(html, /Проверки сборки и релиза отключены/);
+});

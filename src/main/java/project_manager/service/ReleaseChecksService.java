@@ -2,6 +2,7 @@ package project_manager.service;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
@@ -14,6 +15,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.Supplier;
 
 @Service
 public class ReleaseChecksService {
@@ -27,15 +29,21 @@ public class ReleaseChecksService {
     private Instant cachedAt = Instant.EPOCH;
     private ReleaseChecksSnapshot cachedSnapshot;
 
+    @Autowired
     public ReleaseChecksService(
         ObjectMapper objectMapper,
-        @Value("${release-checks.github-repository:pteroponc/Project_manager}") String repository
+        @Value("${release-checks.github-repository:pteroponc/Project_manager}") String repository,
+        @Value("${release-checks.enabled:false}") boolean enabled
     ) {
+        this(objectMapper, repository, enabled,
+            () -> HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build());
+    }
+
+    ReleaseChecksService(ObjectMapper objectMapper, String repository, boolean enabled,
+                         Supplier<HttpClient> clientFactory) {
         this.objectMapper = objectMapper;
         this.repository = repository;
-        this.httpClient = HttpClient.newBuilder()
-            .connectTimeout(Duration.ofSeconds(5))
-            .build();
+        this.httpClient = enabled ? clientFactory.get() : null;
     }
 
     public ReleaseChecksSnapshot getSnapshot() {
@@ -43,6 +51,11 @@ public class ReleaseChecksService {
     }
 
     public synchronized ReleaseChecksSnapshot getSnapshot(boolean forceRefresh) {
+        if (httpClient == null) {
+            return new ReleaseChecksSnapshot(repository, false, null,
+                "Проверки сборки и релиза отключены.", null, List.of());
+        }
+
         if (!forceRefresh && cachedSnapshot != null && Instant.now().isBefore(cachedAt.plus(CACHE_TTL))) {
             return cachedSnapshot;
         }
