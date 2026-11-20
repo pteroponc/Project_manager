@@ -210,6 +210,64 @@ class ProjectDeletionDependenciesIntegrationTest {
             } finally { release.countDown(); }
         }
     }
+    static Stream<Arguments> cardAndProjectOrders() {
+        return Stream.of("delete", "rename", "deliveryModel")
+            .flatMap(operation -> Stream.of(true, false).map(cardFirst -> Arguments.of(operation, cardFirst)));
+    }
+
+    @ParameterizedTest
+    @MethodSource("cardAndProjectOrders")
+    void cardPutAndProjectMutationSerializeInBothOrders(String operation, boolean cardFirst) throws Exception {
+        String card = boards.createCard("p", cardRequest("Original")).id();
+        boolean deletion = "delete".equals(operation);
+        boolean modelChange = "deliveryModel".equals(operation);
+        String column = modelChange && !cardFirst ? "product-backlog" : "backlog";
+        String body = json.writeValueAsString(cardRequest("Edited").withExpectedVersion(0L));
+        ObjectNode cardBody = (ObjectNode) json.readTree(body);
+        cardBody.put("columnKey", column);
+        Runnable writeCard = () -> unchecked(put(ROOT + "/board/cards/" + card), cardBody.toString(), 200);
+        Runnable writeProject = () -> {
+            if (deletion) {
+                assertThat(unchecked(delete(ROOT), null, 409).path("code").asText())
+                    .isEqualTo("PROJECT_HAS_BOARD_CARDS");
+            } else {
+                String changes = modelChange ? "{\"expectedVersion\":1,\"deliveryModel\":\"scrum\"}"
+                    : "{\"expectedVersion\":1,\"name\":\"Renamed\"}";
+                unchecked(patch(ROOT), changes, 200);
+            }
+        };
+
+        var written = new CountDownLatch(1);
+        var release = new CountDownLatch(1);
+        try (var executor = Executors.newFixedThreadPool(2)) {
+            var first = executor.submit(() -> new TransactionTemplate(manager).executeWithoutResult(status -> {
+                (cardFirst ? writeCard : writeProject).run();
+                if (deletion && !cardFirst) status.setRollbackOnly();
+                written.countDown();
+                await(release);
+            }));
+            try {
+                assertThat(written.await(5, TimeUnit.SECONDS)).isTrue();
+                var second = executor.submit(cardFirst ? writeProject : writeCard);
+                blocked("projects", second);
+                release.countDown();
+                first.get(5, TimeUnit.SECONDS);
+                second.get(5, TimeUnit.SECONDS);
+            } finally {
+                release.countDown();
+            }
+        }
+
+        var savedCard = jdbc.queryForMap("SELECT PROJECT_ID, TITLE, COLUMN_KEY, VERSION FROM BOARD_CARDS WHERE ID=?", card);
+        assertThat(savedCard).containsEntry("PROJECT_ID", "p").containsEntry("TITLE", "Edited")
+            .containsEntry("COLUMN_KEY", column).containsEntry("VERSION", 1L);
+        var savedProject = jdbc.queryForMap("SELECT NAME, DELIVERY_MODEL, VERSION FROM PROJECTS WHERE ID='p'");
+        assertThat(savedProject).containsEntry("NAME", "rename".equals(operation) ? "Renamed" : "p")
+            .containsEntry("DELIVERY_MODEL", modelChange ? "scrum" : "kanban")
+            .containsEntry("VERSION", deletion ? 1L : 2L);
+        noOrphans();
+    }
+
     @Test void bothTransferDirectionsTakeProjectLocksInStableIdOrder() {
         String card=boards.createCard("p",cardRequest("Original")).id();clearInvocations(locks);
         boards.transferCard("p","r",card,cardRequest("Forward").withExpectedVersion(0));

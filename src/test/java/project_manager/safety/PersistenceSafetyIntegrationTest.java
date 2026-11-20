@@ -30,7 +30,7 @@ class PersistenceSafetyIntegrationTest {
     void readsAndTwoRestartsPreserveEveryStoredField() throws Exception {
         String url = "jdbc:h2:mem:pmtest_restart_" + UUID.randomUUID().toString().replace("-", "") + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1";
         Map<String, List<Map<String, Object>>> expected;
-        try (var context = open(url, "create")) {
+        try (var context = open(url, "update")) {
             var jdbc = context.getBean(JdbcTemplate.class);
             assertThat(jdbc.queryForObject("select count(*) from projects", Integer.class)).isZero();
             assertThat(jdbc.queryForObject("select count(*) from release_trains", Integer.class)).isZero();
@@ -84,7 +84,7 @@ class PersistenceSafetyIntegrationTest {
     @Test
     void validationRejectsIncompatibleSyntheticSchemaWithoutRepair() throws Exception {
         String url = "jdbc:h2:mem:pmtest_mismatch_" + UUID.randomUUID().toString().replace("-", "") + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1";
-        try (var context = open(url, "create")) {
+        try (var context = open(url, "update")) {
             context.getBean(JdbcTemplate.class).execute("alter table projects drop column owner");
         }
         Writes.count.set(0);
@@ -110,7 +110,7 @@ class PersistenceSafetyIntegrationTest {
     void explicitlyInitializedNewMemorySchemaStartsWithValidateAndNoDemoRecords() {
         String url = "jdbc:h2:mem:pmtest_new_" + UUID.randomUUID().toString().replace("-", "") + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1";
         // Only a newly generated in-memory database; never an existing or file URL.
-        try (var initialized = open(url, "create")) {
+        try (var initialized = open(url, "update")) {
             assertThat(snapshot(initialized.getBean(JdbcTemplate.class)).values()).allSatisfy(rows -> assertThat(rows).isEmpty());
         }
         try (var validated = open(url, "validate")) {
@@ -126,7 +126,7 @@ class PersistenceSafetyIntegrationTest {
     void demoRestartPreservesEditedRecordsAndDoesNotRefillDeletedTask() {
         String url = "jdbc:h2:mem:pmtest_demo_restart_" + UUID.randomUUID().toString().replace("-", "") + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1";
         Map<String, List<Map<String, Object>>> expected;
-        try (var context = open(url, "create", "demo")) {
+        try (var context = open(url, "update", "demo")) {
             var jdbc = context.getBean(JdbcTemplate.class);
             assertThat(jdbc.queryForObject("select count(*) from projects", Integer.class)).isEqualTo(3);
             jdbc.update("update projects set owner='Edited demo owner'");
