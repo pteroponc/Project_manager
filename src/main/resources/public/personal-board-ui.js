@@ -18,6 +18,7 @@
   let formRequest = 0;
   let pending = false;
   let uncertain = false;
+  let deleteNeedsRefresh = false;
   let editing = null;
   let tasks = new Map();
   let taskNodes = new Map();
@@ -49,6 +50,10 @@
       edit.type = "button";
       edit.addEventListener("click", () => { if (!pending) void openForm(task); });
       actions.append(edit);
+      const remove = element("button", "btn btn-danger btn-small", "Удалить задачу");
+      remove.type = "button";
+      remove.addEventListener("click", () => { void removeTask(task, remove); });
+      actions.append(remove);
       if (task.columnKey !== "done") {
         const done = element("button", "btn btn-secondary btn-small", "Завершить");
         done.type = "button";
@@ -97,11 +102,16 @@
     message.removeAttribute("data-tone");
     if (!form.hidden && editing) {
       const current = tasks.get(editing.id);
-      if (!current) formMessage.textContent = "Задача отсутствует на сервере. Черновик сохранён в форме.";
-      else if (current.version !== editing.version) {
+      if (!current) {
+        formMessage.textContent = "Задача отсутствует на сервере. Черновик сохранён в форме.";
+        return false;
+      }
+      if (current.version !== editing.version) {
         formMessage.textContent = `На сервере версия ${current.version}; в форме версия ${editing.version}. Черновик сохранён. Откройте задачу заново после копирования изменений.`;
+        return false;
       }
     }
+    return true;
   }
 
   async function load() {
@@ -113,8 +123,10 @@
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const data = await response.json();
       if (current !== request) return;
-      render(data);
-      uncertain = false;
+      uncertain = !render(data);
+      if (!form.hidden && editing) save.disabled = uncertain || pending;
+      deleteNeedsRefresh = false;
+      return true;
     } catch (_error) {
       if (current !== request) return;
       message.textContent = "Не удалось загрузить задачи. Повторите попытку.";
@@ -126,8 +138,8 @@
 
   function formPayload() {
     return {
-      projectId: editing ? editing.projectId : (form.elements.projectId.value || null),
-      title: form.elements.title.value.trim(),
+      projectId: form.elements.projectId.value || null,
+      title: form.elements.title.value,
       description: form.elements.description.value,
       dueDate: form.elements.dueDate.value || null,
       priority: form.elements.priority.value,
@@ -171,9 +183,11 @@
       const select = form.elements.projectId;
       select.replaceChildren(new Option("Без проекта", ""));
       for (const project of projects) select.append(new Option(project.name, project.id));
+      if (task?.projectId && !projects.some(project => project.id === task.projectId)) {
+        select.append(new Option(task.projectName || "Текущий проект", task.projectId));
+      }
       select.value = task?.projectId || "";
-      select.disabled = Boolean(task);
-      formMessage.textContent = task ? "Связь с проектом здесь не меняется." : "Проект и срок можно оставить пустыми.";
+      formMessage.textContent = task ? "Сохраняйте смену проекта отдельно от изменений полей задачи." : "Проект и срок можно оставить пустыми.";
       save.disabled = false;
     } catch (_error) {
       if (current === formRequest) formMessage.textContent = "Не удалось загрузить проекты. Закройте форму и повторите попытку.";
@@ -193,9 +207,15 @@
       });
       if (!response.ok) {
         const error = await response.json().catch(() => ({}));
-        if (response.status === 409) {
+        if (error.code === "BOARD_CARD_DEPENDENCY_CONFLICT") {
+          formMessage.textContent = "Нельзя сменить проект: у задачи есть несовместимая связь.";
+        } else if (response.status === 409) {
           formMessage.textContent = `Конфликт версии. Данные в форме сохранены. Перечитайте Доску и сравните изменения (версия сервера: ${error.currentVersion ?? "неизвестна"}).`;
           uncertain = true;
+        } else if (error.fieldErrors?.projectId && editing && payload.projectId !== editing.projectId) {
+          formMessage.textContent = "Сохраните смену проекта отдельно от изменений полей задачи.";
+        } else if (error.code === "PROJECT_NOT_FOUND") {
+          formMessage.textContent = "Проект больше недоступен. Черновик сохранён.";
         } else {
           formMessage.textContent = `Сохранение отклонено (${error.code || response.status}). Исправьте данные и повторите.`;
         }
@@ -213,6 +233,53 @@
     } finally {
       pending = false;
       save.disabled = uncertain;
+    }
+  }
+
+  async function removeTask(task, button) {
+    if (pending) return;
+    if (!form.hidden) {
+      formMessage.textContent = "Сначала сохраните или закройте открытый черновик.";
+      form.elements.title.focus();
+      return;
+    }
+    if (deleteNeedsRefresh || uncertain || refresh.disabled) {
+      message.textContent = "Перечитайте Доску перед удалением.";
+      return;
+    }
+    if (!window.confirm(`Удалить задачу «${task.title}»?`)) {
+      button.focus();
+      return;
+    }
+    pending = true;
+    button.disabled = true;
+    refresh.disabled = true;
+    message.textContent = "Удаляем задачу…";
+    try {
+      const url = `/api/board/personal/tasks/${encodeURIComponent(task.id)}?expectedVersion=${task.version}`;
+      const response = await fetch(url, { method: "DELETE" });
+      if (response.status === 204) {
+        deleteNeedsRefresh = true;
+        if (await load()) create.focus();
+        return;
+      }
+      const error = await response.json().catch(() => ({}));
+      if (error.code === "BOARD_CARD_DEPENDENCY_CONFLICT") {
+        message.textContent = "Нельзя удалить задачу: на неё ссылаются другие данные.";
+      } else {
+        deleteNeedsRefresh = true;
+        message.textContent = response.status === 409
+          ? "Конфликт версии. Перечитайте Доску перед удалением."
+          : "Удаление не подтверждено. Перечитайте Доску перед повтором.";
+      }
+    } catch (_error) {
+      deleteNeedsRefresh = true;
+      message.textContent = "Результат удаления неизвестен. Перечитайте Доску перед повтором.";
+    } finally {
+      pending = false;
+      refresh.disabled = false;
+      button.disabled = false;
+      if (button.isConnected) button.focus();
     }
   }
 
@@ -247,7 +314,7 @@
     } finally { pending = false; }
   }
 
-  refresh.addEventListener("click", () => { void load(); });
+  refresh.addEventListener("click", () => { if (!pending) void load(); });
   create.addEventListener("click", () => { if (!pending) void openForm(); });
   cancel.addEventListener("click", () => {
     if (pending) return;
@@ -260,14 +327,14 @@
   });
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
-    if (pending || uncertain) return;
+    if (pending || uncertain || save.disabled) return;
     const payload = formPayload();
     await write(editing ? `/api/board/personal/tasks/${encodeURIComponent(editing.id)}` : "/api/board/personal/tasks",
       payload, editing ? "PUT" : "POST");
   });
   window.PMPersonalBoardUI = {
-    onView(view) { if (view === "boards") void load(); },
-    focusTask(id) { pendingFocusId = id; if (!refresh.disabled) void load(); }
+    onView(view) { if (view === "boards" && !pending) void load(); },
+    focusTask(id) { pendingFocusId = id; if (!pending && !refresh.disabled) void load(); }
   };
   if (document.getElementById("board-panel")?.classList.contains("active")) void load();
 })();

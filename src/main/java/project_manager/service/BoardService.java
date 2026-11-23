@@ -207,21 +207,18 @@ public class BoardService {
     public BoardCard updatePersonalTask(String cardId, PersonalTaskRequest request) {
         validatePersonalRequest(request, true);
         long expectedVersion = requireExpectedVersion(request.expectedVersion());
-        ProjectEntity project = request.projectId() == null ? null : projectWriteLock.require(request.projectId());
-        BoardCardEntity card = boardCardRepository.findById(cardId)
-            .orElseThrow(ProjectMutationException::boardCardNotFound);
-        if (!Objects.equals(card.getProjectId(), request.projectId())) {
-            throw ProjectMutationException.invalid("projectId", "Project link changes are not available here");
-        }
-        checkVersion(card, expectedVersion);
+        BoardCardEntity card = lockPersonalTask(cardId, expectedVersion, request.projectId());
+        boolean relink = !Objects.equals(card.getProjectId(), request.projectId());
         Map<String, Object> before = subjectFields(card);
         Integer nextPosition = null;
-        if (project != null && !card.getColumnKey().equals(request.columnKey())) {
+        if (relink && request.projectId() == null) {
+            nextPosition = 0;
+        } else if (request.projectId() != null && (relink || !card.getColumnKey().equals(request.columnKey()))) {
             nextPosition = boardCardRepository
-                .findByProjectIdAndColumnKeyOrderByPositionAsc(project.getId(), request.columnKey())
+                .findByProjectIdAndColumnKeyOrderByPositionAsc(request.projectId(), request.columnKey())
                 .stream().mapToInt(BoardCardEntity::getPosition).max().orElse(-1) + 1;
         }
-        card.setTitle(request.title().trim());
+        if (!card.getTitle().equals(request.title())) card.setTitle(request.title().trim());
         card.setDescription(request.description() == null ? "" : request.description());
         card.setDueDate(request.dueDate() == null ? "" : request.dueDate());
         if (request.priority() == null || request.priority().isBlank()) {
@@ -231,14 +228,65 @@ public class BoardService {
         } else {
             card.setPriority(normalizePriority(request.priority()));
         }
-        if (!card.getColumnKey().equals(request.columnKey())) {
-            if (nextPosition != null) card.setPosition(nextPosition);
-            card.setColumnKey(request.columnKey());
+        card.setColumnKey(request.columnKey());
+        if (relink && !before.equals(subjectFields(card))) {
+            throw ProjectMutationException.invalid("projectId", "Save field changes separately from the project link");
         }
+        card.setProjectId(request.projectId());
+        if (nextPosition != null) card.setPosition(nextPosition);
         if (before.equals(subjectFields(card))) return toCard(card);
-        BoardCardEntity saved = saveWithVersionBump(card, expectedVersion);
+        BoardCardEntity saved;
+        try {
+            saved = saveWithVersionBump(card, expectedVersion);
+        } catch (org.springframework.dao.DataIntegrityViolationException exception) {
+            if (!relink) throw exception;
+            throw ProjectMutationException.boardCardDependencyConflict();
+        }
         recordChange(saved, before, expectedVersion, "PERSONAL_BOARD_HTTP", "HTTP_REQUEST", null);
         return toCard(saved);
+    }
+
+    @Transactional
+    public void deletePersonalTask(String cardId, String expectedVersionText) {
+        BoardCardEntity card = lockPersonalTask(cardId, parseExpectedVersion(expectedVersionText), null);
+        Map<String, Object> before = subjectFields(card);
+        long lastVersion = card.getVersion();
+        try {
+            boardCardRepository.delete(card);
+            boardCardRepository.flush();
+        } catch (org.springframework.dao.DataIntegrityViolationException exception) {
+            throw ProjectMutationException.boardCardDependencyConflict();
+        }
+        // DELETE has no resulting row: both version slots record the last persisted version.
+        history.append(cardId, "DELETE", lastVersion, lastVersion, before, Map.of(),
+            "PERSONAL_BOARD_HTTP", "HTTP_REQUEST", null);
+    }
+
+    private BoardCardEntity lockPersonalTask(String cardId, long expectedVersion, String targetId) {
+        BoardCardEntity observed = boardCardRepository.findById(cardId)
+            .orElseThrow(ProjectMutationException::boardCardNotFound);
+        checkVersion(observed, expectedVersion);
+        String sourceId = observed.getProjectId();
+        // Read a fresh row after acquiring project locks, even if the first read populated the JPA cache.
+        entityManager.detach(observed);
+        try {
+            if (sourceId != null && targetId != null) projectWriteLock.requireBoth(sourceId, targetId);
+            else if (sourceId != null) projectWriteLock.require(sourceId);
+            else if (targetId != null) projectWriteLock.require(targetId);
+        } catch (ProjectMutationException exception) {
+            // A simultaneous transfer and project deletion can invalidate the initially observed source.
+            BoardCardEntity current = boardCardRepository.findById(cardId)
+                .orElseThrow(ProjectMutationException::boardCardNotFound);
+            checkVersion(current, expectedVersion);
+            throw exception;
+        }
+        BoardCardEntity current = boardCardRepository.findForUpdate(cardId)
+            .orElseThrow(ProjectMutationException::boardCardNotFound);
+        checkVersion(current, expectedVersion);
+        if (!Objects.equals(sourceId, current.getProjectId())) {
+            throw ProjectMutationException.boardCardVersionConflict(current.getVersion());
+        }
+        return current;
     }
 
     private void validatePersonalRequest(PersonalTaskRequest request, boolean allowUnspecifiedPriority) {

@@ -13,6 +13,9 @@ import org.springframework.test.web.servlet.MockMvc;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
@@ -24,6 +27,131 @@ class PersonalTaskMutationIntegrationTest {
     @Autowired MockMvc mvc;
     @Autowired ObjectMapper json;
     @Autowired JdbcTemplate jdbc;
+
+    @Test
+    void linksUnlinksAndTransfersSameCardWithHistoryAndNoOp() throws Exception {
+        String a = project();
+        String b = project("scrum");
+        String id = create(null, "ready", "2026-12-20");
+        create(a, "ready", null);
+        List<String> targets = java.util.Arrays.asList(a, null, b, a);
+        for (int i = 0; i < targets.size(); i++) {
+            relink(id, targets.get(i), i).andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(id)).andExpect(jsonPath("$.version").value(i + 1))
+                .andExpect(jsonPath("$.title").value("Task")).andExpect(jsonPath("$.owner").value(""));
+            JsonNode entry = change(id, i + 1);
+            assertThat(entry.path("OPERATION").asText()).isEqualTo("UPDATE");
+            assertThat(entry.path("BEFORE_VERSION").asInt()).isEqualTo(i);
+            assertThat(entry.path("AFTER_VERSION").asInt()).isEqualTo(i + 1);
+            JsonNode before = json.readTree(entry.path("BEFORE_JSON").asText());
+            JsonNode after = json.readTree(entry.path("AFTER_JSON").asText());
+            assertThat(before.get("projectId").asText(null)).isEqualTo(i == 0 ? null : targets.get(i - 1));
+            assertThat(after.get("projectId").asText(null)).isEqualTo(targets.get(i));
+            assertThat(after.size()).isEqualTo(i == 2 ? 1 : 2);
+            if (i != 2) assertThat(after.get("position").asInt()).isEqualTo(i == 1 ? 0 : 1);
+        }
+        relink(id, a, 4).andExpect(status().isOk()).andExpect(jsonPath("$.version").value(4));
+        relink(id, "missing", 4).andExpect(status().isNotFound());
+        relink(id, b, 3).andExpect(status().isConflict());
+        assertThat(countChanges(id)).isEqualTo(5);
+        assertThat(jdbc.queryForList("select project_id from board_cards where id=?", String.class, id))
+            .containsExactly(a);
+        assertThat(personalBoard().toString()).contains(id);
+    }
+
+    @Test
+    void concurrentTransfersSerializeInBothDirectionsAndRejectStaleVersion() throws Exception {
+        String a = project();
+        String b = project("waterfall");
+        String left = create(a, "ready", "2026-12-20");
+        String right = create(b, "ready", "2026-12-20");
+        var start = new CountDownLatch(1);
+        try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
+            var first = executor.submit(() -> { start.await(); return relink(left, b, 0).andReturn().getResponse().getStatus(); });
+            var second = executor.submit(() -> { start.await(); return relink(right, a, 0).andReturn().getResponse().getStatus(); });
+            var stale = executor.submit(() -> { start.await(); return relink(left, b, 0).andReturn().getResponse().getStatus(); });
+            start.countDown();
+            assertThat(List.of(first.get(10, TimeUnit.SECONDS), stale.get(10, TimeUnit.SECONDS)))
+                .containsExactlyInAnyOrder(200, 409);
+            assertThat(second.get(10, TimeUnit.SECONDS)).isEqualTo(200);
+        }
+        assertThat(countChanges(left)).isEqualTo(2);
+        assertThat(countChanges(right)).isEqualTo(2);
+        assertThat(jdbc.queryForObject("select project_id from board_cards where id=?", String.class, left)).isEqualTo(b);
+        assertThat(jdbc.queryForObject("select project_id from board_cards where id=?", String.class, right)).isEqualTo(a);
+    }
+
+    @Test
+    void personalDeleteKeepsHistoryAndProjectForBothCardOrigins() throws Exception {
+        String project = project();
+        for (String origin : java.util.Arrays.asList(null, project)) {
+            String id = create(origin, "backlog", "2026-12-20");
+            update(id, 0, "Edited", "Description", "2026-12-20", "medium", "ready").andExpect(status().isOk());
+            mvc.perform(delete("/api/board/personal/tasks/{id}", id)).andExpect(status().isBadRequest());
+            deletePersonal(id, "0").andExpect(status().isConflict());
+            deletePersonal(id, "1").andExpect(status().isNoContent());
+            deletePersonal(id, "1").andExpect(status().isNotFound());
+            assertThat(jdbc.queryForList("select id from board_cards where id=?", String.class, id)).isEmpty();
+            JsonNode entry = change(id, 2);
+            assertThat(countChanges(id)).isEqualTo(3);
+            assertThat(entry.path("OPERATION").asText()).isEqualTo("DELETE");
+            assertThat(entry.path("BEFORE_VERSION").asInt()).isEqualTo(1);
+            assertThat(entry.path("AFTER_VERSION").asInt()).isEqualTo(1);
+            assertThat(entry.path("CONFIRMATION").isNull()).isTrue();
+            assertThat(json.readTree(entry.path("BEFORE_JSON").asText()).path("title").asText()).isEqualTo("Edited");
+            assertThat(entry.path("AFTER_JSON").asText()).isEqualTo("{}");
+        }
+        assertThat(jdbc.queryForObject("select count(*) from projects where id=?", Integer.class, project)).isEqualTo(1);
+    }
+
+    @Test
+    void incompatibleReferenceBlocksTransferAndDeleteWithoutChangingEitherRow() throws Exception {
+        String a = project();
+        String b = project();
+        String id = create(a, "ready", "2026-12-20");
+        jdbc.execute("ALTER TABLE BOARD_CARDS ADD CONSTRAINT TEST_CARD_PROJECT UNIQUE (ID, PROJECT_ID)");
+        try {
+            jdbc.execute("CREATE TABLE TEST_CARD_DEPENDENCY (CARD_ID VARCHAR(255), PROJECT_ID VARCHAR(255), "
+                + "FOREIGN KEY (CARD_ID, PROJECT_ID) REFERENCES BOARD_CARDS(ID, PROJECT_ID))");
+            jdbc.update("INSERT INTO TEST_CARD_DEPENDENCY VALUES (?,?)", id, a);
+            relink(id, b, 0).andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("BOARD_CARD_DEPENDENCY_CONFLICT"));
+            deletePersonal(id, "0").andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("BOARD_CARD_DEPENDENCY_CONFLICT"));
+            assertThat(countChanges(id)).isEqualTo(1);
+            assertThat(jdbc.queryForObject("select project_id from board_cards where id=?", String.class, id)).isEqualTo(a);
+            assertThat(jdbc.queryForObject("select project_id from TEST_CARD_DEPENDENCY where card_id=?", String.class, id)).isEqualTo(a);
+        } finally {
+            jdbc.execute("DROP TABLE IF EXISTS TEST_CARD_DEPENDENCY");
+            jdbc.execute("ALTER TABLE BOARD_CARDS DROP CONSTRAINT TEST_CARD_PROJECT");
+        }
+    }
+
+    @Test
+    void historyFailureRollsBackRelinkAndDelete() throws Exception {
+        String project = project();
+        String id = create(null, "ready", "2026-12-20");
+        jdbc.execute("ALTER TABLE TASK_CHANGE_ENTRIES ADD CONSTRAINT TEST_ONLY_CREATE CHECK (TASK_ID <> '"
+            + id + "' OR OPERATION = 'CREATE')");
+        try {
+            relink(id, project, 0).andExpect(status().isInternalServerError());
+            deletePersonal(id, "0").andExpect(status().isInternalServerError());
+            assertThat(jdbc.queryForMap("select project_id, version from board_cards where id=?", id))
+                .containsEntry("PROJECT_ID", null).containsEntry("VERSION", 0L);
+            assertThat(countChanges(id)).isEqualTo(1);
+        } finally {
+            jdbc.execute("ALTER TABLE TASK_CHANGE_ENTRIES DROP CONSTRAINT TEST_ONLY_CREATE");
+        }
+    }
+
+    private org.springframework.test.web.servlet.ResultActions relink(String id, String target, long version) throws Exception {
+        return mvc.perform(put("/api/board/personal/tasks/{id}", id).contentType(MediaType.APPLICATION_JSON)
+            .content(body(target, version, "Task", "Description", "2026-12-20", "medium", "ready")));
+    }
+
+    private org.springframework.test.web.servlet.ResultActions deletePersonal(String id, String version) throws Exception {
+        return mvc.perform(delete("/api/board/personal/tasks/{id}", id).param("expectedVersion", version));
+    }
 
     @Test
     void movingIntoOccupiedProjectColumnAppendsAndKeepsProjectReorderUsable() throws Exception {

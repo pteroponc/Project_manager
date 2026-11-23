@@ -4,14 +4,21 @@ import project_manager.domain.BoardCardEntity;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.jpa.repository.Modifying;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.repository.query.Param;
+import jakarta.persistence.LockModeType;
 
 import java.util.List;
+import java.util.Optional;
 
 public interface BoardCardRepository extends JpaRepository<BoardCardEntity, String> {
     List<BoardCardEntity> findByProjectIdOrderByPositionAsc(String projectId);
     List<BoardCardEntity> findByProjectIdAndColumnKeyOrderByPositionAsc(String projectId, String columnKey);
     long countByProjectId(String projectId);
+
+    @Query("select card from BoardCardEntity card where card.id = :id")
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    Optional<BoardCardEntity> findForUpdate(@Param("id") String id);
 
     @Modifying
     @Query("update BoardCardEntity card set card.version = card.version + 1 "

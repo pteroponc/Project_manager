@@ -1,6 +1,10 @@
 package project_manager.web;
 
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.ResponseStatus;
+import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
@@ -37,5 +41,11 @@ public class PersonalBoardController {
     @PutMapping("/personal/tasks/{id}")
     public BoardCard update(@PathVariable String id, @RequestBody PersonalTaskRequest request) {
         return writes.updatePersonalTask(id, request);
+    }
+
+    @DeleteMapping("/personal/tasks/{id}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void delete(@PathVariable String id, @RequestParam(required = false) String expectedVersion) {
+        writes.deletePersonalTask(id, expectedVersion);
     }
 }

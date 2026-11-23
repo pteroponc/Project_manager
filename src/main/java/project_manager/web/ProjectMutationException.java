@@ -51,6 +51,11 @@ public class ProjectMutationException extends RuntimeException {
             "Board card version does not match", null, currentVersion);
     }
 
+    public static ProjectMutationException boardCardDependencyConflict() {
+        return new ProjectMutationException(HttpStatus.CONFLICT, "BOARD_CARD_DEPENDENCY_CONFLICT",
+            "Task has a dependent record or an incompatible project link", null, null);
+    }
+
     public static ProjectMutationException boardOrderConflict() {
         return new ProjectMutationException(HttpStatus.CONFLICT, "BOARD_ORDER_CONFLICT",
             "Board order changed; reread column", null, null);
