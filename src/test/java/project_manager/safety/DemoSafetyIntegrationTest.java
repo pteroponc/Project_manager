@@ -28,6 +28,12 @@ class DemoSafetyIntegrationTest {
         assertThat(projects.count()).isEqualTo(3);
         assertThat(trains.count()).isEqualTo(2);
         assertThat(cards.count()).isEqualTo(3);
+        assertThat(projects.findAll()).extracting(project -> project.getOwner())
+            .containsExactlyInAnyOrder("Участник демо", "Architecture Office", "Delivery Lead");
+        assertThat(cards.findAll()).extracting(card -> card.getOwner())
+            .containsExactlyInAnyOrder("Участник демо", "Architecture Office", "Delivery Lead");
+        assertThat(projects.findAll()).extracting(project -> project.getBudget())
+            .containsExactlyInAnyOrder(1000, 2000, 3000);
         var project = projects.findAll().getFirst();
         project.setOwner("User changed demo"); projects.save(project);
         var removed = cards.findAll().getFirst(); cards.delete(removed);

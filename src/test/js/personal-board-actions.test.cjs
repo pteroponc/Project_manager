@@ -69,6 +69,7 @@ test('delete requires confirmation, suppresses duplicates, and waits for reread 
   const request = h.requests.shift();
   assert.equal(request.url, '/api/board/personal/tasks/task%2F1?expectedVersion=0');
   assert.equal(request.options.method, 'DELETE');
+  assert.equal(request.options.headers['X-PM-Write'], '1');
   assert.equal(h.requests.length, 0);
   request.reject(new Error('offline'));
   await flush();
@@ -98,6 +99,7 @@ test('project selection is submitted and a stale version preserves the selected 
   h.form.elements.projectId.value = 'p1';
   h.form.events.submit({ preventDefault() {} });
   const write = h.requests.shift();
+  assert.equal(write.options.headers['X-PM-Write'], '1');
   assert.equal(JSON.parse(write.options.body).projectId, 'p1');
   write.resolve(response(409, { currentVersion: 1 }));
   await flush();

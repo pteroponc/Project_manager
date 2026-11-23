@@ -205,7 +205,7 @@
     formMessage.textContent = "Сохраняем задачу…";
     try {
       const response = await fetch(url, {
-        method, headers: { "Content-Type": "application/json" },
+        method, headers: { "Content-Type": "application/json", "X-PM-Write": "1" },
         body: JSON.stringify(payload)
       });
       if (!response.ok) {
@@ -260,7 +260,7 @@
     message.textContent = "Удаляем задачу…";
     try {
       const url = `/api/board/personal/tasks/${encodeURIComponent(task.id)}?expectedVersion=${task.version}`;
-      const response = await fetch(url, { method: "DELETE" });
+      const response = await fetch(url, { method: "DELETE", headers: { "X-PM-Write": "1" } });
       if (response.status === 204) {
         deleteNeedsRefresh = true;
         if (await load()) create.focus();
@@ -301,7 +301,7 @@
     message.textContent = "Завершаем задачу…";
     try {
       const response = await fetch(`/api/board/personal/tasks/${encodeURIComponent(task.id)}`, {
-        method: "PUT", headers: { "Content-Type": "application/json" },
+        method: "PUT", headers: { "Content-Type": "application/json", "X-PM-Write": "1" },
         body: JSON.stringify(payload)
       });
       if (!response.ok) {

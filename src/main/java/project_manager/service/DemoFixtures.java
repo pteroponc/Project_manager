@@ -6,25 +6,25 @@ import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
 
-/** Only used by the explicitly enabled, isolated demo initializer. */
+/** Synthetic names, roles and sample metrics for the explicitly enabled, isolated demo. */
 final class DemoFixtures {
     static List<ProjectEntity> demoProjects() {
         return List.of(
             buildProject(
             "Digital Commerce Platform",
-            "Polina",
+            "Участник демо",
             "active",
             "yellow",
             "kanban",
-            5_200_000,
-            63,
+            1_000,
+            25,
             "Q2 2026",
             LocalDate.now().plusDays(45).toString(),
             "Бета-запуск кабинета партнера",
             "Интеграция с ERP не укладывается в окно релиза",
             "Готовность ERP API и команды интеграции",
             "Конверсия в заказ",
-            "+12% к концу квартала",
+            "+10% (пример)",
             "Перестройка цифровой витрины и процессов заказа для роста онлайн-выручки."
         ),
             buildProject(
@@ -33,15 +33,15 @@ final class DemoFixtures {
             "planned",
             "green",
             "waterfall",
-            1_800_000,
-            22,
+            2_000,
+            50,
             "Q3 2026",
             LocalDate.now().plusDays(72).toString(),
             "Согласовать карту миграции документов",
             "Не вся база знаний размечена по владельцам",
             "Назначение владельцев доменов знаний",
             "Доля актуализированной документации",
-            "85% страниц с владельцем и датой ревью",
+            "50% страниц (пример)",
             "Переезд документации и регламентов в единое управляемое хранилище."
         ),
             buildProject(
@@ -50,15 +50,15 @@ final class DemoFixtures {
             "active",
             "green",
             "scrum",
-            3_400_000,
-            48,
+            3_000,
+            75,
             "Q2 2026",
             LocalDate.now().plusDays(30).toString(),
             "Вывести MVP в конце спринта",
             "Нужна синхронизация с мобильным MDM",
             "Доступ к test-стенду и данным поля",
             "Скорость вывода фичи",
-            "2 инкремента за месяц",
+            "2 инкремента за месяц (пример)",
             "Запуск мобильного контура для полевых команд с короткими спринтами."
         ));
     }
@@ -121,10 +121,10 @@ final class DemoFixtures {
                 today.plusDays(21).toString(),
                 today.plusDays(28).toString(),
                 today.plusDays(38).toString(),
-                80,
-                68,
-                74,
-                2,
+                100,
+                50,
+                25,
+                1,
                 "Digital Commerce Platform, Mobile Workforce Rollout",
                 "ERP API и MDM-интеграция могут не войти в окно code freeze.",
                 "До freeze подтвердить владельцев интеграций и снять два блокера."
@@ -138,9 +138,9 @@ final class DemoFixtures {
                 today.plusDays(45).toString(),
                 today.plusDays(54).toString(),
                 today.plusDays(66).toString(),
-                55,
-                37,
-                58,
+                50,
+                25,
+                50,
                 1,
                 "Knowledge Hub Migration",
                 "Не все домены знаний имеют владельцев и критерии готовности.",

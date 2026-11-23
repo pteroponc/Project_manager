@@ -21,6 +21,8 @@ from bind_check import validate_listeners, validate_windows_listeners
 def request(base, path, method="GET", data=None):
     body = None if data is None else json.dumps(data).encode()
     headers = {"Accept": "application/json" if path.startswith("/api/") else "*/*"}
+    if method in {"POST", "PUT", "PATCH", "DELETE"}:
+        headers["X-PM-Write"] = "1"
     if body is not None:
         headers["Content-Type"] = "application/json"
     req = urllib.request.Request(base + path, data=body, headers=headers, method=method)

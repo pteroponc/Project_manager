@@ -2196,6 +2196,11 @@ function resetFormMode() {
 }
 
 async function fetchJson(url, options) {
+  if (url.startsWith("/api/") && ["POST", "PUT", "PATCH", "DELETE"].includes(options?.method?.toUpperCase())) {
+    const headers = new Headers(options.headers);
+    headers.set("X-PM-Write", "1");
+    options = { ...options, headers };
+  }
   const response = await fetch(url, options);
   if (response.status === 204) {
     return null;

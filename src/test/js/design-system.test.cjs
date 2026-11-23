@@ -15,13 +15,13 @@ const contrast = (a, b) => {
   return (Math.max(...values) + .05) / (Math.min(...values) + .05);
 };
 
-test('approved palette and Manrope are centralized in design tokens', () => {
+test('approved palette and system font stack are centralized in design tokens', () => {
   for (const [name, value] of Object.entries({ '--primary': '#2563EB', '--primary-hover': '#1D4ED8',
     '--sidebar': '#142D4E', '--bg': '#F7F9FC', '--mint': '#EAF2FF', '--text': '#111827',
     '--muted': '#526176', '--warning': '#C58A1A', '--danger': '#C93C32' })) {
     assert.equal(resolve(name).toUpperCase(), value);
   }
-  assert.match(resolve('--font-family'), /^"Manrope"/);
+  assert.match(resolve('--font-family'), /^system-ui\b/);
   assert.match(css, /font-family:\s*var\(--font-family\)/);
 });
 
