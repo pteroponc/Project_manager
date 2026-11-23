@@ -62,7 +62,7 @@ const state = {
   boardProjectSelectionRequired: false,
   createTaskContext: null,
   overviewLoadedAt: null,
-  activeView: "overview",
+  activeView: "my-day",
   selectedProjectId: null,
   deliveryModels: [],
   editingProjectId: null,
@@ -271,7 +271,7 @@ elements.viewButtons.forEach((button) => {
 window.PMBoardContext = {
   openProjectBoard: () => showView("boards"),
   openTask: (_projectId, _model, cardId) => {
-    const opened = showView("boards");
+    const opened = showView("boards", { taskId: cardId });
     if (opened !== false) window.PMPersonalBoardUI?.focusTask(cardId);
     return opened;
   },
@@ -392,7 +392,7 @@ async function loadDeliveryModels() {
 
 function showView(view, options = {}) {
   if (window.PMPassportEditor?.allowNavigation(() => showView(view, options)) === false) return false;
-  const nextView = view || "overview";
+  const nextView = view || "my-day";
   const previousView = state.activeView;
   if (previousView === "boards" && nextView !== "boards") {
     if (!discardTaskDraft()) return false;
@@ -417,10 +417,11 @@ function showView(view, options = {}) {
 
   window.PMNavigationUI?.onView(nextView);
 
-  window.PMProjectsUI?.onView?.(nextView);
+  window.PMProjectsUI?.onView?.(nextView, options);
   window.PMArchitecturePortfolioUI?.onView?.(nextView);
   window.PMDashboardUI?.onView?.(nextView);
   window.PMPersonalBoardUI?.onView?.(nextView);
+  window.PMMyDayUI?.onView(nextView);
 
   if (nextView === "boards" && previousView !== "boards" && !options.skipBoardReload
       && !document.getElementById?.("personal-board-columns")) {

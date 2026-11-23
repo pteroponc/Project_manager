@@ -7,7 +7,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="/styles.css?v=pm006-project-summary" />
+    <link rel="stylesheet" href="/styles.css?v=pm-demo-a-003" />
   </head>
   <body>
     <div class="page-shell">
@@ -20,11 +20,12 @@
             </div>
           </div>
           <button class="mobile-navigation-toggle" type="button" id="navigation-toggle" aria-controls="primary-navigation" aria-expanded="true">
-            <span><span>Разделы</span><strong id="navigation-current">Обзор</strong></span>
+            <span><span>Разделы</span><strong id="navigation-current">Мой день</strong></span>
             <span class="navigation-chevron" aria-hidden="true">▾</span>
           </button>
           <nav class="sidebar-nav" id="primary-navigation" aria-label="Основные разделы">
-            <button class="nav-item active" type="button" data-view="overview" data-icon="⌂" aria-label="Обзор">Обзор</button>
+            <button class="nav-item active" type="button" data-view="my-day" data-icon="⌂">Мой день</button>
+            <button class="nav-item" type="button" data-view="overview" data-icon="◫" aria-label="Обзор">Обзор</button>
             <button class="nav-item" type="button" data-view="projects" data-icon="+" aria-label="Проекты">Проекты</button>
             <button class="nav-item" type="button" data-view="dashboards" data-icon="▦" aria-label="Дашборды">Дашборды</button>
             <button class="nav-item" type="button" data-view="boards" data-icon="▤" aria-label="Доски">Доски</button>
@@ -34,7 +35,7 @@
         </aside>
 
         <div class="app-main">
-      <header class="overview-header view-section active" data-view-section="overview">
+      <header class="overview-header view-section" data-view-section="overview">
         <div class="overview-header-copy">
           <h1>Портфель проектов</h1>
         </div>
@@ -46,7 +47,35 @@
       </header>
 
       <main class="workspace">
-        <section class="view-section active overview-content" id="overview-content" data-view-section="overview" aria-busy="true">
+        <section class="view-section active my-day" data-view-section="my-day" aria-labelledby="my-day-title">
+          <header class="section-head">
+            <div><h1 id="my-day-title">Мой день</h1><p class="hint-text" id="my-day-date"></p></div>
+            <button class="btn btn-secondary" id="my-day-refresh" type="button">Обновить</button>
+          </header>
+          <p role="status" id="my-day-status"></p>
+          <section class="panel my-day-block" aria-labelledby="my-day-priority-title">
+            <h2 id="my-day-priority-title">Приоритетные задачи</h2>
+            <label class="check-field"><input type="checkbox" id="my-day-priority"> Только высокий и критичный приоритет</label>
+            <p class="hint-text" id="my-day-priority-count"></p>
+          </section>
+          <section class="panel my-day-block" aria-labelledby="my-day-attention-title">
+            <h2 id="my-day-attention-title">Требует внимания</h2>
+            <h3>Расчётно просрочены</h3><div id="my-day-overdue"></div>
+            <h3>Срок сегодня</h3><div id="my-day-today"></div>
+          </section>
+          <section class="panel my-day-block" aria-labelledby="my-day-upcoming-title">
+            <h2 id="my-day-upcoming-title">Ближайшие сроки</h2><div id="my-day-upcoming"></div>
+          </section>
+          <section class="panel my-day-block" aria-labelledby="my-day-undated-title">
+            <h2 id="my-day-undated-title">Высокий и критичный приоритет без срока</h2><div id="my-day-undated"></div>
+            <div id="my-day-invalid"></div>
+          </section>
+          <section class="panel my-day-block" aria-labelledby="my-day-milestone-title">
+            <h2 id="my-day-milestone-title">Ближайшая веха</h2><div id="my-day-milestone"></div>
+          </section>
+          <p class="hint-text" id="my-day-legacy" hidden>Карточки с прежними или неизвестными состояниями доступны на Доске. Они не используются в расчёте открытых задач.</p>
+        </section>
+        <section class="view-section overview-content" id="overview-content" data-view-section="overview" aria-busy="true">
 
           <div class="stats-grid" id="stats-grid">
             <article class="metric-card panel">
@@ -67,7 +96,7 @@
             </article>
           </div>
           <h2 class="overview-projects-heading">Проекты</h2>
-        <section class="panel overview-filters view-section active" data-view-section="overview">
+        <section class="panel overview-filters view-section" data-view-section="overview">
           <form class="filters-form" id="filters-form" onsubmit="return false">
             <label>Квартал<select name="quarter" id="quarter-filter"><option value="all">Все кварталы</option></select></label>
             <label>Статус<select name="status" id="status-filter"><option value="all">Все статусы</option></select></label>
@@ -632,8 +661,9 @@
       </section>
     </div>
 
-    <script src="/app.js?v=pm006-project-summary" defer></script>
-    <script src="/personal-board-ui.js?v=pm-demo-a-002c" defer></script>
+    <script src="/my-day-ui.js?v=pm-demo-a-003-fix1" defer></script>
+    <script src="/app.js?v=pm-demo-a-003" defer></script>
+    <script src="/personal-board-ui.js?v=pm-demo-a-003" defer></script>
     <script src="/navigation-ui.js" defer></script>
     <script src="/architecture-editor-validation.js?v=pm003c3e" defer></script>
     <script src="/architecture-child-editor.js?v=pm003c3e" defer></script>

@@ -136,13 +136,27 @@ test('registry URL and filters survive route restoration', () => {
 });
 
 test('every existing main section restores from URL and browser history', () => {
-  for (const view of ['overview', 'boards', 'release', 'docs']) {
+  for (const view of ['my-day', 'overview', 'boards', 'release', 'docs']) {
     const h = harness('?view=' + view);
     assert.equal(h.state.activeView, view);
     h.state.activeView = 'project-card';
     h.window.events.popstate({ state: { pmRouteIndex: 0 } });
     assert.equal(h.state.activeView, view);
   }
+});
+
+test('addressed board task survives reload and returning to My Day removes task address', () => {
+  const h = harness();
+  const opened = [];
+  h.window.PMBoardContext = { openTask: (...args) => opened.push(args) };
+  h.ui.onView('boards', { taskId: 'task/1' });
+  assert.equal(new URLSearchParams(h.window.location.search).get('task'), 'task/1');
+  h.window.events.popstate({ state: { pmRouteIndex: 1 } });
+  assert.deepEqual(opened, [[null, null, 'task/1']]);
+  h.ui.onView('my-day');
+  assert.equal(h.window.location.search, '');
+  h.window.events.popstate({ state: { pmRouteIndex: 0 } });
+  assert.equal(h.state.activeView, 'my-day');
 });
 
 test('blur after an applied debounced search does not reload rows under a project click', async () => {

@@ -49,19 +49,20 @@
     return "/api/projects/registry" + (params.size ? "?" + params : "");
   }
 
-  function browserUrl(view, projectId) {
+  function browserUrl(view, projectId, taskId) {
     const params = new URLSearchParams();
-    if (view !== "overview") params.set("view", view);
+    if (view !== "my-day") params.set("view", view);
     if (projectId) params.set("project", projectId);
+    if (view === "boards" && taskId) params.set("task", taskId);
     for (const key of keys) {
       if (filters[key] !== defaults[key]) params.set(key, filters[key]);
     }
     return window.location.pathname + (params.size ? "?" + params : "");
   }
 
-  function updateUrl(view, projectId, replace = false) {
+  function updateUrl(view, projectId, replace = false, taskId) {
     if (navigatingHistory) return;
-    const url = browserUrl(view, projectId);
+    const url = browserUrl(view, projectId, taskId);
     if (url !== window.location.pathname + window.location.search) {
       if (!replace) ++routeIndex;
       window.history[replace ? "replaceState" : "pushState"]({ pmRouteIndex: routeIndex }, "", url);
@@ -454,7 +455,7 @@
     } catch (error) { showCardNotice("Не удалось проверить последствия удаления: " + error.message, "error"); }
   }
 
-  function onView(view) {
+  function onView(view, { taskId } = {}) {
     if (view !== "project-card") ++cardRequest;
     window.PMArchitectureUI?.onView(view);
     if (view === "projects") {
@@ -462,7 +463,7 @@
       syncForm();
       loadRegistry({ preserveScroll: registryScroll > 0 });
     } else if (view !== "project-card" && view !== "project-architecture") {
-      updateUrl(view);
+      updateUrl(view, null, false, taskId);
     }
   }
 
@@ -475,8 +476,9 @@
     else if (view === "dashboards") showView("dashboards");
     else if (view === "project-card" && params.get("project")) openCard(params.get("project"), "history");
     else if (view === "project-architecture" && params.get("project")) window.PMArchitectureUI?.open(params.get("project"));
-    else if (["overview", "boards", "release", "docs"].includes(view)) showView(view);
-    else if (navigatingHistory) showView("overview");
+    else if (view === "boards" && params.get("task")) window.PMBoardContext.openTask(null, null, params.get("task"));
+    else if (["my-day", "overview", "boards", "release", "docs"].includes(view)) showView(view);
+    else if (navigatingHistory) showView("my-day");
   }
 
   form.addEventListener("input", event => {

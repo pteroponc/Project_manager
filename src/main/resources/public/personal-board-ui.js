@@ -98,7 +98,10 @@
       pendingFocusId = null;
     }
     const total = tasks.size;
-    message.textContent = `Показано задач: ${total}.`;
+    message.textContent = pendingFocusId
+      ? "Исходная задача недоступна. Возможно, она была удалена."
+      : `Показано задач: ${total}.`;
+    pendingFocusId = null;
     message.removeAttribute("data-tone");
     if (!form.hidden && editing) {
       const current = tasks.get(editing.id);
@@ -333,7 +336,10 @@
       payload, editing ? "PUT" : "POST");
   });
   window.PMPersonalBoardUI = {
-    onView(view) { if (view === "boards" && !pending) void load(); },
+    onView(view) {
+      if (view === "boards" && !pending) void load();
+      if (view !== "boards") pendingFocusId = null;
+    },
     focusTask(id) { pendingFocusId = id; if (!pending && !refresh.disabled) void load(); }
   };
   if (document.getElementById("board-panel")?.classList.contains("active")) void load();

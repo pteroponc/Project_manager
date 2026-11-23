@@ -1,3 +1,14 @@
+.my-day { font-family: Inter, var(--font-family); }
+.my-day h1, .my-day h2, .my-day h3 { margin: 0 0 8px; }
+.my-day h2 { font-size: 1.2rem; }
+.my-day h3 { font-size: 1rem; }
+.my-day-block { margin-block: 12px; padding: clamp(12px, 2vw, 20px); overflow-wrap: anywhere; }
+.my-day-block p { margin: 4px 0; }
+.my-day-block h3:not(:first-child) { margin-top: 12px; }
+.my-day-task-list { list-style: none; padding: 0; margin: 0; }
+.my-day-task { border-top: 1px solid var(--line); padding-block: 9px; }
+.my-day-open-task { text-align: start; white-space: normal; max-width: 100%; overflow-wrap: anywhere; }
+
 .board-unassigned {
   grid-column: 1 / -1;
   min-width: 0;

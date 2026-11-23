@@ -109,3 +109,13 @@ test('project selection is submitted and a stale version preserves the selected 
   assert.equal(h.form.elements.title.value, 'Sample');
   assert.equal(h.byId('personal-task-save').disabled, true);
 });
+
+test('an addressed missing task is explained after the board refresh', async () => {
+  const h = harness();
+  h.window.PMPersonalBoardUI.onView('boards');
+  h.window.PMPersonalBoardUI.focusTask('removed');
+  h.requests.shift().resolve(response(200, board(sample)));
+  await flush();
+  assert.match(h.byId('personal-board-message').textContent, /Исходная задача недоступна/);
+  assert.equal(h.requests.length, 0);
+});
