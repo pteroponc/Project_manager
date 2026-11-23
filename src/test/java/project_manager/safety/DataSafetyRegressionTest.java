@@ -60,7 +60,8 @@ class DataSafetyRegressionTest {
         var locks = mock(ProjectWriteLock.class);
         when(projects.requireProject("p")).thenReturn(project());
         when(repository.findByProjectIdOrderByPositionAsc("p")).thenReturn(List.of());
-        var service = new BoardService(projects, repository, locks, mock(jakarta.persistence.EntityManager.class));
+        var service = new BoardService(projects, repository, locks, mock(jakarta.persistence.EntityManager.class),
+            mock(TaskChangeEntryStore.class));
         for (String model : List.of("kanban", "scrum", "waterfall", "kanban")) {
             assertThat(service.getBoard("p", model).columns()).allSatisfy(c -> assertThat(c.cards()).isEmpty());
         }
@@ -87,7 +88,8 @@ class DataSafetyRegressionTest {
         card.setLabels("user-label");
         card.setVersion(0L);
         when(repository.findByProjectIdOrderByPositionAsc("p")).thenReturn(List.of(card));
-        var service = new BoardService(projects, repository, mock(ProjectWriteLock.class), mock(jakarta.persistence.EntityManager.class));
+        var service = new BoardService(projects, repository, mock(ProjectWriteLock.class), mock(jakarta.persistence.EntityManager.class),
+            mock(TaskChangeEntryStore.class));
         for (String model : List.of("kanban", "scrum", "waterfall")) service.getBoard("p", model);
         assertThat(card.getColumnKey()).isEqualTo("legacy-column");
         assertThat(card.getPosition()).isEqualTo(42);

@@ -268,7 +268,15 @@ elements.viewButtons.forEach((button) => {
   });
 });
 
-window.PMBoardContext = { openProjectBoard, openTask: openBoardTask, onProjectDeleted };
+window.PMBoardContext = {
+  openProjectBoard: () => showView("boards"),
+  openTask: (_projectId, _model, cardId) => {
+    const opened = showView("boards");
+    if (opened !== false) window.PMPersonalBoardUI?.focusTask(cardId);
+    return opened;
+  },
+  onProjectDeleted
+};
 
 document.getElementById("filters-form")?.addEventListener("change", async (event) => {
   state.filters[event.target.name] = event.target.value;
@@ -412,8 +420,10 @@ function showView(view, options = {}) {
   window.PMProjectsUI?.onView?.(nextView);
   window.PMArchitecturePortfolioUI?.onView?.(nextView);
   window.PMDashboardUI?.onView?.(nextView);
+  window.PMPersonalBoardUI?.onView?.(nextView);
 
-  if (nextView === "boards" && previousView !== "boards" && !options.skipBoardReload) {
+  if (nextView === "boards" && previousView !== "boards" && !options.skipBoardReload
+      && !document.getElementById?.("personal-board-columns")) {
     if (state.boardDrilledIn && state.selectedProjectId) {
       void loadBoard(state.selectedProjectId, state.activeBoardModel);
     } else {

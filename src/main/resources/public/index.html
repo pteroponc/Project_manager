@@ -264,12 +264,42 @@
           <div class="section-head">
             <div>
               <p class="section-kicker">Доски</p>
-              <h2 id="board-title">Раздел досок</h2>
+              <h2>Общая Kanban-доска</h2>
             </div>
-            <div class="board-toolbar">
-              <button class="btn btn-primary" type="button" id="create-task-button" disabled>Создать задачу</button>
-              <span class="pill" id="board-model">доска</span>
+          </div>
+          <section class="personal-board" aria-labelledby="personal-board-title">
+            <div class="section-head compact-head">
+              <div><p class="section-kicker">Все задачи</p><h3 id="personal-board-title">Самостоятельные и проектные задачи</h3></div>
+              <div class="personal-board-toolbar">
+                <button class="btn btn-primary" type="button" id="personal-task-create">Создать задачу</button>
+                <button class="btn btn-secondary" type="button" id="personal-board-refresh">Обновить</button>
+              </div>
             </div>
+            <p class="hint-text">Задачи всех проектов и самостоятельные задачи. Порядок просмотра устойчивый; ручная сортировка не сохраняется.</p>
+            <form class="board-card-form personal-task-form" id="personal-task-form" hidden>
+              <h4 id="personal-task-form-title">Новая задача</h4>
+              <label><span>Название</span><input name="title" maxlength="255" required></label>
+              <label><span>Описание</span><textarea name="description" maxlength="10000" rows="3"></textarea></label>
+              <label><span>Проект (необязательно)</span><select name="projectId"><option value="">Без проекта</option></select></label>
+              <label><span>Срок (необязательно)</span><input name="dueDate" type="date"></label>
+              <label><span>Приоритет</span><select name="priority"><option value="medium">Средний</option><option value="low">Низкий</option><option value="high">Высокий</option><option value="critical">Критичный</option></select></label>
+              <label><span>Состояние</span><select name="columnKey"><option value="backlog">Бэклог</option><option value="ready">К выполнению</option><option value="in-progress">В работе</option><option value="done">Готово</option></select></label>
+              <p class="hint-text personal-task-form-message" id="personal-task-form-message" role="status"></p>
+              <div class="board-card-actions"><button class="btn btn-primary" type="submit" id="personal-task-save">Сохранить</button><button class="btn btn-ghost" type="button" id="personal-task-cancel">Отмена</button></div>
+            </form>
+            <p class="hint-text" id="personal-board-message" role="status">Загружаем задачи…</p>
+            <div class="personal-board-columns" id="personal-board-columns"></div>
+            <section class="personal-board-legacy" id="personal-board-legacy" hidden>
+              <h4>Прежние состояния</h4>
+              <p class="hint-text">Эти задачи сохраняют исходное состояние Scrum или каскадной Доски.</p>
+              <div class="personal-board-legacy-list" id="personal-board-legacy-list"></div>
+            </section>
+          </section>
+          <div id="legacy-project-board-ui" hidden aria-hidden="true">
+          <h2 id="board-title">Проектная Доска</h2>
+          <div class="board-toolbar">
+            <button class="btn btn-primary" type="button" id="create-task-button" disabled>Создать задачу</button>
+            <span class="pill" id="board-model">доска</span>
           </div>
           <div class="board-project-picker">
             <label><span>Проект</span><select id="board-project-select" aria-describedby="board-project-message"><option value="">Выберите проект</option></select></label>
@@ -379,6 +409,7 @@
           </section>
           <div class="board-columns" id="board-columns">
             <div class="empty-state compact">Выберите Канбан, Скрам или каскадную модель внутри раздела досок.</div>
+          </div>
           </div>
         </section>
 
@@ -602,6 +633,7 @@
     </div>
 
     <script src="/app.js?v=pm006-project-summary" defer></script>
+    <script src="/personal-board-ui.js?v=pm-demo-a-002" defer></script>
     <script src="/navigation-ui.js" defer></script>
     <script src="/architecture-editor-validation.js?v=pm003c3e" defer></script>
     <script src="/architecture-child-editor.js?v=pm003c3e" defer></script>

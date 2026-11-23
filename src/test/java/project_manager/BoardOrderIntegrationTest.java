@@ -59,6 +59,8 @@ class BoardOrderIntegrationTest {
         JsonNode unchanged = reorder(project, "ready", a, "up", initial, 200);
         assertThat(unchanged.path("changed").asBoolean()).isFalse();
         assertThat(rows(project)).isEqualTo(beforeNoOp);
+        assertThat(jdbc.queryForObject("select count(*) from task_change_entries where task_id=?", Integer.class, a))
+            .isEqualTo(1);
 
         JsonNode up = reorder(project, "ready", b, "up", initial, 200);
         assertThat(up.path("changed").asBoolean()).isTrue();
@@ -66,6 +68,10 @@ class BoardOrderIntegrationTest {
         assertRow(b, "ready", 0, 1);
         assertRow(a, "ready", 1, 1);
         assertRow(c, "ready", 2, 0);
+        assertThat(jdbc.queryForObject("select operation from task_change_entries where task_id=? order by sequence desc limit 1",
+            String.class, b)).isEqualTo("REORDER");
+        assertThat(jdbc.queryForObject("select after_version from task_change_entries where task_id=? order by sequence desc limit 1",
+            Long.class, b)).isEqualTo(1L);
 
         JsonNode down = reorder(project, "ready", b, "down", order(project, "ready"), 200);
         assertThat(ids(down)).containsExactly(a, b, c);

@@ -1194,6 +1194,27 @@ textarea:focus {
   margin-top: 16px;
 }
 
+.personal-board { margin: 14px 0 24px; padding: 16px; border: 1px solid var(--line); border-radius: var(--radius-lg); }
+.personal-board-toolbar { display: flex; flex-wrap: wrap; gap: 8px; }
+.personal-task-form { margin: 14px 0; padding: 14px; border: 1px solid var(--line); border-radius: var(--radius-lg); }
+.personal-task-form[hidden] { display: none; }
+.personal-task-form h4, .personal-task-form-message, .personal-task-form .board-card-actions { grid-column: 1 / -1; }
+.personal-board-card-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.personal-board .section-head { margin-bottom: 8px; }
+.personal-board [data-tone="error"] { color: var(--danger-text); }
+.personal-board-columns { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+.personal-board-column { min-width: 0; padding: 12px; border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--panel-translucent); }
+.personal-board-column h4 { margin: 0 0 10px; }
+.personal-board-card { margin: 8px 0; padding: 10px; border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--panel); overflow-wrap: anywhere; }
+.personal-board-card-summary { cursor: pointer; }
+.personal-board-card-summary strong { display: block; }
+.personal-board-origin { display: inline-block; margin-top: 6px; font-size: .8rem; color: var(--muted); }
+.personal-board-card-body p { margin: 8px 0 0; }
+.personal-board-legacy { margin-top: 16px; }
+.personal-board-legacy-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 230px), 1fr)); gap: 12px; }
+@media (max-width: 1100px) { .personal-board-columns { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 600px) { .personal-board-columns { grid-template-columns: minmax(0, 1fr); } }
+
 .board-project-picker {
   display: flex;
   flex-wrap: wrap;

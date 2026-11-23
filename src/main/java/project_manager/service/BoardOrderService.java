@@ -15,6 +15,7 @@ import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Set;
 
@@ -29,13 +30,16 @@ public class BoardOrderService {
     private final BoardCardRepository cards;
     private final ProjectWriteLock projectWriteLock;
     private final EntityManager entityManager;
+    private final TaskChangeEntryStore history;
 
     public BoardOrderService(ProjectRepository projects, BoardCardRepository cards,
-                             ProjectWriteLock projectWriteLock, EntityManager entityManager) {
+                             ProjectWriteLock projectWriteLock, EntityManager entityManager,
+                             TaskChangeEntryStore history) {
         this.projects = projects;
         this.cards = cards;
         this.projectWriteLock = projectWriteLock;
         this.entityManager = entityManager;
+        this.history = history;
     }
 
     @Transactional(readOnly = true)
@@ -66,8 +70,13 @@ public class BoardOrderService {
         List<BoardCardEntity> desired = new ArrayList<>(current);
         java.util.Collections.swap(desired, source, neighbor);
         Map<String, Integer> oldIndices = new HashMap<>();
+        Map<String, Integer> oldPositions = new HashMap<>();
+        Map<String, Long> oldVersions = new HashMap<>();
         for (int index = 0; index < current.size(); index++) {
-            oldIndices.put(current.get(index).getId(), index);
+            BoardCardEntity card = current.get(index);
+            oldIndices.put(card.getId(), index);
+            oldPositions.put(card.getId(), card.getPosition());
+            oldVersions.put(card.getId(), card.getVersion());
         }
 
         List<BoardCardEntity> forceVersion = new ArrayList<>();
@@ -88,6 +97,23 @@ public class BoardOrderService {
                 throw ProjectMutationException.boardOrderConflict();
             }
             entityManager.refresh(card);
+        }
+        for (int index = 0; index < desired.size(); index++) {
+            BoardCardEntity card = desired.get(index);
+            Map<String, Object> before = new LinkedHashMap<>();
+            Map<String, Object> after = new LinkedHashMap<>();
+            if (oldPositions.get(card.getId()) != card.getPosition()) {
+                before.put("position", oldPositions.get(card.getId()));
+                after.put("position", card.getPosition());
+            }
+            if (oldIndices.get(card.getId()) != index) {
+                before.put("orderIndex", oldIndices.get(card.getId()));
+                after.put("orderIndex", index);
+            }
+            if (!before.isEmpty()) {
+                history.append(card.getId(), "REORDER", oldVersions.get(card.getId()), card.getVersion(),
+                    before, after, "PROJECT_BOARD_ORDER_HTTP", "HTTP_REQUEST", null);
+            }
         }
         return response(projectId, columnKey, true, desired);
     }

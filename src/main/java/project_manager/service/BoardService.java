@@ -9,6 +9,7 @@ import project_manager.domain.ProjectEntity;
 import project_manager.repository.BoardCardRepository;
 import project_manager.web.ProjectMutationException;
 import project_manager.web.dto.BoardCardRequest;
+import project_manager.web.dto.PersonalTaskRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -16,7 +17,9 @@ import java.time.LocalDate;
 import java.time.format.DateTimeParseException;
 import java.util.Comparator;
 import java.util.List;
+import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Objects;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -26,13 +29,16 @@ public class BoardService {
     private final BoardCardRepository boardCardRepository;
     private final ProjectWriteLock projectWriteLock;
     private final EntityManager entityManager;
+    private final TaskChangeEntryStore history;
 
     public BoardService(ProjectService projectService, BoardCardRepository boardCardRepository,
-                        ProjectWriteLock projectWriteLock, EntityManager entityManager) {
+                        ProjectWriteLock projectWriteLock, EntityManager entityManager,
+                        TaskChangeEntryStore history) {
         this.projectService = projectService;
         this.boardCardRepository = boardCardRepository;
         this.projectWriteLock = projectWriteLock;
         this.entityManager = entityManager;
+        this.history = history;
     }
 
     public ProjectBoard getBoard(String projectId) {
@@ -104,7 +110,9 @@ public class BoardService {
         card.setLabels(normalizeLabels(request.labels()));
         card.setEstimate(request.estimate());
         card.setBlocked(request.blocked());
-        return toCard(boardCardRepository.saveAndFlush(card));
+        BoardCardEntity saved = boardCardRepository.saveAndFlush(card);
+        recordCreation(saved, "PROJECT_BOARD_HTTP", "HTTP_REQUEST", null);
+        return toCard(saved);
     }
 
     @Transactional
@@ -123,6 +131,7 @@ public class BoardService {
         checkVersion(card, expectedVersion);
         List<BoardColumn> columns = columnsFor(project, boardModel);
         validateColumn(columns, request.columnKey());
+        Map<String, Object> before = subjectFields(card);
 
         if (!card.getColumnKey().equals(request.columnKey())) {
             int nextPosition = boardCardRepository
@@ -135,7 +144,9 @@ public class BoardService {
             card.setPosition(nextPosition);
         }
         applyCardRequest(card, request);
-        return toCard(saveWithVersionBump(card, expectedVersion));
+        BoardCardEntity saved = saveWithVersionBump(card, expectedVersion);
+        recordChange(saved, before, expectedVersion, "PROJECT_BOARD_HTTP", "HTTP_REQUEST", null);
+        return toCard(saved);
     }
 
     /** Service-level transfer for callers that move a card between projects. */
@@ -152,6 +163,7 @@ public class BoardService {
             .orElseThrow(ProjectMutationException::boardCardNotFound);
         long expectedVersion = requireExpectedVersion(request.expectedVersion());
         checkVersion(card, expectedVersion);
+        Map<String, Object> before = subjectFields(card);
         int nextPosition = boardCardRepository
             .findByProjectIdAndColumnKeyOrderByPositionAsc(targetProjectId, request.columnKey())
             .stream().mapToInt(BoardCardEntity::getPosition).max().orElse(-1) + 1;
@@ -159,7 +171,132 @@ public class BoardService {
         card.setColumnKey(request.columnKey());
         card.setPosition(nextPosition);
         applyCardRequest(card, request);
-        return toCard(saveWithVersionBump(card, expectedVersion));
+        BoardCardEntity saved = saveWithVersionBump(card, expectedVersion);
+        recordChange(saved, before, expectedVersion, "PROJECT_BOARD_SERVICE", "SERVICE_CALL", null);
+        return toCard(saved);
+    }
+
+    @Transactional
+    public BoardCard createPersonalTask(PersonalTaskRequest request) {
+        validatePersonalRequest(request, false);
+        if (request.expectedVersion() != null && request.expectedVersion() != 0) {
+            throw ProjectMutationException.invalid("expectedVersion", "Create expects version zero");
+        }
+        ProjectEntity project = request.projectId() == null ? null : projectWriteLock.require(request.projectId());
+        BoardCardEntity card = new BoardCardEntity();
+        card.setId("task-" + UUID.randomUUID());
+        card.setProjectId(project == null ? null : project.getId());
+        card.setColumnKey(request.columnKey());
+        card.setPosition(project == null ? 0 : boardCardRepository
+            .findByProjectIdAndColumnKeyOrderByPositionAsc(project.getId(), request.columnKey())
+            .stream().mapToInt(BoardCardEntity::getPosition).max().orElse(-1) + 1);
+        card.setTitle(request.title().trim());
+        card.setDescription(request.description() == null ? "" : request.description());
+        card.setOwner(project == null ? "" : project.getOwner());
+        card.setDueDate(request.dueDate() == null ? "" : request.dueDate());
+        card.setPriority(normalizePriority(request.priority()));
+        card.setLabels("");
+        card.setEstimate(0);
+        card.setBlocked(false);
+        BoardCardEntity saved = boardCardRepository.saveAndFlush(card);
+        recordCreation(saved, "PERSONAL_BOARD_HTTP", "HTTP_REQUEST", null);
+        return toCard(saved);
+    }
+
+    @Transactional
+    public BoardCard updatePersonalTask(String cardId, PersonalTaskRequest request) {
+        validatePersonalRequest(request, true);
+        long expectedVersion = requireExpectedVersion(request.expectedVersion());
+        ProjectEntity project = request.projectId() == null ? null : projectWriteLock.require(request.projectId());
+        BoardCardEntity card = boardCardRepository.findById(cardId)
+            .orElseThrow(ProjectMutationException::boardCardNotFound);
+        if (!Objects.equals(card.getProjectId(), request.projectId())) {
+            throw ProjectMutationException.invalid("projectId", "Project link changes are not available here");
+        }
+        checkVersion(card, expectedVersion);
+        Map<String, Object> before = subjectFields(card);
+        Integer nextPosition = null;
+        if (project != null && !card.getColumnKey().equals(request.columnKey())) {
+            nextPosition = boardCardRepository
+                .findByProjectIdAndColumnKeyOrderByPositionAsc(project.getId(), request.columnKey())
+                .stream().mapToInt(BoardCardEntity::getPosition).max().orElse(-1) + 1;
+        }
+        card.setTitle(request.title().trim());
+        card.setDescription(request.description() == null ? "" : request.description());
+        card.setDueDate(request.dueDate() == null ? "" : request.dueDate());
+        if (request.priority() == null || request.priority().isBlank()) {
+            if (card.getPriority() != null && !card.getPriority().isBlank()) {
+                throw ProjectMutationException.invalid("priority", "Required priority");
+            }
+        } else {
+            card.setPriority(normalizePriority(request.priority()));
+        }
+        if (!card.getColumnKey().equals(request.columnKey())) {
+            if (nextPosition != null) card.setPosition(nextPosition);
+            card.setColumnKey(request.columnKey());
+        }
+        if (before.equals(subjectFields(card))) return toCard(card);
+        BoardCardEntity saved = saveWithVersionBump(card, expectedVersion);
+        recordChange(saved, before, expectedVersion, "PERSONAL_BOARD_HTTP", "HTTP_REQUEST", null);
+        return toCard(saved);
+    }
+
+    private void validatePersonalRequest(PersonalTaskRequest request, boolean allowUnspecifiedPriority) {
+        if (request == null) throw ProjectMutationException.badRequest("Invalid task request");
+        requireText(request.title(), "title", 255);
+        if (request.description() != null && request.description().length() > 10000) {
+            throw ProjectMutationException.invalid("description", "Must be at most 10000 characters");
+        }
+        if (request.projectId() != null && request.projectId().isBlank()) {
+            throw ProjectMutationException.invalid("projectId", "Must be a project ID or null");
+        }
+        if (request.dueDate() != null && !request.dueDate().isBlank()) validateDate(request.dueDate());
+        if (!List.of("backlog", "ready", "in-progress", "done").contains(request.columnKey())) {
+            throw ProjectMutationException.invalid("columnKey", "Unknown Kanban state");
+        }
+        if (!allowUnspecifiedPriority && (request.priority() == null || request.priority().isBlank())) {
+            throw ProjectMutationException.invalid("priority", "Required priority");
+        }
+        if (request.priority() != null && !request.priority().isBlank()) normalizePriority(request.priority());
+    }
+
+    private void recordCreation(BoardCardEntity card, String source, String input, String confirmation) {
+        Map<String, Object> fields = subjectFields(card);
+        history.append(card.getId(), "CREATE", null, card.getVersion(), Map.of(), fields, source, input, confirmation);
+    }
+
+    private void recordChange(BoardCardEntity card, Map<String, Object> beforeFields, long beforeVersion,
+                              String source, String input, String confirmation) {
+        Map<String, Object> afterFields = subjectFields(card);
+        Map<String, Object> before = new LinkedHashMap<>();
+        Map<String, Object> after = new LinkedHashMap<>();
+        for (String field : beforeFields.keySet()) {
+            if (!Objects.equals(beforeFields.get(field), afterFields.get(field))) {
+                before.put(field, beforeFields.get(field));
+                after.put(field, afterFields.get(field));
+            }
+        }
+        if (before.isEmpty()) return;
+        String operation = after.containsKey("columnKey")
+            ? ("done".equals(card.getColumnKey()) ? "COMPLETE" : "MOVE") : "UPDATE";
+        history.append(card.getId(), operation, beforeVersion, card.getVersion(), before, after,
+            source, input, confirmation);
+    }
+
+    private Map<String, Object> subjectFields(BoardCardEntity card) {
+        Map<String, Object> fields = new LinkedHashMap<>();
+        fields.put("projectId", card.getProjectId());
+        fields.put("columnKey", card.getColumnKey());
+        fields.put("position", card.getPosition());
+        fields.put("title", card.getTitle());
+        fields.put("description", card.getDescription());
+        fields.put("owner", card.getOwner());
+        fields.put("dueDate", card.getDueDate().isBlank() ? null : card.getDueDate());
+        fields.put("priority", card.getPriority());
+        fields.put("labels", card.getLabels());
+        fields.put("estimate", card.getEstimate());
+        fields.put("blocked", card.getBlocked());
+        return fields;
     }
 
     @Transactional
@@ -257,11 +394,15 @@ public class BoardService {
             throw ProjectMutationException.invalid("labels", "Must be at most 255 characters");
         }
         if (request.estimate() < 0) throw ProjectMutationException.invalid("estimate", "Must be nonnegative");
-        if (!request.dueDate().matches("[0-9]{4}-[0-9]{2}-[0-9]{2}")) {
+        validateDate(request.dueDate());
+    }
+
+    private void validateDate(String value) {
+        if (!value.matches("[0-9]{4}-[0-9]{2}-[0-9]{2}")) {
             throw ProjectMutationException.invalid("dueDate", "Must be a real date in yyyy-MM-dd format");
         }
         try {
-            LocalDate.parse(request.dueDate());
+            LocalDate.parse(value);
         } catch (DateTimeParseException exception) {
             throw ProjectMutationException.invalid("dueDate", "Must be a real date in yyyy-MM-dd format");
         }
