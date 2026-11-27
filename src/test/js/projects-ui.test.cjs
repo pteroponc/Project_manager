@@ -17,6 +17,7 @@ function node() {
       toggle: (x, on) => on ? classes.add(x) : classes.delete(x), contains: x => classes.has(x) },
     addEventListener(type, callback) { this.listeners[type] = callback; },
     setAttribute(key, value) { this.attrs[key] = value; },
+    getAttribute(key) { return this.attrs[key] ?? null; },
     hasAttribute(key) { return Object.hasOwn(this.attrs, key); },
     removeAttribute(key) { delete this.attrs[key]; },
     focus() { this.focused = true; },
@@ -124,6 +125,17 @@ test('dashboard URL restores on load and browser history', () => {
   h.window.location.search = '?view=dashboards';
   h.window.events.popstate({state:{pmRouteIndex:0}});
   assert.equal(h.state.activeView, 'dashboards');
+});
+
+test('registry disclosure can be opened and closed without changing filters', () => {
+  const h = harness('?view=projects&status=active');
+  const toggle = h.get('registry-filter-toggle');
+  assert.match(html, /id="registry-filter-toggle"\s+aria-controls="registry-filters" aria-expanded="false"/);
+  toggle.listeners.click();
+  assert.equal(toggle.getAttribute('aria-expanded'), 'true');
+  toggle.listeners.click();
+  assert.equal(toggle.getAttribute('aria-expanded'), 'false');
+  assert.equal(h.window.location.search, '?view=projects&status=active');
 });
 
 test('registry URL and filters survive route restoration', () => {

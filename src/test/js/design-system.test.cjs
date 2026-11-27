@@ -16,9 +16,10 @@ const contrast = (a, b) => {
 };
 
 test('approved palette and system font stack are centralized in design tokens', () => {
-  for (const [name, value] of Object.entries({ '--primary': '#2563EB', '--primary-hover': '#1D4ED8',
-    '--sidebar': '#142D4E', '--bg': '#F7F9FC', '--mint': '#EAF2FF', '--text': '#111827',
-    '--muted': '#526176', '--warning': '#C58A1A', '--danger': '#C93C32' })) {
+  for (const [name, value] of Object.entries({ '--primary': '#456FA6', '--primary-hover': '#355982',
+    '--sidebar': '#243548', '--bg': '#F0F1F3', '--mint': '#E8EEF6', '--text': '#293544',
+    '--panel': '#FAFBFC', '--line': '#DFE3E8', '--indicator-warning': '#B18B48',
+    '--indicator-danger': '#AD5959' })) {
     assert.equal(resolve(name).toUpperCase(), value);
   }
   assert.match(resolve('--font-family'), /^system-ui\b/);

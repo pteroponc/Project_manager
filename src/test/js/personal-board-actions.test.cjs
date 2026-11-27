@@ -8,7 +8,7 @@ const source = fs.readFileSync(path.join(__dirname, '../../main/resources/public
 const flush = () => new Promise(resolve => setImmediate(resolve));
 const response = (status, body) => ({ status, ok: status < 400, json: async () => body });
 const sample = { id: 'task/1', title: 'Sample', columnKey: 'ready', priority: 'medium', version: 0, projectId: null };
-const board = (...tasks) => ({ columns: [{ title: 'Ready', tasks }] });
+const board = (...tasks) => ({ columns: [{ key: 'ready', title: 'Ready', tasks }] });
 
 function harness() {
   function node() {
@@ -19,6 +19,8 @@ function harness() {
       replaceChildren(...children) { this.children = children; },
       addEventListener(name, callback) { this.events[name] = callback; },
       querySelector() { return null; },
+      setAttribute(name, value) { this[name] = value; },
+      scrollIntoView() {},
       focus() { this.focused = true; },
       removeAttribute() {}, reset() {},
       classList: { contains: () => false }
@@ -86,6 +88,35 @@ test('delete requires confirmation, suppresses duplicates, and waits for reread 
   await flush();
   assert.equal(h.action('Удалить задачу'), undefined);
   assert.equal(h.byId('personal-task-create').focused, true);
+});
+
+test('column switcher retains selection and opens the addressed task in its own column', async () => {
+  const h = harness();
+  const data = { columns: [
+    { key: 'backlog', title: 'Бэклог', tasks: [] },
+    ...board(sample).columns,
+    { key: 'in-progress', title: 'В работе', tasks: [] },
+    { key: 'done', title: 'Готово', tasks: [] }
+  ] };
+  const applyRead = async () => {
+    h.requests.shift().resolve(response(200, data));
+    await flush();
+  };
+  const buttons = () => h.byId('personal-board-switcher').children;
+  const groups = () => h.byId('personal-board-columns').children;
+  h.window.PMPersonalBoardUI.onView('boards');
+  await applyRead();
+  assert.equal(buttons().length, 4);
+  assert.equal(buttons()[0]['aria-pressed'], 'true');
+  buttons()[3].events.click();
+  assert.equal(groups()[3].dataset.selected, 'true');
+  h.byId('personal-board-refresh').events.click();
+  await applyRead();
+  assert.equal(buttons()[3]['aria-pressed'], 'true');
+  h.window.PMPersonalBoardUI.focusTask(sample.id);
+  await applyRead();
+  assert.deepEqual(buttons().map(button => button['aria-pressed']), ['false', 'true', 'false', 'false']);
+  assert.equal(groups()[1].children[1].open, true);
 });
 
 test('project selection is submitted and a stale version preserves the selected project and draft', async () => {

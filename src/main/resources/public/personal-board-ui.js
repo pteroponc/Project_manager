@@ -2,6 +2,7 @@
   "use strict";
 
   const panel = document.getElementById("personal-board-columns");
+  const switcher = document.getElementById("personal-board-switcher");
   const message = document.getElementById("personal-board-message");
   const legacy = document.getElementById("personal-board-legacy");
   const legacyList = document.getElementById("personal-board-legacy-list");
@@ -23,6 +24,15 @@
   let tasks = new Map();
   let taskNodes = new Map();
   let pendingFocusId = null;
+  let selectedColumnKey = null;
+
+  const priorityLabels = new Map([
+    ["critical", ["Критичный", "danger"]],
+    ["high", ["Высокий", "warning"]],
+    ["medium", ["Средний", "info"]],
+    ["low", ["Низкий", "neutral"]]
+  ]);
+  const boardDate = new Intl.DateTimeFormat("sv-SE", { timeZone: "Europe/Moscow", year: "numeric", month: "2-digit", day: "2-digit" });
 
   function element(tag, className, value) {
     const node = document.createElement(tag);
@@ -31,19 +41,35 @@
     return node;
   }
 
-  function card(task, oldState = false) {
+  function card(task, today, oldState = false) {
     const node = element("details", "personal-board-card");
     const summary = element("summary", "personal-board-card-summary");
-    summary.append(element("strong", "", task.title));
     summary.append(element("span", "personal-board-origin", task.projectId
       ? (task.projectName || "Проект без названия") : "Самостоятельная"));
+    summary.append(element("strong", "", task.title));
+    const metadata = element("span", "personal-board-meta");
+    const priority = priorityLabels.get(task.priority);
+    if (priority) {
+      const badge = element("span", "personal-board-indicator", `Приоритет: ${priority[0]}`);
+      badge.dataset.tone = priority[1];
+      metadata.append(badge);
+    }
+    if (task.dueDate) {
+      const active = !oldState && task.columnKey !== "done" && /^\d{4}-\d{2}-\d{2}$/.test(task.dueDate);
+      const overdue = active && task.dueDate < today;
+      const dueToday = active && task.dueDate === today;
+      const badge = element("span", "personal-board-indicator",
+        `${overdue ? "Просрочено" : dueToday ? "Срок сегодня" : "Срок"}: ${task.dueDate}`);
+      badge.dataset.tone = overdue ? "danger" : dueToday ? "warning" : "neutral";
+      metadata.append(badge);
+    }
+    if (priority || task.dueDate) summary.append(metadata);
     node.append(summary);
     const body = element("div", "personal-board-card-body");
     if (task.description) body.append(element("p", "", task.description));
     body.append(element("p", "hint-text", `Состояние: ${task.columnKey}`));
     if (task.owner) body.append(element("p", "hint-text", `Ответственный: ${task.owner}`));
-    if (task.dueDate) body.append(element("p", "hint-text", `Срок: ${task.dueDate}`));
-    if (task.priority) body.append(element("p", "hint-text", `Приоритет: ${task.priority}`));
+    if (task.priority && !priority) body.append(element("p", "hint-text", `Приоритет: ${task.priority}`));
     if (!oldState) {
       const actions = element("div", "personal-board-card-actions");
       const edit = element("button", "btn btn-ghost btn-small", "Редактировать");
@@ -67,24 +93,46 @@
   }
 
   function render(data) {
+    const today = boardDate.format(new Date());
     tasks = new Map();
     taskNodes = new Map();
     panel.replaceChildren();
+    switcher?.replaceChildren();
+    const columns = [];
     for (const column of data.columns || []) {
       const group = element("section", "personal-board-column");
+      const button = element("button", "personal-board-column-button", column.title);
+      button.type = "button";
+      const count = element("span", "personal-board-column-count", (column.tasks || []).length);
+      button.append(count);
+      columns.push({ key: column.key, group, button });
+      switcher?.append(button);
       group.append(element("h4", "", `${column.title} · ${(column.tasks || []).length}`));
       if (!column.tasks?.length) group.append(element("p", "hint-text", "Задач нет"));
       for (const task of column.tasks || []) {
-        const node = card(task);
+        const node = card(task, today);
         tasks.set(task.id, task);
         taskNodes.set(task.id, node);
         group.append(node);
       }
       panel.append(group);
     }
+    function selectColumn(key) {
+      selectedColumnKey = columns.find(column => column.key === key)?.key ?? columns[0]?.key;
+      for (const column of columns) {
+        const selected = column.key === selectedColumnKey;
+        column.group.dataset.selected = String(selected);
+        column.button.setAttribute("aria-pressed", String(selected));
+      }
+    }
+    for (const column of columns) {
+      column.button.addEventListener("click", () => selectColumn(column.key));
+    }
+    const addressedColumn = columns.find(column => column.key === tasks.get(pendingFocusId)?.columnKey);
+    selectColumn(addressedColumn ? addressedColumn.key : selectedColumnKey);
     legacyList.replaceChildren();
     for (const task of data.legacyTasks || []) {
-      const node = card(task, true);
+      const node = card(task, today, true);
       tasks.set(task.id, task);
       taskNodes.set(task.id, node);
       legacyList.append(node);

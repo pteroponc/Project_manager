@@ -3,17 +3,17 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Менеджер проектов</title>
-    <link rel="stylesheet" href="/styles.css?v=iteration-01-2" />
+    <title>ПроектПульт</title>
+    <link rel="stylesheet" href="/styles.css?v=iteration-01-3a" />
   </head>
   <body>
     <div class="page-shell">
       <div class="app-layout">
-        <aside class="sidebar panel" aria-label="Разделы менеджера проектов">
+        <aside class="sidebar panel" aria-label="Разделы ПроектПульта">
           <div class="sidebar-brand">
-            <span class="brand-mark">PM</span>
+            <span class="brand-mark" aria-hidden="true">ПП</span>
             <div>
-              <strong>Менеджер проектов</strong>
+              <strong>ПроектПульт</strong>
             </div>
           </div>
           <button class="mobile-navigation-toggle" type="button" id="navigation-toggle" aria-controls="primary-navigation" aria-expanded="true">
@@ -61,15 +61,15 @@
             <h3>Расчётно просрочены</h3><div id="my-day-overdue"></div>
             <h3>Срок сегодня</h3><div id="my-day-today"></div>
           </section>
+          <section class="panel my-day-block" aria-labelledby="my-day-milestone-title">
+            <h2 id="my-day-milestone-title">Ближайшая веха</h2><div id="my-day-milestone"></div>
+          </section>
           <section class="panel my-day-block" aria-labelledby="my-day-upcoming-title">
             <h2 id="my-day-upcoming-title">Ближайшие сроки</h2><div id="my-day-upcoming"></div>
           </section>
           <section class="panel my-day-block" aria-labelledby="my-day-undated-title">
             <h2 id="my-day-undated-title">Высокий и критичный приоритет без срока</h2><div id="my-day-undated"></div>
             <div id="my-day-invalid"></div>
-          </section>
-          <section class="panel my-day-block" aria-labelledby="my-day-milestone-title">
-            <h2 id="my-day-milestone-title">Ближайшая веха</h2><div id="my-day-milestone"></div>
           </section>
           <p class="hint-text" id="my-day-legacy" hidden>Карточки с прежними или неизвестными состояниями доступны на Доске. Они не используются в расчёте открытых задач.</p>
         </section>
@@ -156,6 +156,8 @@
               <span class="pill" id="projects-count">0 проектов</span>
             </div>
           </div>
+          <button class="btn btn-secondary registry-filter-toggle" type="button" id="registry-filter-toggle"
+                  aria-controls="registry-filters" aria-expanded="false">Фильтры проектов</button>
           <form class="registry-filters" id="registry-filters" role="search">
             <label class="registry-search">Поиск по названию и описанию<input name="query" type="search" placeholder="Название или описание" /></label>
             <label>Квартал<select name="quarter"><option value="all">Все кварталы</option></select></label>
@@ -321,6 +323,7 @@
               <div class="board-card-actions"><button class="btn btn-primary" type="submit" id="personal-task-save">Сохранить</button><button class="btn btn-ghost" type="button" id="personal-task-cancel">Отмена</button></div>
             </form>
             <p class="hint-text" id="personal-board-message" role="status">Загружаем задачи…</p>
+            <div class="personal-board-switcher" id="personal-board-switcher" role="group" aria-label="Состояние задач"></div>
             <div class="personal-board-columns" id="personal-board-columns"></div>
             <section class="personal-board-legacy" id="personal-board-legacy" hidden>
               <h4>Прежние состояния</h4>
@@ -667,7 +670,7 @@
 
     <script src="/my-day-ui.js?v=pm-demo-a-003-fix1" defer></script>
     <script src="/app.js?v=pm-sec-001-2" defer></script>
-    <script src="/personal-board-ui.js?v=pm-sec-001-2" defer></script>
+    <script src="/personal-board-ui.js?v=iteration-01-3a" defer></script>
     <script src="/navigation-ui.js" defer></script>
     <script src="/architecture-editor-validation.js?v=pm003c3e" defer></script>
     <script src="/architecture-child-editor.js?v=pm003c3e" defer></script>
@@ -677,7 +680,7 @@
     <script src="/passport-editor.js?v=pm003c3e" defer></script>
     <script src="/architecture-ui.js?v=pm003c3e" defer></script>
     <script src="/project-summary-ui.js?v=pm006-project-summary" defer></script>
-    <script src="/projects-ui.js?v=pm006-project-summary" defer></script>
+    <script src="/projects-ui.js?v=iteration-01-3a" defer></script>
     <script src="/architecture-portfolio-ui.js?v=pm0062b" defer></script>
     <script src="/dashboard-ui.js?v=pm0062b-final" defer></script>
   </body>

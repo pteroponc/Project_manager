@@ -481,6 +481,12 @@
     else if (navigatingHistory) showView("my-day");
   }
 
+  const filterToggle = document.getElementById("registry-filter-toggle");
+  filterToggle?.addEventListener("click", () => {
+    const expanded = filterToggle.getAttribute("aria-expanded") === "true";
+    filterToggle.setAttribute("aria-expanded", String(!expanded));
+  });
+
   form.addEventListener("input", event => {
     if (event.target.name !== "query") return;
     clearTimeout(debounce);
@@ -502,6 +508,7 @@
   });
   form.addEventListener("submit", event => event.preventDefault());
   document.getElementById("reset-registry-filters").addEventListener("click", () => {
+    clearTimeout(debounce);
     filters = { ...defaults }; syncForm(); updateUrl("projects", null, true); loadRegistry();
   });
   list.addEventListener("click", event => {
