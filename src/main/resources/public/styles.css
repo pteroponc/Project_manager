@@ -1207,6 +1207,10 @@ textarea:focus {
 
 .personal-board { margin: 14px 0 24px; padding: 16px; border: 1px solid var(--line); border-radius: var(--radius-lg); }
 .personal-board-toolbar { display: flex; flex-wrap: wrap; gap: 8px; }
+#personal-task-create { height: 36px; min-height: 36px; padding-block: 0; }
+@media (max-width: 1023px) {
+  #personal-task-create { height: 44px; min-height: 44px; }
+}
 .personal-task-form { margin: 14px 0; padding: 14px; border: 1px solid var(--line); border-radius: var(--radius-lg); }
 .personal-task-form[hidden] { display: none; }
 .personal-task-form h4, .personal-task-form-message, .personal-task-form .board-card-actions { grid-column: 1 / -1; }
@@ -1798,6 +1802,14 @@ textarea:focus {
   display: grid;
   gap: 18px;
   padding: 24px;
+}
+
+.placeholder-section {
+  padding: 24px;
+}
+
+.placeholder-section p {
+  margin-top: 8px;
 }
 
 .release-checks-actions,

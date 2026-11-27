@@ -185,8 +185,13 @@ test('HTML contains approved overview heading and keeps GitHub outside overview'
   assert.doesNotMatch(html, /Указанный бюджет/);
   assert.match(html, /<h1>Портфель проектов<\/h1>/);
   assert.match(html, /id="overview-as-of">Состояние портфеля/);
-  assert.match(html, /id="release-checks-panel" data-view-section="release"/);
-  assert.doesNotMatch(html, /id="release-checks-panel"[^>]+data-view-section="overview"/);
+  for (const view of ["release", "budget"]) {
+    const placeholder = html.match(new RegExp(`<section[^>]+data-view-section="${view}"[^>]*>([\\s\\S]*?)</section>`));
+    assert.match(placeholder?.[1] ?? '', /<p>Раздел в разработке<\/p>/);
+    assert.equal([...html.matchAll(new RegExp(`data-view-section="${view}"`, 'g'))].length, 1);
+  }
+  assert.match(html, /id="release-checks-panel" hidden>/);
+  assert.match(html, /id="release-train-panel" hidden>/);
   const sidebar = html.match(/<aside class="sidebar[\s\S]*?<\/aside>/)?.[0] ?? '';
   assert.doesNotMatch(sidebar, /Spring Boot \/ H2|API готов/);
   assert.doesNotMatch(html, /Причины рассчитаны на сервере|Отдельная дата контрольной точки/);

@@ -112,7 +112,7 @@ test('fallback markup and CSS preserve accessible flow without an overlay or dup
   assert.match(html, /id="navigation-toggle"[^>]+aria-controls="primary-navigation"[^>]+aria-expanded="true"/);
   assert.match(html, /<nav class="sidebar-nav" id="primary-navigation" aria-label="Основные разделы">/);
   const views = [...html.matchAll(/class="nav-item[^"]*"[^>]*data-view="([^"]+)"/g)].map(match => match[1]);
-  assert.deepEqual(views, ["my-day", "overview", "projects", "dashboards", "boards", "release", "docs"]);
+  assert.deepEqual(views, ["my-day", "boards", "overview", "projects", "dashboards", "release", "budget", "docs"]);
   assert.match(css, /@media \(min-width: 1024px\)/);
   assert.match(css, /@media \(max-width: 1023px\)[\s\S]*position: static/);
   assert.match(css, /\.sidebar-nav\[hidden\] \{ display: none !important/);

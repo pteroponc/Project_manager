@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Менеджер проектов</title>
-    <link rel="stylesheet" href="/styles.css?v=pm-sec-001-2" />
+    <link rel="stylesheet" href="/styles.css?v=iteration-01-2" />
   </head>
   <body>
     <div class="page-shell">
@@ -22,11 +22,12 @@
           </button>
           <nav class="sidebar-nav" id="primary-navigation" aria-label="Основные разделы">
             <button class="nav-item active" type="button" data-view="my-day" data-icon="⌂">Мой день</button>
+            <button class="nav-item" type="button" data-view="boards" data-icon="▤" aria-label="Доски">Доски</button>
             <button class="nav-item" type="button" data-view="overview" data-icon="◫" aria-label="Обзор">Обзор</button>
             <button class="nav-item" type="button" data-view="projects" data-icon="+" aria-label="Проекты">Проекты</button>
             <button class="nav-item" type="button" data-view="dashboards" data-icon="▦" aria-label="Дашборды">Дашборды</button>
-            <button class="nav-item" type="button" data-view="boards" data-icon="▤" aria-label="Доски">Доски</button>
             <button class="nav-item" type="button" data-view="release" data-icon="→" aria-label="Релизы">Релизы</button>
+            <button class="nav-item" type="button" data-view="budget" data-icon="₽" aria-label="Бюджет">Бюджет</button>
             <button class="nav-item" type="button" data-view="docs" data-icon="□" aria-label="Документы">Документы</button>
           </nav>
         </aside>
@@ -129,7 +130,10 @@
           </div>
           </div>
         </section>
-        <section class="panel release-checks-panel view-section" id="release-checks-panel" data-view-section="release">
+        <section class="panel placeholder-section view-section" data-view-section="release" aria-labelledby="release-placeholder-title">
+          <h1 id="release-placeholder-title">Релизы</h1><p>Раздел в разработке</p>
+        </section>
+        <section class="panel release-checks-panel view-section" id="release-checks-panel" hidden>
           <div class="section-head">
             <div>
               <p class="section-kicker">Release gates</p>
@@ -137,6 +141,9 @@
             </div>
           </div>
           <p class="hint-text" id="release-checks-message">Проверки сборки и релиза отключены.</p>
+        </section>
+        <section class="panel placeholder-section view-section" data-view-section="budget" aria-labelledby="budget-placeholder-title">
+          <h1 id="budget-placeholder-title">Бюджет</h1><p>Раздел в разработке</p>
         </section>
         <section class="panel projects-panel view-section" data-view-section="projects" aria-label="Реестр проектов">
           <div class="section-head">
@@ -185,7 +192,7 @@
         </dialog>
 
 
-        <section class="panel release-train-panel view-section" id="release-train-panel" data-view-section="release">
+        <section class="panel release-train-panel view-section" id="release-train-panel" hidden>
           <div class="section-head">
             <div>
               <p class="section-kicker">Релизный поток</p>
