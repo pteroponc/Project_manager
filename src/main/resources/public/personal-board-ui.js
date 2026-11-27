@@ -7,6 +7,9 @@
   const boardCount = document.getElementById("personal-board-count");
   const legacy = document.getElementById("personal-board-legacy");
   const legacyList = document.getElementById("personal-board-legacy-list");
+  const legacyOpen = document.getElementById("personal-board-legacy-open");
+  const legacyBack = document.getElementById("personal-board-legacy-back");
+  const legacyTitle = document.getElementById("personal-board-legacy-title");
   const refresh = document.getElementById("personal-board-refresh");
   const create = document.getElementById("personal-task-create");
   const form = document.getElementById("personal-task-form");
@@ -29,6 +32,8 @@
   let taskNodes = new Map();
   let pendingFocusId = null;
   let selectedColumnKey = null;
+  let legacyIds = new Set();
+  let showingLegacy = false;
 
   const priorityLabels = new Map([
     ["critical", ["Критичный", "danger"]],
@@ -68,6 +73,17 @@
     if (className) node.className = className;
     if (value != null) node.textContent = String(value);
     return node;
+  }
+
+  function showLegacy(open) {
+    showingLegacy = open && legacyIds.size > 0;
+    legacy.hidden = !showingLegacy;
+    panel.hidden = showingLegacy;
+    if (switcher) switcher.hidden = showingLegacy;
+    create.hidden = showingLegacy;
+    if (legacyOpen) legacyOpen.hidden = showingLegacy || !legacyIds.size;
+    const count = showingLegacy ? legacyIds.size : tasks.size - legacyIds.size;
+    if (boardCount) boardCount.textContent = `Показано задач: ${count}.`;
   }
 
   function card(task, today, oldState = false) {
@@ -192,21 +208,24 @@
     const addressedColumn = columns.find(column => column.key === tasks.get(pendingFocusId)?.columnKey);
     selectColumn(addressedColumn ? addressedColumn.key : selectedColumnKey);
     legacyList.replaceChildren();
+    legacyIds = new Set();
     for (const task of data.legacyTasks || []) {
+      if (tasks.has(task.id)) continue;
       const node = card(task, today, true);
+      legacyIds.add(task.id);
       tasks.set(task.id, task);
       taskNodes.set(task.id, node);
       legacyList.append(node);
     }
-    legacy.hidden = !data.legacyTasks?.length;
-    if (pendingFocusId && taskNodes.has(pendingFocusId)) {
+    const addressedTask = pendingFocusId && taskNodes.has(pendingFocusId);
+    showLegacy(addressedTask ? legacyIds.has(pendingFocusId) : showingLegacy);
+    if (addressedTask) {
       const node = taskNodes.get(pendingFocusId);
       node.open = true;
       node.querySelector("summary")?.focus();
       node.scrollIntoView({ block: "center" });
       pendingFocusId = null;
     }
-    if (boardCount) boardCount.textContent = `Показано задач: ${tasks.size}.`;
     message.textContent = pendingFocusId
       ? "Исходная задача недоступна. Возможно, она была удалена."
       : "";
@@ -476,6 +495,16 @@
   }
 
   refresh.addEventListener("click", () => { if (!pending) void load(); });
+  legacyOpen?.addEventListener("click", () => {
+    if (pending || !legacyIds.size) return;
+    clearDrag();
+    showLegacy(true);
+    legacyTitle?.focus();
+  });
+  legacyBack?.addEventListener("click", () => {
+    showLegacy(false);
+    legacyOpen?.focus();
+  });
   create.addEventListener("click", () => { if (!pending) void openForm(); });
   cancel.addEventListener("click", () => {
     if (pending) return;

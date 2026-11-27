@@ -10,6 +10,44 @@ const response = (status, body) => ({ status, ok: status < 400, json: async () =
 const sample = { id: 'task/1', title: 'Sample', columnKey: 'ready', priority: 'medium', version: 0, projectId: null };
 const board = (...tasks) => ({ columns: [{ key: 'ready', title: 'Ready', tasks }] });
 
+test('legacy list is separate, keeps the selected column and offers no mutation actions', async () => {
+  const h = harness(true);
+  const legacy = { ...sample, id: 'past', columnKey: 'release' };
+  const data = { ...board(sample), legacyTasks: [legacy, legacy] };
+  const id = suffix => h.byId('personal-board-' + suffix);
+  h.window.PMPersonalBoardUI.onView('boards');
+  h.requests.shift().resolve(response(200, data));
+  await flush();
+  assert.equal(id('legacy-open').hidden, false);
+  assert.equal(id('legacy').hidden, true);
+  id('legacy-open').events.click();
+  assert.equal(id('columns').hidden, true);
+  assert.equal(id('switcher').hidden, true);
+  const [card] = id('legacy-list').children;
+  assert.equal(id('legacy-list').children.length, 1);
+  assert.equal(card.children[0].draggable, undefined);
+  assert.equal(card.children[1].children.at(-1).textContent, 'Состояние: release');
+  id('legacy-back').events.click();
+  assert.equal(id('columns').hidden, false);
+  assert.equal(id('switcher').children[0]['aria-pressed'], 'true');
+  assert.equal(h.requests.length, 0);
+  h.window.PMPersonalBoardUI.focusTask(legacy.id);
+  h.requests.shift().reject(new Error('offline'));
+  await flush();
+  assert.match(id('message').textContent, /Не удалось загрузить/);
+  id('refresh').events.click();
+  h.requests.shift().resolve(response(200, data));
+  await flush();
+  assert.equal(id('legacy').hidden, false);
+  assert.equal(id('legacy-list').children[0].open, true);
+  h.window.PMPersonalBoardUI.focusTask(sample.id);
+  h.requests.shift().resolve(response(200, { ...data, legacyTasks: [] }));
+  await flush();
+  assert.equal(id('legacy').hidden, true);
+  assert.equal(id('legacy-open').hidden, true);
+  assert.equal(id('columns').children[0].children[1].open, true);
+});
+
 function harness(desktop = false) {
   function node() {
     return {

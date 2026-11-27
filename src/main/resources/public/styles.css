@@ -1239,6 +1239,13 @@ textarea:focus {
 .personal-board-origin { display: inline-block; margin-top: 6px; font-size: .8rem; color: var(--muted); }
 .personal-board-card-body p { margin: 8px 0 0; }
 .personal-board-legacy { margin-top: 16px; }
+.personal-board-legacy-link { min-height: 44px; padding-inline: 8px; }
+.personal-board-legacy-link[hidden],
+#personal-task-create[hidden],
+.personal-board-switcher[hidden],
+.personal-board-columns[hidden] { display: none !important; }
+.personal-board:has(#personal-board-legacy:not([hidden])) .personal-task-form { display: none; }
+.personal-board:has(#personal-board-legacy:not([hidden])) #personal-board-count:not(:empty) { display: block; }
 .personal-board-legacy-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 230px), 1fr)); gap: 12px; }
 @media (max-width: 1100px) { .personal-board-columns { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 600px) { .personal-board-columns { grid-template-columns: minmax(0, 1fr); } }

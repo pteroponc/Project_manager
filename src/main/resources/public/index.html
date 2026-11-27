@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>ПроектПульт</title>
-    <link rel="stylesheet" href="/styles.css?v=iteration-01-4c" />
+    <link rel="stylesheet" href="/styles.css?v=iteration-01-5" />
   </head>
   <body>
     <div class="page-shell">
@@ -305,6 +305,7 @@
             <div class="section-head compact-head">
               <div><p class="section-kicker">Все задачи</p><h3 id="personal-board-title">Самостоятельные и проектные задачи</h3></div>
               <div class="personal-board-toolbar">
+                <button class="text-link personal-board-legacy-link" type="button" id="personal-board-legacy-open" aria-controls="personal-board-legacy" hidden>Прежние состояния</button>
                 <button class="btn btn-primary" type="button" id="personal-task-create">Создать задачу</button>
                 <button class="btn btn-secondary" type="button" id="personal-board-refresh">Обновить</button>
               </div>
@@ -329,9 +330,11 @@
             <p class="hint-text" id="personal-board-count"></p>
             <div class="personal-board-switcher" id="personal-board-switcher" role="group" aria-label="Состояние задач"></div>
             <div class="personal-board-columns" id="personal-board-columns"></div>
-            <section class="personal-board-legacy" id="personal-board-legacy" hidden>
-              <h4>Прежние состояния</h4>
-              <p class="hint-text">Эти задачи сохраняют исходное состояние Scrum или каскадной Доски.</p>
+            <section class="personal-board-legacy" id="personal-board-legacy" aria-labelledby="personal-board-legacy-title" hidden>
+              <div class="section-head compact-head">
+                <h4 id="personal-board-legacy-title" tabindex="-1">Прежние состояния</h4>
+                <button class="btn btn-secondary btn-small" id="personal-board-legacy-back" type="button">К Доске</button>
+              </div>
               <div class="personal-board-legacy-list" id="personal-board-legacy-list"></div>
             </section>
           </section>
@@ -674,7 +677,7 @@
 
     <script src="/my-day-ui.js?v=pm-demo-a-003-fix1" defer></script>
     <script src="/app.js?v=pm-sec-001-2" defer></script>
-    <script src="/personal-board-ui.js?v=iteration-01-4c" defer></script>
+    <script src="/personal-board-ui.js?v=iteration-01-5" defer></script>
     <script src="/navigation-ui.js" defer></script>
     <script src="/architecture-editor-validation.js?v=pm003c3e" defer></script>
     <script src="/architecture-child-editor.js?v=iteration-01-4c" defer></script>
