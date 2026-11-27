@@ -5,7 +5,7 @@
   const leave = document.getElementById("passport-leave-dialog");
   const optional = {architect:["Ответственный архитектор",255],solutionSummary:["Краткое описание",2000],availabilityRequirement:["Требования доступности",1000],recoveryRequirement:["Требования восстановления",1000]};
   const catalogs = {
-    criticality:{LOW:"Низкая",MEDIUM:"Средняя",HIGH:"Высокая",CRITICAL:"Критическая"},
+    criticality:{CRITICAL:"Критическая",HIGH:"Высокая",MEDIUM:"Средняя",LOW:"Низкая"},
     stage:{NOT_STARTED:"Не начата",IN_DESIGN:"В проектировании",IN_REVIEW:"На рассмотрении",APPROVED:"Утверждена",CHANGES_REQUIRED:"Требуются изменения"},
     solutionType:{NEW_SOLUTION:"Новое решение",EXISTING_SOLUTION_CHANGE:"Изменение существующего решения",INTEGRATION:"Интеграция",MIGRATION:"Миграция"},
     dataClasses:{PUBLIC:"Публичные",INTERNAL:"Внутренние",CONFIDENTIAL:"Конфиденциальные",PERSONAL:"Персональные",PAYMENT:"Платёжные",COMMERCIAL_SECRET:"Коммерческая тайна"},

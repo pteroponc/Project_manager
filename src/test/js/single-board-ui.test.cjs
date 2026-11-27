@@ -33,3 +33,15 @@ test('project links route to the shared view without loading a second board', ()
   assert.match(app, /window\.PMPersonalBoardUI\?\.focusTask\(cardId\)/);
   assert.match(app, /!document\.getElementById\?\.\("personal-board-columns"\)/);
 });
+
+test('task priority selectors show descending priority and preserve their defaults', () => {
+  const selects = [...board.matchAll(/<select name="priority"[^>]*>([\s\S]*?)<\/select>/g)];
+  assert.equal(selects.length, 3);
+  assert.deepEqual(selects.map(([, options]) =>
+    [...options.matchAll(/<option value="([^"]+)"/g)].map(([, value]) => value)), [
+    ['critical', 'high', 'medium', 'low'],
+    ['all', 'critical', 'high', 'medium', 'low'],
+    ['critical', 'high', 'medium', 'low']
+  ]);
+  for (const index of [0, 2]) assert.match(selects[index][1], /value="medium" selected/);
+});

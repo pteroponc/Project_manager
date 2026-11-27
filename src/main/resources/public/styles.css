@@ -1212,8 +1212,12 @@ textarea:focus {
 @media (max-width: 1023px) {
   #personal-task-create { height: 44px; min-height: 44px; }
 }
-.personal-task-form { margin: 14px 0; padding: 14px; border: 1px solid var(--line); border-radius: var(--radius-lg); }
+.personal-task-form { margin: 14px 0; padding: 14px; border: 1px solid var(--line); border-radius: var(--radius-lg); align-items: start; }
 .personal-task-form[hidden] { display: none; }
+.personal-task-form > label { align-content: start; }
+.personal-task-form:not([hidden]) ~ #personal-board-count,
+#personal-board-message:empty,
+#personal-board-count:empty { display: none; }
 .personal-task-form h4, .personal-task-form-message, .personal-task-form .board-card-actions { grid-column: 1 / -1; }
 .personal-board-card-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
 .personal-board .section-head { margin-bottom: 8px; }

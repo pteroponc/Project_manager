@@ -1,6 +1,6 @@
 /* C.3b: field adapters for the shared guarded architecture editor. No persistence or assessment. */
 (() => {
-  const criticality={LOW:"Низкая",MEDIUM:"Средняя",HIGH:"Высокая",CRITICAL:"Критическая"};
+  const criticality={CRITICAL:"Критическая",HIGH:"Высокая",MEDIUM:"Средняя",LOW:"Низкая"};
   const dataClasses={PUBLIC:"Публичные",INTERNAL:"Внутренние",CONFIDENTIAL:"Конфиденциальные",PERSONAL:"Персональные",PAYMENT:"Платёжные",COMMERCIAL_SECRET:"Коммерческая тайна"};
   const component={
     name:{title:"Название",max:255},

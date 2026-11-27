@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>ПроектПульт</title>
-    <link rel="stylesheet" href="/styles.css?v=iteration-01-4" />
+    <link rel="stylesheet" href="/styles.css?v=iteration-01-4c" />
   </head>
   <body>
     <div class="page-shell">
@@ -23,7 +23,6 @@
           <nav class="sidebar-nav" id="primary-navigation" aria-label="Основные разделы">
             <button class="nav-item active" type="button" data-view="my-day" data-icon="⌂">Мой день</button>
             <button class="nav-item" type="button" data-view="boards" data-icon="▤" aria-label="Доски">Доски</button>
-            <button class="nav-item" type="button" data-view="overview" data-icon="◫" aria-label="Обзор">Обзор</button>
             <button class="nav-item" type="button" data-view="projects" data-icon="+" aria-label="Проекты">Проекты</button>
             <button class="nav-item" type="button" data-view="dashboards" data-icon="▦" aria-label="Дашборды">Дашборды</button>
             <button class="nav-item" type="button" data-view="release" data-icon="→" aria-label="Релизы">Релизы</button>
@@ -310,19 +309,24 @@
                 <button class="btn btn-secondary" type="button" id="personal-board-refresh">Обновить</button>
               </div>
             </div>
-            <p class="hint-text">Задачи всех проектов и самостоятельные задачи. Порядок просмотра устойчивый; ручная сортировка не сохраняется.</p>
             <form class="board-card-form personal-task-form" id="personal-task-form" hidden>
               <h4 id="personal-task-form-title">Новая задача</h4>
               <label><span>Название</span><input name="title" maxlength="255" required></label>
               <label><span>Описание</span><textarea name="description" maxlength="10000" rows="3"></textarea></label>
               <label><span>Проект (необязательно)</span><select name="projectId"><option value="">Без проекта</option></select></label>
               <label><span>Срок (необязательно)</span><input name="dueDate" type="date"></label>
-              <label><span>Приоритет</span><select name="priority"><option value="medium">Средний</option><option value="low">Низкий</option><option value="high">Высокий</option><option value="critical">Критичный</option></select></label>
+              <label><span>Приоритет</span><select name="priority">
+                <option value="critical">Критичный</option>
+                <option value="high">Высокий</option>
+                <option value="medium" selected>Средний</option>
+                <option value="low">Низкий</option>
+              </select></label>
               <label><span>Состояние</span><select name="columnKey"><option value="backlog">Бэклог</option><option value="ready">К выполнению</option><option value="in-progress">В работе</option><option value="done">Готово</option></select></label>
               <p class="hint-text personal-task-form-message" id="personal-task-form-message" role="status"></p>
               <div class="board-card-actions"><button class="btn btn-primary" type="submit" id="personal-task-save">Сохранить</button><button class="btn btn-ghost" type="button" id="personal-task-cancel">Отмена</button></div>
             </form>
             <p class="hint-text" id="personal-board-message" role="status">Загружаем задачи…</p>
+            <p class="hint-text" id="personal-board-count"></p>
             <div class="personal-board-switcher" id="personal-board-switcher" role="group" aria-label="Состояние задач"></div>
             <div class="personal-board-columns" id="personal-board-columns"></div>
             <section class="personal-board-legacy" id="personal-board-legacy" hidden>
@@ -419,9 +423,9 @@
               <label>
                 <span>Приоритет</span>
                 <select name="priority" required>
-                  <option value="medium">Medium</option>
-                  <option value="high">High</option>
                   <option value="critical">Critical</option>
+                  <option value="high">High</option>
+                  <option value="medium" selected>Medium</option>
                   <option value="low">Low</option>
                 </select>
               </label>
@@ -670,14 +674,14 @@
 
     <script src="/my-day-ui.js?v=pm-demo-a-003-fix1" defer></script>
     <script src="/app.js?v=pm-sec-001-2" defer></script>
-    <script src="/personal-board-ui.js?v=iteration-01-4" defer></script>
+    <script src="/personal-board-ui.js?v=iteration-01-4c" defer></script>
     <script src="/navigation-ui.js" defer></script>
     <script src="/architecture-editor-validation.js?v=pm003c3e" defer></script>
-    <script src="/architecture-child-editor.js?v=pm003c3e" defer></script>
+    <script src="/architecture-child-editor.js?v=iteration-01-4c" defer></script>
     <script src="/architecture-check-editor.js?v=pm003c3e" defer></script>
-    <script src="/architecture-risk-editor.js?v=pm003c3e" defer></script>
+    <script src="/architecture-risk-editor.js?v=iteration-01-4c" defer></script>
     <script src="/architecture-deletion.js?v=pm003c3e" defer></script>
-    <script src="/passport-editor.js?v=pm003c3e" defer></script>
+    <script src="/passport-editor.js?v=iteration-01-4c" defer></script>
     <script src="/architecture-ui.js?v=pm003c3e" defer></script>
     <script src="/project-summary-ui.js?v=pm006-project-summary" defer></script>
     <script src="/projects-ui.js?v=iteration-01-3a" defer></script>

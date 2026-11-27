@@ -4,6 +4,7 @@
   const panel = document.getElementById("personal-board-columns");
   const switcher = document.getElementById("personal-board-switcher");
   const message = document.getElementById("personal-board-message");
+  const boardCount = document.getElementById("personal-board-count");
   const legacy = document.getElementById("personal-board-legacy");
   const legacyList = document.getElementById("personal-board-legacy-list");
   const refresh = document.getElementById("personal-board-refresh");
@@ -205,10 +206,10 @@
       node.scrollIntoView({ block: "center" });
       pendingFocusId = null;
     }
-    const total = tasks.size;
+    if (boardCount) boardCount.textContent = `Показано задач: ${tasks.size}.`;
     message.textContent = pendingFocusId
       ? "Исходная задача недоступна. Возможно, она была удалена."
-      : `Показано задач: ${total}.`;
+      : "";
     pendingFocusId = null;
     message.removeAttribute("data-tone");
     if (!form.hidden && editing) {

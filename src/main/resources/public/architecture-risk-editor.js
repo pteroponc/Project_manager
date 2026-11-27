@@ -1,7 +1,7 @@
 /* C.3d: security risk fields and merged-state validation. Level/assessment remain server projections. */
 (() => {
   const {normalize,validDate}=window.PMArchitectureEditorValidation;
-  const levels={LOW:"Низкая",MEDIUM:"Средняя",HIGH:"Высокая",CRITICAL:"Критическая"};
+  const levels={CRITICAL:"Критическая",HIGH:"Высокая",MEDIUM:"Средняя",LOW:"Низкая"};
   const fields={
     name:{title:"Название",max:255},description:{title:"Описание",max:2000,nullable:true,multiline:true},
     category:{title:"Категория",codes:{ACCESS:"Доступ",DATA:"Данные",AVAILABILITY:"Доступность",INTEGRATION:"Интеграция",PROCESS:"Процесс",OTHER:"Другое"}},
