@@ -20,6 +20,9 @@
   let pending = false;
   let uncertain = false;
   let deleteNeedsRefresh = false;
+  let moveNeedsRefresh = false;
+  let draggedTask = null;
+  let dropTarget = null;
   let editing = null;
   let tasks = new Map();
   let taskNodes = new Map();
@@ -33,6 +36,31 @@
     ["low", ["Низкий", "neutral"]]
   ]);
   const boardDate = new Intl.DateTimeFormat("sv-SE", { timeZone: "Europe/Moscow", year: "numeric", month: "2-digit", day: "2-digit" });
+  const desktopDrag = window.matchMedia?.("(min-width: 601px) and (any-hover: hover) and (any-pointer: fine)");
+
+  function clearDrag() {
+    draggedTask = null;
+    panel.removeAttribute("data-dragging");
+    highlightDropTarget(null);
+  }
+
+  function highlightDropTarget(group) {
+    dropTarget?.removeAttribute("data-drop-target");
+    dropTarget = group;
+    if (group) group.dataset.dropTarget = "true";
+  }
+
+  function canDrag() {
+    return desktopDrag?.matches && !pending && !refresh.disabled && form.hidden
+      && !uncertain && !moveNeedsRefresh && !deleteNeedsRefresh;
+  }
+
+  desktopDrag?.addEventListener("change", () => {
+    clearDrag();
+    for (const summary of panel.querySelectorAll(".personal-board-card-summary")) {
+      summary.draggable = desktopDrag.matches;
+    }
+  });
 
   function element(tag, className, value) {
     const node = document.createElement(tag);
@@ -44,6 +72,20 @@
   function card(task, today, oldState = false) {
     const node = element("details", "personal-board-card");
     const summary = element("summary", "personal-board-card-summary");
+    if (!oldState && desktopDrag) {
+      summary.draggable = desktopDrag.matches;
+      summary.addEventListener("dragstart", event => {
+        if (!canDrag() || !event.dataTransfer || tasks.get(task.id) !== task) {
+          event.preventDefault();
+          return;
+        }
+        draggedTask = task;
+        panel.dataset.dragging = "true";
+        event.dataTransfer.effectAllowed = "move";
+        event.dataTransfer.setData("text/plain", task.id);
+      });
+      summary.addEventListener("dragend", clearDrag);
+    }
     summary.append(element("span", "personal-board-origin", task.projectId
       ? (task.projectName || "Проект без названия") : "Самостоятельная"));
     summary.append(element("strong", "", task.title));
@@ -93,6 +135,7 @@
   }
 
   function render(data) {
+    clearDrag();
     const today = boardDate.format(new Date());
     tasks = new Map();
     taskNodes = new Map();
@@ -108,6 +151,23 @@
       columns.push({ key: column.key, group, button });
       switcher?.append(button);
       group.append(element("h4", "", `${column.title} · ${(column.tasks || []).length}`));
+      const canDrop = () => draggedTask && canDrag() && draggedTask.columnKey !== column.key;
+      group.addEventListener("dragover", event => {
+        if (!canDrop() || !event.dataTransfer) return;
+        event.preventDefault();
+        event.dataTransfer.dropEffect = "move";
+        highlightDropTarget(group);
+      });
+      group.addEventListener("dragleave", event => {
+        if (dropTarget === group && !group.contains(event.relatedTarget)) highlightDropTarget(null);
+      });
+      group.addEventListener("drop", event => {
+        if (!canDrop()) return;
+        event.preventDefault();
+        const task = draggedTask;
+        clearDrag();
+        void moveTask(task, column.key);
+      });
       if (!column.tasks?.length) group.append(element("p", "hint-text", "Задач нет"));
       for (const task of column.tasks || []) {
         const node = card(task, today);
@@ -170,13 +230,16 @@
     refresh.disabled = true;
     message.textContent = "Загружаем задачи…";
     try {
-      const response = await fetch("/api/board/personal", { headers: { Accept: "application/json" } });
+      const response = await fetch("/api/board/personal", {
+        cache: "no-store", headers: { Accept: "application/json" }
+      });
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const data = await response.json();
       if (current !== request) return;
       uncertain = !render(data);
       if (!form.hidden && editing) save.disabled = uncertain || pending;
       deleteNeedsRefresh = false;
+      moveNeedsRefresh = false;
       return true;
     } catch (_error) {
       if (current !== request) return;
@@ -206,6 +269,10 @@
       return;
     }
     if (pending) return;
+    if (moveNeedsRefresh) {
+      message.textContent = "Обновите Доску перед редактированием.";
+      return;
+    }
     const current = ++formRequest;
     editing = task;
     uncertain = false;
@@ -247,7 +314,7 @@
   }
 
   async function write(url, payload, method) {
-    if (pending || uncertain) return false;
+    if (pending || uncertain || (editing && moveNeedsRefresh)) return false;
     pending = true;
     save.disabled = true;
     formMessage.textContent = "Сохраняем задачу…";
@@ -273,6 +340,7 @@
         return false;
       }
       form.hidden = true;
+      selectedColumnKey = payload.columnKey;
       editing = null;
       await load();
       create.focus();
@@ -294,7 +362,7 @@
       form.elements.title.focus();
       return;
     }
-    if (deleteNeedsRefresh || uncertain || refresh.disabled) {
+    if (deleteNeedsRefresh || moveNeedsRefresh || uncertain || refresh.disabled) {
       message.textContent = "Перечитайте Доску перед удалением.";
       return;
     }
@@ -334,17 +402,58 @@
     }
   }
 
+  function statePayload(task, columnKey) {
+    return {
+      projectId: task.projectId, title: task.title, description: task.description,
+      dueDate: task.dueDate || null, priority: task.priority, columnKey,
+      expectedVersion: task.version
+    };
+  }
+
+  async function moveTask(task, columnKey) {
+    pending = true;
+    moveNeedsRefresh = true;
+    message.textContent = "Перемещаем задачу…";
+    message.removeAttribute("data-tone");
+    try {
+      let outcome;
+      try {
+        const response = await fetch(`/api/board/personal/tasks/${encodeURIComponent(task.id)}`, {
+          method: "PUT", headers: { "Content-Type": "application/json", "X-PM-Write": "1" },
+          body: JSON.stringify(statePayload(task, columnKey))
+        });
+        outcome = response.ok ? "accepted" : response.status === 409 ? "conflict"
+          : response.status >= 500 ? "unknown" : response.status;
+      } catch (_error) {
+        outcome = "unknown";
+      }
+      const refreshed = await load();
+      if (!refreshed) {
+        message.textContent = "Не удалось сверить перенос с сервером. Обновите Доску перед повтором.";
+      } else if (outcome === "conflict") {
+        message.textContent = "Конфликт версии. Показано текущее состояние с сервера.";
+      } else if (typeof outcome === "number") {
+        message.textContent = `Сервер отклонил перенос (${outcome}). Доска обновлена.`;
+      } else if (tasks.get(task.id)?.columnKey === columnKey) {
+        message.textContent = outcome === "accepted" ? "Задача перемещена."
+          : "Сверено с сервером: задача в целевой колонке.";
+        return;
+      } else {
+        message.textContent = "Перенос не подтверждён. Показано текущее состояние с сервера.";
+      }
+      message.dataset.tone = "error";
+    } finally {
+      pending = false;
+    }
+  }
+
   async function complete(task) {
     if (!form.hidden) {
       formMessage.textContent = "Сначала сохраните или закройте открытый черновик.";
       return;
     }
-    if (uncertain) { message.textContent = "Сначала перечитайте Доску."; return; }
-    const payload = {
-      projectId: task.projectId, title: task.title, description: task.description,
-      dueDate: task.dueDate || null, priority: task.priority, columnKey: "done",
-      expectedVersion: task.version
-    };
+    if (uncertain || moveNeedsRefresh) { message.textContent = "Сначала перечитайте Доску."; return; }
+    const payload = statePayload(task, "done");
     pending = true;
     message.textContent = "Завершаем задачу…";
     try {

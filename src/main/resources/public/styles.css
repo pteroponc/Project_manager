@@ -1221,6 +1221,14 @@ textarea:focus {
 .personal-board-columns { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
 .personal-board-column { min-width: 0; padding: 12px; border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--panel-translucent); }
 .personal-board-column h4 { margin: 0 0 10px; }
+@media (min-width: 601px) and (any-hover: hover) and (any-pointer: fine) {
+  .personal-board-card-summary[draggable="true"] { cursor: grab; }
+  .personal-board-columns[data-dragging="true"] .personal-board-card-summary { cursor: grabbing; }
+  .personal-board-column[data-drop-target="true"] {
+    outline: 2px solid var(--accent);
+    outline-offset: -2px;
+  }
+}
 .personal-board-card { margin: 8px 0; padding: 10px; border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--panel); overflow-wrap: anywhere; }
 .personal-board-card-summary { cursor: pointer; }
 .personal-board-card-summary strong { display: block; }
