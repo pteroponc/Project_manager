@@ -100,7 +100,9 @@ const card = (overrides = {}) => ({ ...item(), version: 0, owner: 'Команд�
 const dashboard = (overrides = {}) => ({ project: card(overrides), model: overrides.deliveryModel || 'kanban',
  calculationDate:'2026-11-11',timeZone:'Europe/Moscow',generatedAt:'2026-11-11T10:00:00Z',
  tasks:{total:0,done:0,blocked:0,overdue:0,uncertain:0,unknownDates:0,unmapped:0,unknownBlocked:0,
- columns:[],unassigned:[],blockedTasks:[],overdueTasks:[]},milestones:{overdue:[],dueSoon:[],unknownDates:0} });
+  columns:[],unassigned:[],blockedTasks:[],overdueTasks:[]},milestones:{overdue:[],dueSoon:[],unknownDates:0},
+  dash03:{backlog:0,ready:0,inProgress:0,done:0,open:0,highPriority:0,overdue:0,unknownDates:0,
+    unknownPriorities:0,overdueTasks:[],upcomingTasks:[],criticalUndatedTasks:[]} });
 const formProject = (overrides = {}) => ({ name: 'Проект', owner: 'Команда', status: 'active',
   health: 'red', deliveryModel: 'kanban', progress: '', startDate: '', quarter: 'Q3',
   deadline: '2026-10-20', milestone: 'Legacy', risk: 'Риск', dependency: 'Зависимость',
@@ -728,6 +730,24 @@ test('snapshot lists link to the existing milestone and guarded task entry using
  let args;h.window.PMBoardContext={openTask:(...values)=>{args=values;}};button.dataset={summaryTask:'t1'};
  h.get('project-detail-content').listeners.click({target:button});assert.deepEqual(args,['p1','kanban','t1']);
  const bad=dashboard();delete bad.tasks.total;assert.equal(h.window.PMProjectSummary.valid(bad,'p1'),false);
+});
+
+test('DASH-03 shows four states and critical undated work without changing legacy summary or task route', async () => {
+  const h=harness(), data=dashboard();
+  Object.assign(data.dash03,{backlog:1,ready:1,inProgress:1,done:1,open:3,highPriority:2,
+    overdue:1,unknownDates:1,criticalUndatedTasks:[{id:'critical',title:'<Важная>',columnKey:'ready',
+      dueDate:'',priority:'critical'}],upcomingTasks:[{id:'today',title:'Сегодня',columnKey:'in-progress',
+      dueDate:'2026-11-11',priority:'high'}]});
+  h.context.fetchJson=async()=>data;await h.ui.openCard('p1');
+  const html=h.get('project-detail-content').innerHTML;
+  assert.match(html,/Задачи проекта · Доска/);
+  assert.match(html,/Критичные без срока/);
+  assert.match(html,/&lt;Важная>/);
+  assert.match(html,/Текущая сводка по колонкам модели/);
+  let args;h.window.PMBoardContext={openTask:(...values)=>{args=values;}};
+  const button=node();button.dataset.summaryTask='critical';
+  h.get('project-detail-content').listeners.click({target:button});
+  assert.deepEqual(args,['p1','kanban','critical']);
 });
 
 test('late milestone write cannot change a subsequently opened project', async () => {

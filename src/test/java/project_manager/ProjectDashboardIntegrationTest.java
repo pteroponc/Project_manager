@@ -38,17 +38,21 @@ class ProjectDashboardIntegrationTest {
     @SpyBean BoardCardRepository tasks;
     @Autowired JdbcTemplate jdbc;
 
-    private ProjectEntity project() {
-        var p = new ProjectEntity(); p.setId("p"); p.setName("Project"); p.setOwner("Owner");
+    private ProjectEntity project() { return project("p"); }
+    private ProjectEntity project(String id) {
+        var p = new ProjectEntity(); p.setId(id); p.setName("Project"); p.setOwner("Owner");
         p.setStatus("active"); p.setHealth("yellow"); p.setDeliveryModel("kanban"); p.setQuarter("Q4");
         p.setDeadline("2026-12-31"); p.setMilestone("Legacy text is not a real milestone");
         p.setRisk("Risk"); p.setDependency("Dependency"); p.setKpiName("KPI"); p.setKpiTarget("Target");
         p.setSummary("Summary"); return projects.saveAndFlush(p);
     }
     private void task(String id, String column, String due, Boolean blocked) {
-        var t = new BoardCardEntity(); t.setId(id); t.setProjectId("p"); t.setColumnKey(column);
+        task(id, "p", column, due, "medium", blocked);
+    }
+    private void task(String id, String projectId, String column, String due, String priority, Boolean blocked) {
+        var t = new BoardCardEntity(); t.setId(id); t.setProjectId(projectId); t.setColumnKey(column);
         t.setPosition(0); t.setTitle(id); t.setDescription("Description"); t.setOwner("Owner");
-        t.setDueDate(due); t.setPriority("medium"); t.setLabels(""); t.setEstimate(1); t.setBlocked(blocked);
+        t.setDueDate(due); t.setPriority(priority); t.setLabels(""); t.setEstimate(1); t.setBlocked(blocked);
         tasks.saveAndFlush(t);
     }
     private void milestone(ProjectEntity p, String id, String date, boolean done) {
@@ -118,5 +122,43 @@ class ProjectDashboardIntegrationTest {
         try { mvc.perform(get("/api/projects/p/dashboard")).andExpect(status().isInternalServerError())
             .andExpect(jsonPath("$.code").value("DATABASE_ERROR")); }
         finally { reset(tasks); }
+    }
+    @Test void dash03IsExactProjectOnlyFourStatesAndReadOnlyWithMoscowDate() throws Exception {
+        var selected = project(); selected.setDeliveryModel("scrum");
+        var other = project("other"); other.setDeliveryModel("waterfall"); projects.flush();
+        task("late", "p", "backlog", "2026-11-10", "critical", false);
+        task("today-high", "p", "ready", "2026-11-11", "high", false);
+        task("today-critical", "p", "in-progress", "2026-11-11", "critical", false);
+        task("undated", "p", "ready", "", "critical", false);
+        task("unknown-priority", "p", "backlog", "2026-11-12", "unknown", false);
+        task("complete", "p", "done", "2026-11-10", "high", false);
+        task("historic", "p", "release", "2026-11-10", "critical", false);
+        task("standalone", null, "ready", "2026-11-10", "critical", false);
+        task("foreign", "other", "ready", "2026-11-10", "critical", false);
+        var before = jdbc.queryForList("select * from board_cards order by id");
+        var result = mvc.perform(get("/api/projects/p/dashboard"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.dash03.backlog").value(2))
+            .andExpect(jsonPath("$.dash03.ready").value(2))
+            .andExpect(jsonPath("$.dash03.inProgress").value(1))
+            .andExpect(jsonPath("$.dash03.done").value(1))
+            .andExpect(jsonPath("$.dash03.open").value(5))
+            .andExpect(jsonPath("$.dash03.highPriority").value(4))
+            .andExpect(jsonPath("$.dash03.overdue").value(1))
+            .andExpect(jsonPath("$.dash03.unknownDates").value(1))
+            .andExpect(jsonPath("$.dash03.unknownPriorities").value(1))
+            .andExpect(jsonPath("$.dash03.overdueTasks[0].id").value("late"))
+            .andExpect(jsonPath("$.dash03.upcomingTasks[0].id").value("today-critical"))
+            .andExpect(jsonPath("$.dash03.upcomingTasks[1].id").value("today-high"))
+            .andExpect(jsonPath("$.dash03.criticalUndatedTasks[0].id").value("undated"))
+            .andExpect(jsonPath("$.tasks.total").value(7))
+            .andReturn();
+        var data = json.readTree(result.getResponse().getContentAsString());
+        assertThat(data.path("dash03").toString()).doesNotContain("historic", "standalone", "foreign");
+        assertThat(jdbc.queryForList("select * from board_cards order by id")).isEqualTo(before);
+        mvc.perform(get("/api/projects/other/dashboard"))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.model").value("waterfall"))
+            .andExpect(jsonPath("$.dash03.ready").value(1))
+            .andExpect(jsonPath("$.dash03.overdueTasks[0].id").value("foreign"));
     }
 }

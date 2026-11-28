@@ -39,7 +39,8 @@ public class ProjectDashboardService {
         Set<String> seen = new HashSet<>();
         List<Task> blockedTasks = new ArrayList<>(), overdueTasks = new ArrayList<>();
         long done = 0, uncertain = 0, unknownDates = 0, unmapped = 0, unknownBlocked = 0;
-        for (var task : tasks.findByProjectIdOrderByPositionAsc(id)) {
+        var projectCards = tasks.findByProjectIdOrderByPositionAsc(id);
+        for (var task : projectCards) {
             if (!seen.add(task.getId())) continue;
             String column = task.getColumnKey();
             counts.merge(column, 1L, Long::sum);
@@ -74,7 +75,59 @@ public class ProjectDashboardService {
         return new ProjectDashboardResponse(project.calculationDate(), project.timeZone(), Instant.now(), model,
             project, new Tasks(seen.size(), done, blockedTasks.size(), overdueTasks.size(), uncertain,
             unknownDates, unmapped, unknownBlocked, columns, unassigned, blockedTasks, overdueTasks),
-            new Milestones(overdueMilestones, dueSoon, unknownMilestones));
+            new Milestones(overdueMilestones, dueSoon, unknownMilestones), dash03(projectCards, today));
+    }
+
+    private Dash03 dash03(List<BoardCardEntity> projectCards, LocalDate today) {
+        Set<String> ids = new HashSet<>();
+        Map<String, Long> states = new HashMap<>();
+        List<BoardCardEntity> overdue = new ArrayList<>(), upcoming = new ArrayList<>(), criticalUndated = new ArrayList<>();
+        long highPriority = 0, unknownDates = 0, unknownPriorities = 0;
+        for (var task : projectCards) {
+            if (!ids.add(task.getId())) continue;
+            String state = task.getColumnKey();
+            if (!Set.of("backlog", "ready", "in-progress", "done").contains(state)) continue;
+            states.merge(state, 1L, Long::sum);
+            if ("done".equals(state)) continue;
+            String priority = task.getPriority();
+            if ("high".equals(priority) || "critical".equals(priority)) highPriority++;
+            if (!Set.of("low", "medium", "high", "critical").contains(priority == null ? "" : priority)) unknownPriorities++;
+            LocalDate due = parseDate(task.getDueDate());
+            if (due == null) {
+                unknownDates++;
+                if ("critical".equals(priority)) criticalUndated.add(task);
+            } else if (due.isBefore(today)) overdue.add(task);
+            else upcoming.add(task);
+        }
+        Comparator<BoardCardEntity> order = Comparator
+            .comparing((BoardCardEntity task) -> parseDate(task.getDueDate()))
+            .thenComparingInt(task -> priorityRank(task.getPriority()))
+            .thenComparing(BoardCardEntity::getId);
+        overdue.sort(order);
+        upcoming.sort(order);
+        criticalUndated.sort(Comparator.comparing(BoardCardEntity::getId));
+        long backlog = states.getOrDefault("backlog", 0L), ready = states.getOrDefault("ready", 0L);
+        long inProgress = states.getOrDefault("in-progress", 0L), done = states.getOrDefault("done", 0L);
+        return new Dash03(backlog, ready, inProgress, done, backlog + ready + inProgress,
+            highPriority, overdue.size(), unknownDates, unknownPriorities,
+            overdue.stream().map(this::toDashTask).toList(),
+            upcoming.stream().map(this::toDashTask).toList(),
+            criticalUndated.stream().map(this::toDashTask).toList());
+    }
+
+    private int priorityRank(String priority) {
+        return switch (priority == null ? "" : priority) {
+            case "critical" -> 0;
+            case "high" -> 1;
+            case "medium" -> 2;
+            case "low" -> 3;
+            default -> 4;
+        };
+    }
+
+    private DashTask toDashTask(BoardCardEntity task) {
+        return new DashTask(task.getId(), task.getTitle(), task.getColumnKey(),
+            task.getDueDate(), task.getPriority(), task.getOwner());
     }
 
     private Task toTask(BoardCardEntity task) {

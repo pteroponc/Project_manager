@@ -2599,6 +2599,9 @@ progress::-moz-progress-bar { background: var(--progress); }
 .project-summary { margin: 24px 0; padding-block: 20px; border-block: 1px solid var(--line); min-width: 0; }
 .project-summary h2 { font-size: 22px; margin-bottom: 10px; }
 .project-summary h3 { font-size: 16px; margin-block: 16px 8px; }
+.project-task-snapshot { padding: 16px; border: 1px solid var(--line); border-radius: var(--radius-compact); background: var(--surface); }
+.project-task-snapshot h3 { margin-top: 0; }
+.project-task-snapshot h4 { font-size: 15px; margin-block: 14px 6px; }
 .project-summary .hint-text { font-size: 14px; line-height: 1.5; }
 .summary-counts { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 16px; margin: 20px 0; }
 .summary-counts > div { border-left: 2px solid var(--line); padding-left: 12px; min-width: 0; }
@@ -2617,6 +2620,10 @@ progress::-moz-progress-bar { background: var(--progress); }
 @media (max-width: 600px) {
   .summary-counts { grid-template-columns: repeat(2,minmax(0,1fr)); }
   .summary-lists { grid-template-columns: minmax(0,1fr); }
+}
+@media (max-width: 360px) {
+  .project-task-snapshot { padding: 12px; }
+  .project-task-snapshot .summary-counts { grid-template-columns: minmax(0,1fr); }
 }
 
 /* Personal workspace layouts. */

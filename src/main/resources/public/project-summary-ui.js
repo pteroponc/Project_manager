@@ -4,13 +4,17 @@
   const attr = value => escapeAttr(value);
   function valid(data, id) {
     const tasks = data?.tasks;
+    const dash = data?.dash03;
     return data?.project?.id === id && typeof data.calculationDate === "string"
       && ["kanban", "scrum", "waterfall"].includes(data.model)
       && Array.isArray(data.project.milestones) && tasks
       && ["total", "done", "blocked", "overdue", "uncertain", "unknownDates", "unmapped", "unknownBlocked"]
         .every(key => Number.isSafeInteger(tasks[key]) && tasks[key] >= 0)
       && ["columns", "unassigned", "blockedTasks", "overdueTasks"].every(key => Array.isArray(tasks[key]))
-      && Array.isArray(data.milestones?.overdue) && Array.isArray(data.milestones?.dueSoon);
+      && Array.isArray(data.milestones?.overdue) && Array.isArray(data.milestones?.dueSoon)
+      && dash && ["backlog", "ready", "inProgress", "done", "open", "highPriority", "overdue", "unknownDates", "unknownPriorities"]
+        .every(key => Number.isSafeInteger(dash[key]) && dash[key] >= 0)
+      && ["overdueTasks", "upcomingTasks", "criticalUndatedTasks"].every(key => Array.isArray(dash[key]));
   }
   function date(value) {
     return /^\d{4}-\d{2}-\d{2}$/.test(value ?? "") ? value.split("-").reverse().join(".") : "Срок неизвестен";
@@ -27,6 +31,14 @@
       <button class="text-link" type="button" data-summary-task="${attr(item.id)}">${esc(item.title)}</button>
       <span>${esc(item.owner)} · ${date(item.dueDate)}</span></li>`).join("")}</ul>` : empty("Таких задач нет.");
   }
+  const statusNames = {backlog:"Бэклог", ready:"К выполнению", "in-progress":"В работе", done:"Готово"};
+  const priorityNames = {critical:"Критичный", high:"Высокий", medium:"Средний", low:"Низкий"};
+  function dashList(items) {
+    return items.length ? `<ul class="summary-records">${items.map(item => `<li>
+      <button class="text-link" type="button" data-summary-task="${attr(item.id)}">${esc(item.title)}</button>
+      <span>${esc(statusNames[item.columnKey] || item.columnKey)} · ${date(item.dueDate)} · ${esc(priorityNames[item.priority] || "Приоритет неизвестен")}</span></li>`).join("")}</ul>`
+      : empty("Таких задач нет.");
+  }
   function milestoneList(items) {
     return items.length ? `<ul class="summary-records">${items.map(item => `<li>
       <button class="text-link" type="button" data-summary-milestone="${attr(item.id)}">${esc(item.name)}</button>
@@ -36,10 +48,22 @@
     if (!data) return `<section class="project-summary" aria-label="Проектная сводка"><h2>Задачи и сроки</h2>
       ${empty("Сводка недоступна. Обновите карточку для получения согласованного снимка.")}</section>`;
     const tasks = data.tasks;
+    const dash = data.dash03;
     const metric = (label, value) => `<div><dt>${label}</dt><dd>${value}</dd></div>`;
     return `<section class="project-summary" aria-label="Проектная сводка"><h2>Задачи и сроки</h2>
       <p class="hint-text">Расчёт на ${date(data.calculationDate)} · Europe/Moscow.
       Получено ${time(receivedAt)} (МСК). Ответ сформирован ${time(data.generatedAt)} (МСК).</p>
+      <section class="project-task-snapshot" aria-label="Задачи проекта"><h3>Задачи проекта · Доска</h3>
+      <p class="hint-text">Только задачи этого проекта в четырёх состояниях. Снимок доступен только для чтения.</p>
+      <dl class="summary-counts">${metric("Бэклог", dash.backlog)}${metric("К выполнению", dash.ready)}
+      ${metric("В работе", dash.inProgress)}${metric("Готово", dash.done)}
+      ${metric("Открыто", dash.open)}${metric("Высокий и критичный", dash.highPriority)}
+      ${metric("Просрочено", dash.overdue)}</dl>
+      ${dash.unknownDates || dash.unknownPriorities ? `<p class="summary-warning">Неизвестные данные открытых задач: срок — ${dash.unknownDates}, приоритет — ${dash.unknownPriorities}. Просрочка для задач без срока неизвестна.</p>` : ""}
+      <div class="summary-lists"><section><h4>Просроченные</h4>${dashList(dash.overdueTasks)}</section>
+      <section><h4>Ближайшие от сегодня</h4>${dashList(dash.upcomingTasks)}</section>
+      <section><h4>Критичные без срока</h4>${dashList(dash.criticalUndatedTasks)}</section></div></section>
+      <h3>Текущая сводка по колонкам модели</h3>
       <dl class="summary-counts">${metric("Всего задач", tasks.total)}${metric("Готово", tasks.done)}
       ${metric("Заблокировано", (tasks.unknownBlocked ? "Не менее " : "") + tasks.blocked)}
       ${metric("Просрочено", (tasks.uncertain ? "Не менее " : "") + tasks.overdue)}</dl>
